@@ -4,7 +4,12 @@ A localised, background-hosted "digital curtain" for a personal WhatsApp account
 
 ## Status
 
-Design phase. Before building the strike/block/unblock logic, we're validating the one assumption everything else depends on: that Baileys' `deleteForMe` app-state sync action reliably removes an incoming message from the linked phone.
+**`deleteForMe` validated (2026-09-24).** Linked a real WhatsApp account as a
+companion device via the prototype below and confirmed that Baileys'
+`chatModify({ deleteForMe: ... })` app-state patch actually removes a message
+from the primary phone — the one assumption the whole "digital curtain"
+premise depended on. Moving on to building the classifier and strike/block
+pipeline.
 
 ## Validating "delete for me"
 
@@ -17,7 +22,10 @@ npm run prototype:delete-for-me
 
 Then, from a second WhatsApp account, send a text message to the linked account. The script waits a few seconds, calls `chatModify({ deleteForMe: ... })`, and logs the result — check your phone to confirm the message actually disappeared.
 
-If this doesn't hold up reliably, the deletion strategy needs to change before anything else gets built on top of it.
+No second number on hand? Set `TEST_ALLOW_SELF=1` to test against messages
+you send yourself instead (e.g. the "Message yourself" chat) — the
+`deleteForMe` mechanism doesn't care who sent the message, so this still
+exercises the thing being validated.
 
 ## Planned architecture
 

@@ -22,10 +22,13 @@ on branch `claude/elegant-allen-k9quqh`.
 
 The original brief was solid but had gaps. Key changes made to the design:
 
-1. **Biggest open risk, unresolved**: whether Baileys' `deleteForMe` app-state
-   sync action actually removes an incoming message from the linked phone.
-   This is the one assumption the whole project depends on and it has not
-   been empirically confirmed yet — see "Immediate next step" below.
+1. **Biggest open risk — RESOLVED (2026-09-24)**: whether Baileys' `deleteForMe`
+   app-state sync action actually removes an incoming message from the linked
+   phone. Confirmed empirically: linked a real account, sent a test message
+   (via `TEST_ALLOW_SELF=1` against a "Message yourself" chat, since no
+   second number was available at test time), and the message visibly
+   disappeared from the phone a few seconds after `chatModify({ deleteForMe:
+   ... })` ran. The "digital curtain" premise holds.
 2. **Ban risk** is bigger than "keep request frequency low" — the
    block → wait → auto-unblock cycle is itself a distinctive automation
    signature to Meta's abuse detection, separate from raw request volume.
@@ -74,34 +77,17 @@ The original brief was solid but had gaps. Key changes made to the design:
 - `.gitignore` — excludes `auth_info/` and future local DB/env files.
 - `README.md` — current status + planned architecture summary.
 
-## Immediate next step (blocking everything else)
+## Immediate next step — DONE
 
-Run the prototype and physically confirm on a phone whether the delete
-propagates:
+~~Run the prototype and physically confirm on a phone whether the delete
+propagates~~ — done, see "Design review outcome" point 1 above. (This could
+not be completed in the cloud session that did the design work — that
+environment's network policy returned 403 on outbound connections to
+`web.whatsapp.com` and `g.whatsapp.net`, since Baileys needs a raw WSS
+tunnel that sandbox's proxy didn't allow through. Running locally sidestepped
+that entirely.)
 
-```
-npm install
-npm run prototype:delete-for-me
-```
-
-Scan the printed QR with WhatsApp → Linked Devices. Then, from a **second**
-WhatsApp number, send the linked account a text message. The script waits
-~3 seconds and attempts the delete — check the primary phone: did the
-message actually disappear?
-
-This could not be completed in the cloud session that did the design work —
-that environment's network policy returned 403 on outbound connections to
-`web.whatsapp.com` and `g.whatsapp.net` (Baileys needs a raw WSS tunnel,
-which that sandbox's proxy didn't allow through). Running locally sidesteps
-that entirely.
-
-**If the delete does not propagate reliably**, stop and reconsider the
-architecture before building anything further — the "digital curtain"
-premise depends on it. Fallback ideas to consider in that case: archiving
-instead of deleting, or accepting that some exposure window is unavoidable
-and designing the warning/strike flow around that instead.
-
-## What's next after that's confirmed
+## What's next now that's confirmed
 
 In rough build order:
 

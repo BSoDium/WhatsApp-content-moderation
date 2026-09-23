@@ -11,14 +11,25 @@
 // Then, from a second WhatsApp account, send this account a test message.
 // The script will delete it "for me" a few seconds later and log the
 // result. Check your phone: did the message disappear?
+//
+// No second number handy? Set TEST_ALLOW_SELF=1 to also react to messages
+// you send yourself (e.g. the "Message yourself" chat). The deleteForMe
+// app-state patch doesn't care who sent the message, so this still tests
+// the mechanism this prototype exists to validate — just skip straight to
+// production with a real contact once this establishes it works:
+//
+//   TEST_ALLOW_SELF=1 npm run prototype:delete-for-me
 
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import pino from 'pino';
 
 const AUTH_DIR = './auth_info';
 const DELETE_DELAY_MS = 3000;
+const QR_PNG_PATH = './auth_info/login-qr.png';
+const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -37,6 +48,9 @@ async function start() {
     if (qr) {
       console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
       qrcode.generate(qr, { small: true });
+      QRCode.toFile(QR_PNG_PATH, qr, { width: 400 })
+        .then(() => console.log(`[qr] also saved to ${QR_PNG_PATH}`))
+        .catch((err) => console.error('[qr] failed to save PNG:', err));
     }
 
     if (connection === 'close') {
@@ -46,7 +60,11 @@ async function start() {
       if (shouldReconnect) start();
     } else if (connection === 'open') {
       console.log('\nConnected. Waiting for a message from a test contact...\n');
-      console.log('Send this account any text message from another number, then watch your phone.\n');
+      if (ALLOW_SELF) {
+        console.log('TEST_ALLOW_SELF=1: also watching for messages you send yourself.\n');
+      } else {
+        console.log('Send this account any text message from another number, then watch your phone.\n');
+      }
     }
   });
 
@@ -54,7 +72,8 @@ async function start() {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      if (!msg.message || msg.key.fromMe) continue;
+      if (!msg.message) continue;
+      if (msg.key.fromMe && !ALLOW_SELF) continue;
 
       const from = msg.key.remoteJid;
       const text =
