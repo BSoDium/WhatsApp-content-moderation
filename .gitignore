@@ -1,4 +1,5 @@
 node_modules/
+.DS_Store
 
 # WhatsApp linked-device session (Signal protocol keys) — equivalent to a
 # credential, never commit this.
