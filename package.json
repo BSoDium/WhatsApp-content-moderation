@@ -1,0 +1,30 @@
+{
+  "name": "whatsapp-content-moderation",
+  "version": "0.1.0",
+  "description": "A localised, background-hosted \"digital curtain\" for a personal WhatsApp account.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
+    "classifier:test": "node src/classifier/test-classifier.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BSoDium/WhatsApp-content-moderation.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/BSoDium/WhatsApp-content-moderation/issues"
+  },
+  "homepage": "https://github.com/BSoDium/WhatsApp-content-moderation#readme",
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.9",
+    "ollama": "^0.6.3",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

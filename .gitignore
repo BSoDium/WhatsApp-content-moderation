@@ -1,0 +1,15 @@
+node_modules/
+
+# WhatsApp linked-device session (Signal protocol keys) — equivalent to a
+# credential, never commit this.
+auth_info/
+auth_info*/
+
+# Local state / audit DB once the moderation logic exists.
+*.sqlite
+*.sqlite3
+.env
+
+# Personal moderation policy — describes a real person/situation, never
+# committed. config/policy.example.md (the template) stays tracked.
+config/policy.md
