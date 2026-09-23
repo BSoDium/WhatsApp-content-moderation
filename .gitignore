@@ -9,3 +9,7 @@ auth_info*/
 *.sqlite
 *.sqlite3
 .env
+
+# Personal moderation policy — describes a real person/situation, never
+# committed. config/policy.example.md (the template) stays tracked.
+config/policy.md

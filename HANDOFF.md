@@ -39,12 +39,16 @@ The original brief was solid but had gaps. Key changes made to the design:
 3. **Library choice**: Baileys over whatsapp-web.js — no headless-browser
    (Puppeteer) overhead, lighter footprint for an always-on host, better
    multi-device protocol support.
-4. **Classifier**: use structured JSON output (not free-text Pass/Fail),
-   include recent conversation context (not just the isolated message),
-   fail-open on LLM API errors (never silently delete/block on a
-   classification that didn't actually happen), and build a **shadow mode**
-   first — log classification decisions for a while without acting on them,
-   to catch false positives before they cost you a real message.
+4. **Classifier — BUILT (2026-09-24)**: structured JSON output (not
+   free-text Pass/Fail), includes recent conversation context, fails open on
+   LLM errors (never silently delete/block on a classification that didn't
+   actually happen). Runs on a local Ollama model — zero API cost, fits the
+   self-hosted/CPU-only constraint. `llama3.2:1b` was tried first but proved
+   unreliable (see `src/classifier/classifier.js` and README "Classifier"
+   section for the exact failure and fix); `llama3.2:3b` is the default.
+   Shadow mode (log-only, no action) still needs to be built — that's part
+   of wiring the classifier into the actual pipeline (build-order step 4
+   below).
 5. **State/logging**: SQLite for strikes + block records (`unblockAt`
    timestamps) + a full audit log of every message and its classification —
    this log is the only record once a message is actually deleted from
@@ -74,8 +78,20 @@ The original brief was solid but had gaps. Key changes made to the design:
   `sock.chatModify({ deleteForMe: { key, timestamp, deleteMedia } }, jid)`,
   logging success/failure. This is **not** part of the eventual production
   bot — it exists purely to answer the open risk in point 1 above.
-- `.gitignore` — excludes `auth_info/` and future local DB/env files.
+- `.gitignore` — excludes `auth_info/` and future local DB/env files, plus
+  `config/policy.md` (the real moderation policy — personal, never committed).
 - `README.md` — current status + planned architecture summary.
+- `src/classifier/classifier.js` — `classifyMessage({ message, history })`,
+  calls a local Ollama model with a JSON-schema-constrained response
+  (`category`, `reason`, `flagged` — in that order, deliberately, so the
+  model reasons before committing to the verdict). Fails open (`{ ok: false
+  }`) on any error; callers must never delete/block on that.
+- `src/classifier/policy.js` — loads `config/policy.md`, throwing a clear
+  error pointing at `config/policy.example.md` if it's missing/empty.
+- `config/policy.example.md` — committed template for the moderation policy.
+  `config/policy.md` (gitignored) is the real one — user fills it in.
+- `src/classifier/test-classifier.js` (`npm run classifier:test`) — REPL to
+  try the classifier against typed messages without a WhatsApp connection.
 
 ## Immediate next step — DONE
 
@@ -91,22 +107,35 @@ that entirely.)
 
 In rough build order:
 
-1. LLM classifier module — structured JSON output, conversation context,
-   fail-open, plus a shadow-mode flag to log-only before enabling real
-   deletion/blocking.
+1. ~~LLM classifier module~~ — **done**, see "What's built" above. Still
+   need a shadow-mode flag on the eventual pipeline (step 4) to log-only
+   before enabling real deletion/blocking — the module itself doesn't know
+   about shadow mode, that's a pipeline concern.
 2. SQLite schema: strikes (per contact, with decay on `Pass`), block
    records with `unblockAt`, full message/classification audit log.
 3. Message debounce/buffer for multi-message bursts (5–10s window) before
    classification, using recent context rather than classifying each
    message in total isolation.
 4. Strike → warning-reply → delete-for-me pipeline, wired to the real
-   classifier instead of the prototype's unconditional delete.
+   classifier instead of the prototype's unconditional delete. This is
+   where `history` gets populated for `classifyMessage` and where shadow
+   mode actually lives (classify + log, skip the delete/warn/strike calls).
 5. Block/unblock flow: native `block`/`unblock` API calls, jittered
    scheduler for expiry checks, idempotency guard against duplicate
    block calls if events queue up during a state transition.
 6. Manual override channel (optional, see point 7 above).
 7. Docker packaging + systemd/compose service for the spare-machine
    deployment, with the auth folder on a backed-up volume.
+
+### Note on the target machine
+
+The classifier was built and tested on this dev machine with Ollama
+installed via Homebrew (`brew install ollama`, `ollama serve` in the
+background, `ollama pull llama3.2:3b`). None of that is installed on the
+actual self-host target yet — whoever deploys this needs to repeat that
+setup there, and re-run `npm run classifier:test` against a few known cases
+to confirm the model behaves the same way before trusting it with a real
+contact.
 
 ## Open PR
 
