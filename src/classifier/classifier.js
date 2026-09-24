@@ -54,7 +54,7 @@ function formatHistory(history) {
  *
  * Fails open by design: any error (Ollama unreachable, malformed response,
  * timeout) returns { ok: false } rather than a guessed verdict, so callers
- * must never delete/block on ok: false — see HANDOFF.md point 4.
+ * must never delete/block on ok: false — see AGENTS.md's "Error handling".
  *
  * @param {{ message: string, history?: { from: 'me'|'them', text: string }[], model?: string }} input
  * @returns {Promise<{ ok: true, flagged: boolean, category: string, reason: string } | { ok: false, error: string }>}

@@ -26,18 +26,19 @@ diff in this repo.
 
 - Fail open on anything talking to an external system (Ollama, WhatsApp) —
   never let a failed classification silently become an action. See
-  `classifyMessage`'s `{ ok: false }` contract and HANDOFF.md's design
-  review point 4. Any new code that gates a delete/warn/block/unblock on a
-  fallible call must follow the same shape: a result the caller has to
-  check, not a thrown exception the caller might forget to catch, and never
-  a guessed default that fails closed by accident.
+  `classifyMessage`'s `{ ok: false }` contract in
+  `src/classifier/classifier.js`. Any new code that gates a
+  delete/warn/block/unblock on a fallible call must follow the same shape: a
+  result the caller has to check, not a thrown exception the caller might
+  forget to catch, and never a guessed default that fails closed by
+  accident.
 - `try/catch` is for boundaries where failure is actually possible
   (network calls, filesystem, parsing external input) — don't wrap internal
   calls whose contract already guarantees success.
 - Always log what failed and why (this project already depends on `pino`)
   — a silently swallowed error is a debugging trap, especially once a
   message has actually been deleted and the log is the only record left of
-  what happened (see HANDOFF.md point 5).
+  what happened (see `docs/decisions.md`'s "State & audit log via SQLite").
 
 ## JavaScript / Node style
 
