@@ -93,3 +93,31 @@ diff in this repo.
 - When a PR closes an issue, link it with a GitHub closing keyword
   (`Closes #N`, `Fixes #N`) in the PR body. Use `Part of #N` / `Refs #N`
   when it advances an issue without fully resolving it.
+
+## GitHub project board
+
+This is an account-level board — `Open-source development` (project #5,
+owner `BSoDium`) — shared across all of this author's repos, not something
+scoped to this project alone. It tracks issues/PRs from every repo owned by
+`BSoDium`, this one included.
+
+- **Every new issue must be added to the board** immediately after
+  creation: `gh project item-add 5 --owner BSoDium --url <issue-url>`. Then
+  set four fields via `gh api graphql`:
+  - **Status** — `Backlog` for new work
+  - **Priority** — `P0`–`P4`, relative to existing issues on the board
+  - **Size** — `XS`/`S`/`M`/`L`/`XL`, by effort
+  - **Category** — `Feature`, `Bug`, `Refactor`, `Config`, or
+    `Documentation`, based on the issue's nature
+
+  Fetch current field and option IDs from the project API
+  (`gh project field-list 5 --owner BSoDium`) — don't hardcode them, they
+  can change. Also apply relevant GitHub labels (e.g. `bug`, `enhancement`)
+  at creation time.
+- **Only orphan PRs go on the board.** If a PR closes an issue via a
+  closing keyword and that issue is already on the board, do **not** also
+  add the PR — the issue already tracks it, and adding both creates
+  duplicate noise. Only PRs with no closing keyword (nothing they close) go
+  on the board themselves, with the same Status/Priority/Size/Category
+  fields set. Apply relevant GitHub labels to every PR regardless of
+  whether it ends up on the board.

@@ -1,6 +1,10 @@
 node_modules/
 .DS_Store
 
+# Claude Code local state — settings.json is shared/committed (see below), everything else stays local
+.claude/*
+!.claude/settings.json
+
 # WhatsApp linked-device session (Signal protocol keys) — equivalent to a
 # credential, never commit this.
 auth_info/
