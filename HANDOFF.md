@@ -63,6 +63,15 @@ The original brief was solid but had gaps. Key changes made to the design:
    not cloud) — zero cost, no inbound ports needed (outbound WS + outbound
    LLM API calls only), full control over the Signal session keys. Docker
    with `restart: always`, auth folder on a persisted + backed-up volume.
+   Target machine confirmed (2026-09-24) — see README "Reference hardware":
+   a Lenovo ThinkCentre (Celeron G3930T, 8GB RAM) over a more powerful Dell
+   OptiPlex 3050 (i5-7500, 16GB RAM) that's also available. Explicit
+   trade-off: the OptiPlex would run the classifier faster, but this runs
+   as an always-on background server in a lived-in space, so the
+   ThinkCentre's lower power draw, noise, and heat output were weighted
+   above raw throughput. Not yet benchmarked for real per-message
+   classifier latency on the actual ThinkCentre — only functionally
+   verified on a faster dev machine so far.
 9. **Auth state security**: the `auth_info/` folder holds Signal protocol
    session keys equivalent to full account access — treat it like a
    credential. It's gitignored; never commit it, encrypt at rest if

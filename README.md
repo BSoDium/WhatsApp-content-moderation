@@ -74,10 +74,38 @@ Notes from building this:
   `{ ok: false }` rather than a guessed verdict. Callers must never
   delete/block on `ok: false`.
 
+## Reference hardware
+
+This is designed to run comfortably on a mid-range machine — not as low as
+a Raspberry Pi, but not requiring a dedicated GPU or a high-end PC either.
+Two machines were considered as the actual self-host target:
+
+| | Lenovo ThinkCentre (10MQ, S0KM00) | Dell OptiPlex 3050 |
+|---|---|---|
+| CPU | Intel Celeron G3930T, 2.70 GHz | Intel Core i5-7500, up to 3.40 GHz |
+| RAM | 8 GB | 16 GB |
+| GPU | Intel HD Graphics 610 | — |
+| Power/noise/heat | Low | Higher |
+
+**The ThinkCentre is the default target**, even though the OptiPlex is
+clearly more capable. This machine runs as an always-on background server
+in a lived-in space, and its lower power draw, lower noise, and lower heat
+output matter more day to day than raw throughput — the OptiPlex stays
+available as a fallback for anything that turns out to need more headroom.
+
+The classifier's model choice (see below) was picked with the ThinkCentre's
+CPU-only, 2-core/8GB profile in mind, but hasn't yet been benchmarked for
+actual per-message latency on that specific hardware — only functionally
+verified on a much faster dev machine. Before relying on this for real
+moderation, run `npm run classifier:test` on the target machine itself and
+confirm the response time is acceptable; the delete/warn flow already has
+some slack built in (see `DELETE_DELAY_MS` in the prototype), but a
+multi-minute classification would still be too slow to be useful.
+
 ## Planned architecture
 
 - **Transport**: Baileys (no headless browser, lighter than whatsapp-web.js)
 - **Classifier**: LLM call per message (structured JSON output, not free-text), with conversation context, fail-open on API errors
 - **State**: SQLite — strike counts, block records with `unblockAt`, full audit log of messages + classifications (the only record once a message is deleted)
 - **Scheduler**: periodic check for expired blocks, jittered rather than fixed-interval
-- **Deployment**: self-hosted on a spare machine, Docker with `restart: always`, auth state on a persisted + backed-up volume
+- **Deployment**: self-hosted on the reference hardware above, Docker with `restart: always`, auth state on a persisted + backed-up volume
