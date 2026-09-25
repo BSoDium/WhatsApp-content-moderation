@@ -36,6 +36,23 @@ you send yourself instead (e.g. the "Message yourself" chat) — the
 `deleteForMe` mechanism doesn't care who sent the message, so this still
 exercises the thing being validated.
 
+## Validating block/unblock
+
+Not yet run against a real account — see issue #16. Same interactive
+requirement as above, plus a real second WhatsApp number: you can't block
+your own "Message yourself" chat, so there's no self-test fallback here.
+
+```
+npm install
+BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock
+```
+
+The script blocks the target via `updateBlockStatus`, confirms it with
+`fetchBlocklist()`, waits a few seconds, then unblocks and confirms again.
+Check your phone directly too: does the contact actually show as blocked,
+then unblocked? This needs to pass before #8 builds a scheduler on top of
+it — if it doesn't, #8's design needs rethinking first.
+
 ## Classifier
 
 Uses a local [Ollama](https://ollama.com) model — no per-message API cost,
