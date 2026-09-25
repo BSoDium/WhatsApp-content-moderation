@@ -96,6 +96,13 @@ in a lived-in space, and its lower power draw, lower noise, and lower heat
 output matter more day to day than raw throughput — the OptiPlex stays
 available as a fallback for anything that turns out to need more headroom.
 
+Concretely: **build and optimize for the ThinkCentre now** — it's the
+machine this actually needs to run well on day to day, so that's what
+correctness and performance work should target. The OptiPlex is the planned
+upgrade path if the ThinkCentre's throughput genuinely becomes a bottleneck
+(see the latency estimate below) rather than the default answer to it —
+swap machines, not architecture, if that ever happens.
+
 The classifier's model choice (see above) was picked with the ThinkCentre's
 CPU-only, 2-core/8GB profile in mind, but hasn't actually been run on that
 hardware yet — only functionally verified on a much faster dev machine.
