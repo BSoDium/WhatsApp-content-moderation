@@ -32,6 +32,37 @@ alternative was considered and rejected) — but the unblock scheduler should
 add random jitter to its check/unblock timing rather than firing on exact
 intervals, as a partial mitigation against that pattern being recognizable.
 
+### Trigger, duration, and jitter (issue #8 design)
+
+- **Trigger**: a block fires the first time a contact's strike count (already
+  tracked by `src/store/strikes.js`) reaches `STRIKE_THRESHOLD` (default
+  **3**) *and* they have no currently-active block row
+  (`SELECT ... FROM blocks WHERE contact_id = ? AND unblocked_at IS NULL`).
+  Checked right after `moderation-pipeline.js` records a strike, inside the
+  same per-contact `serialize()` chain `handleBurst` already uses — no
+  separate idempotency guard needed at this layer, since two bursts for the
+  same contact already can't run concurrently.
+- **Duration**: `BLOCK_DURATION_MS` (default **24h**) plus jitter of
+  `± BLOCK_JITTER_MS` (default **4h**, so 20–28h), computed once at block
+  time and stored as `unblock_at` on the `blocks` row. The jitter lives in
+  *when a block ends*, not in how often the scheduler looks — that's what
+  actually varies the pattern an outside observer (or WhatsApp's abuse
+  detection) would see.
+- **Scheduler**: a poll loop, not a per-block `setTimeout` — timers don't
+  survive a process restart, and this needs to run for a day at a time on a
+  host that may restart. Every `UNBLOCK_POLL_INTERVAL_MS` (default
+  **2 min**), check for rows where `unblock_at <= now() AND unblocked_at IS
+  NULL`. The poll cadence itself doesn't need its own jitter — the
+  already-randomized `unblock_at` is the signal that matters; the poll is
+  just how promptly a due unblock gets noticed.
+- **Idempotency**: `UPDATE blocks SET unblocked_at = ? WHERE id = ? AND
+  unblocked_at IS NULL` before calling `updateBlockStatus(jid, 'unblock')` —
+  if `changes === 0`, another tick (or a manual override, once #9 exists)
+  already handled it, so skip the API call rather than unblocking twice.
+- The `blocks` table itself (`blocked_at`/`unblock_at`/`unblocked_at`) is the
+  audit trail for block state changes — no separate `audit_log` entry needed
+  for a block/unblock event, unlike message-level actions.
+
 ## Self-host over cloud
 
 Decided early and not revisited: this runs on the user's own spare
