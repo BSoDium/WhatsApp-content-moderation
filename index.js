@@ -11,6 +11,10 @@ import { closeDb } from './src/store/db.js';
 const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
 const TARGET_CONTACT_JID = process.env.TARGET_CONTACT_JID;
+// No second number handy? Set TEST_ALLOW_SELF=1, same as
+// src/prototype/test-delete-for-me.js, and point TARGET_CONTACT_JID at your
+// own JID to validate the live pipeline against messages you send yourself.
+const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
 
 if (!TARGET_CONTACT_JID) {
   console.error(
@@ -67,7 +71,7 @@ async function start() {
       logger.warn({ statusCode, shouldReconnect }, 'connection closed');
       if (shouldReconnect) start();
     } else if (connection === 'open') {
-      logger.info({ target: TARGET_CONTACT_JID }, 'connected; moderating target contact');
+      logger.info({ target: TARGET_CONTACT_JID, allowSelf: ALLOW_SELF }, 'connected; moderating target contact');
     }
   });
 
@@ -75,7 +79,7 @@ async function start() {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
-      const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID);
+      const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF);
       if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);
     }
   });

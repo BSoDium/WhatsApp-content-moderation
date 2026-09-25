@@ -31,6 +31,12 @@ TARGET_CONTACT_JID=15551234567@s.whatsapp.net npm start
 
 First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Every other incoming message from `TARGET_CONTACT_JID` gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everything else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
 
+No second number handy? Set `TEST_ALLOW_SELF=1` and point `TARGET_CONTACT_JID` at your own JID — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself:
+
+```
+TARGET_CONTACT_JID=15551234567@s.whatsapp.net TEST_ALLOW_SELF=1 SHADOW_MODE=1 npm start
+```
+
 ## Validating "delete for me"
 
 This has to be run interactively on the machine you intend to self-host on, since it requires scanning a QR code with your phone.
