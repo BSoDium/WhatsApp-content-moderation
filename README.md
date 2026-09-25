@@ -37,6 +37,21 @@ No second number handy? Set `TEST_ALLOW_SELF=1` and point `TARGET_CONTACT_JID` a
 TARGET_CONTACT_JID=15551234567@s.whatsapp.net TEST_ALLOW_SELF=1 SHADOW_MODE=1 npm start
 ```
 
+Your own "Message yourself" chat isn't always addressed by your phone-number JID — some accounts route it through the newer `@lid` form instead (e.g. `110599736393979@lid`). If messages you send yourself never reach the pipeline under `TEST_ALLOW_SELF`, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`) rather than assuming the phone-number form.
+
+## Testing each layer in isolation
+
+Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
+
+- **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
+- **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
+- **Store** (SQLite, no WhatsApp): `npm run store:test`
+- **Moderation pipeline** (classifier + buffer + store, `deleteForMe`/`sendWarning` stubbed to console output): `npm run pipeline:test`
+- **WhatsApp actions** (`sendWarning` + `deleteForMe` against a real connection, classifier/buffer/pipeline bypassed entirely): `TARGET_CONTACT_JID=<a JID you can message, e.g. your own> npm run whatsapp:test-actions` — sends a throwaway message and immediately deletes it, so no second number or friend's participation is needed just to confirm these two primitives still work. Needs an `auth_info/` link that's had a few minutes to settle after first pairing (see the note under "Validating 'delete for me'" below); `App state key not present!` almost always means the app-state sync key hasn't arrived yet, not a bug in the call itself.
+- **Block/unblock**: still needs a real second WhatsApp account's JID — see "Validating block/unblock" below. This is a WhatsApp-side restriction (you cannot block your own account), not something isolation can remove, but the second account only needs to exist, not actively participate.
+
+Only the full live pipeline (`npm start`) and block/unblock genuinely require a live WhatsApp round-trip; everything else above runs offline or against a stub.
+
 ## Validating "delete for me"
 
 This has to be run interactively on the machine you intend to self-host on, since it requires scanning a QR code with your phone.
@@ -52,6 +67,16 @@ No second number on hand? Set `TEST_ALLOW_SELF=1` to test against messages
 you send yourself instead (e.g. the "Message yourself" chat) — the
 `deleteForMe` mechanism doesn't care who sent the message, so this still
 exercises the thing being validated.
+
+`deleteForMe` (and any other `chatModify` app-state action — archive, pin,
+etc.) needs an app-state sync key that WhatsApp pushes to a companion
+device shortly after it's linked. On a **freshly** linked `auth_info/`,
+give the connection a few minutes to sit open and idle before relying on
+`deleteForMe` — restarting the process repeatedly right after linking can
+interrupt that handshake and leave it missing indefinitely. If `chatModify`
+throws `App state key not present!` well after linking, log out the device
+from WhatsApp → Linked Devices and relink cleanly rather than retrying in
+place.
 
 ## Classifier
 

@@ -7,6 +7,7 @@ import { createMessageBuffer } from './src/buffer/message-buffer.js';
 import { handleBurst } from './src/pipeline/moderation-pipeline.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
 import { closeDb } from './src/store/db.js';
+import { deleteForMe, sendWarning } from './src/whatsapp/actions.js';
 
 const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
@@ -32,9 +33,8 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
     const { strikeCount } = await handleBurst(
       { contactId, messages },
       {
-        deleteForMe: (jid, key, timestamp) =>
-          sock.chatModify({ deleteForMe: { deleteMedia: false, key, timestamp } }, jid),
-        sendWarning: (jid, text) => sock.sendMessage(jid, { text }),
+        deleteForMe: (jid, key, timestamp) => deleteForMe(sock, jid, key, timestamp),
+        sendWarning: (jid, text) => sendWarning(sock, jid, text),
       },
     );
     logger.info({ contactId, strikeCount }, 'burst handled');

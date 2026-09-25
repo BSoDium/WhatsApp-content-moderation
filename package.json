@@ -10,7 +10,8 @@
     "classifier:test": "node src/classifier/test-classifier.js",
     "store:test": "node src/store/test-store.js",
     "buffer:test": "node src/buffer/test-buffer.js",
-    "pipeline:test": "node src/pipeline/test-pipeline.js"
+    "pipeline:test": "node src/pipeline/test-pipeline.js",
+    "whatsapp:test-actions": "node src/whatsapp/test-actions.js"
   },
   "engines": {
     "node": ">=24"
