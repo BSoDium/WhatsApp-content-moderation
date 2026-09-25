@@ -29,7 +29,7 @@
   "homepage": "https://github.com/BSoDium/WhatsApp-content-moderation#readme",
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.9",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "ollama": "^0.6.3",
     "pino": "^9.5.0",
     "qrcode": "^1.5.4",
