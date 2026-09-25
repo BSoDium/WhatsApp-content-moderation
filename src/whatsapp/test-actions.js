@@ -1,20 +1,11 @@
-// Isolated smoke test for src/whatsapp/actions.js — validates that
-// sendWarning and deleteForMe actually work against a live WhatsApp
-// connection, independent of the classifier/buffer/pipeline. No second
-// number needed: it sends a throwaway message to TARGET_CONTACT_JID and
-// immediately deletes it, so a friend's participation is never required
-// just to check whether these two primitives still work.
-//
-// Reuses whatever session is already linked in auth_info/ (see README
-// "Running it" for how to link one). Needs an existing, *settled* link —
-// a companion device needs a few minutes after first pairing before
-// WhatsApp pushes the app-state sync key deleteForMe depends on; if this
-// fails with "App state key not present!" that's almost certainly why.
+// Isolated smoke test for src/whatsapp/actions.js. No second number needed
+// and don't run this alongside `npm start` — they'd fight over one session:
 //
 //   TARGET_CONTACT_JID=<own JID, or any JID you can message> npm run whatsapp:test-actions
 
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
+import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { deleteForMe, sendWarning } from './actions.js';
 
@@ -32,13 +23,18 @@ async function start() {
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+
+    if (qr) {
+      console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
+      qrcode.generate(qr, { small: true });
+    }
 
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       console.log('[connection] closed', { statusCode, shouldReconnect });
-      if (shouldReconnect) start();
+      if (shouldReconnect) start().catch((err) => console.error('Reconnect failed:', err?.message ?? err));
       return;
     }
 

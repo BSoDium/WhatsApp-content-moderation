@@ -18,16 +18,20 @@ const DEFAULT_BUFFER_WINDOW_MS = Number(process.env.BUFFER_WINDOW_MS ?? 7000);
  *
  * @param {(contactId: string, messages: unknown[]) => void} onFlush
  * @param {{ windowMs?: number }} [options]
- * @returns {{ push: (contactId: string, message: unknown) => void }}
+ * @returns {{
+ *   push: (contactId: string, message: unknown) => void,
+ *   flushAll: () => Promise<unknown>,
+ * }}
  */
 export function createMessageBuffer(onFlush, { windowMs = DEFAULT_BUFFER_WINDOW_MS } = {}) {
   const pending = new Map();
 
   function flush(contactId) {
     const entry = pending.get(contactId);
-    if (!entry) return;
+    if (!entry) return undefined;
     pending.delete(contactId);
-    onFlush(contactId, entry.messages);
+    clearTimeout(entry.timer);
+    return onFlush(contactId, entry.messages);
   }
 
   function push(contactId, message) {
@@ -38,5 +42,12 @@ export function createMessageBuffer(onFlush, { windowMs = DEFAULT_BUFFER_WINDOW_
     pending.set(contactId, entry);
   }
 
-  return { push };
+  // Flushes every contact still waiting out its debounce window immediately,
+  // instead of letting shutdown silently drop messages that haven't hit
+  // windowMs yet — see index.js's shutdown().
+  function flushAll() {
+    return Promise.allSettled(Array.from(pending.keys(), flush));
+  }
+
+  return { push, flushAll };
 }

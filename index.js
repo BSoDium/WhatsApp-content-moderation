@@ -4,7 +4,7 @@ import qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import { createMessageBuffer } from './src/buffer/message-buffer.js';
-import { handleBurst } from './src/pipeline/moderation-pipeline.js';
+import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
 import { closeDb } from './src/store/db.js';
 import { deleteForMe, sendWarning } from './src/whatsapp/actions.js';
@@ -12,9 +12,7 @@ import { deleteForMe, sendWarning } from './src/whatsapp/actions.js';
 const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
 const TARGET_CONTACT_JID = process.env.TARGET_CONTACT_JID;
-// No second number handy? Set TEST_ALLOW_SELF=1, same as
-// src/prototype/test-delete-for-me.js, and point TARGET_CONTACT_JID at your
-// own JID to validate the live pipeline against messages you send yourself.
+// No second number handy? Set TEST_ALLOW_SELF=1 — see README "Testing each layer in isolation".
 const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
 
 if (!TARGET_CONTACT_JID) {
@@ -69,24 +67,26 @@ async function start() {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       logger.warn({ statusCode, shouldReconnect }, 'connection closed');
-      if (shouldReconnect) start();
+      if (shouldReconnect) {
+        start().catch((err) => logger.error({ error: err?.message ?? String(err) }, 'reconnect failed'));
+      }
     } else if (connection === 'open') {
       logger.info({ target: TARGET_CONTACT_JID, allowSelf: ALLOW_SELF }, 'connected; moderating target contact');
     }
   });
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
-    if (type !== 'notify') return;
-
     for (const msg of messages) {
-      const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF);
+      const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF, type);
       if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);
     }
   });
 }
 
-function shutdown(signal) {
+async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
+  await buffer.flushAll();
+  await Promise.allSettled(pendingBursts());
   closeDb();
   process.exit(0);
 }
