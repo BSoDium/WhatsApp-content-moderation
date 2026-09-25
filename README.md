@@ -38,9 +38,10 @@ exercises the thing being validated.
 
 ## Validating block/unblock
 
-Not yet run against a real account — see issue #16. Same interactive
-requirement as above, plus a real second WhatsApp number: you can't block
-your own "Message yourself" chat, so there's no self-test fallback here.
+Confirmed working against a real second WhatsApp account — see issue #16.
+Same interactive requirement as above, plus a real second WhatsApp number:
+you can't block your own "Message yourself" chat, so there's no self-test
+fallback here.
 
 ```
 npm install
@@ -51,7 +52,15 @@ The script blocks the target via `updateBlockStatus`, confirms it with
 `fetchBlocklist()`, waits a few seconds, then unblocks and confirms again.
 Check your phone directly too: does the contact actually show as blocked,
 then unblocked? This needs to pass before #8 builds a scheduler on top of
-it — if it doesn't, #8's design needs rethinking first.
+it.
+
+`fetchBlocklist()` can return a stale snapshot for a few seconds right
+after a socket connects or right after a block/unblock call — a fresh
+`updateBlockStatus` call may not show up in the very next `fetchBlocklist()`
+even though it already took effect (confirmed via the phone's own "You
+blocked/unblocked this person" system messages, which are the reliable
+signal). Don't treat one immediate stale read as the call having failed —
+check again after a beat, or trust the phone.
 
 ## Classifier
 
