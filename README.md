@@ -8,7 +8,9 @@ A localised, background-hosted "digital curtain" for a personal WhatsApp account
 companion device via the prototype below and confirmed that Baileys'
 `chatModify({ deleteForMe: ... })` app-state patch actually removes a message
 from the primary phone — the one assumption the whole "digital curtain"
-premise depended on.
+premise depended on. (Ran with `TEST_ALLOW_SELF=1` against a "Message
+yourself" chat, since no second WhatsApp number was available at the time —
+see the note on that flag below.)
 
 **Classifier module built (2026-09-24).** Ollama-backed, structured JSON
 output, fail-open. See "Classifier" below. Next up: SQLite state (strikes +
@@ -62,14 +64,14 @@ npm run classifier:test
 
 Notes from building this:
 
-- `llama3.2:1b` was tried first (cheapest, best fit for CPU-only decade-old
-  hardware) but was unreliable: under JSON-schema-constrained output it would
-  write a correct `category`/`reason` (e.g. "insult" / "contains threats
-  directed at me") and then still set `flagged: false`, contradicting its own
-  reasoning. `llama3.2:3b` got every hand-tested case right and stayed
-  internally consistent, so it's the default (`OLLAMA_MODEL` to override) —
-  worth re-verifying carefully with `classifier:test` before dropping back to
-  1b on weaker hardware.
+- `llama3.2:1b` was tried first — cheapest fit for the reference deployment
+  target's 2-core/8GB, GPU-less profile (see "Reference hardware" below) —
+  but was unreliable: under JSON-schema-constrained output it would write a
+  correct `category`/`reason` (e.g. "insult" / "contains threats directed at
+  me") and then still set `flagged: false`, contradicting its own reasoning.
+  `llama3.2:3b` got every hand-tested case right and stayed internally
+  consistent, so it's the default (`OLLAMA_MODEL` to override) — worth
+  re-verifying carefully with `classifier:test` before dropping back to 1b.
 - The response schema orders fields as `category`, `reason`, then `flagged`
   on purpose — this makes the model commit to its reasoning before the
   boolean verdict, instead of guessing `flagged` cold.

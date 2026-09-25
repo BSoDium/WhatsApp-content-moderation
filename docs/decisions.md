@@ -32,16 +32,25 @@ alternative was considered and rejected) — but the unblock scheduler should
 add random jitter to its check/unblock timing rather than firing on exact
 intervals, as a partial mitigation against that pattern being recognizable.
 
+## Self-host over cloud
+
+Decided early and not revisited: this runs on the user's own spare
+hardware, not a cloud VM. Zero recurring cost, no inbound ports to expose or
+firewall (the process only makes outbound connections — the WhatsApp
+WebSocket and local/outbound calls to the LLM — so there's nothing to
+listen on), and full control over where the `auth_info/` session keys
+physically live rather than trusting a third party with them. See README
+"Reference hardware" for which machine and why.
+
 ## State & audit log via SQLite
 
-Strike counts (per contact, decaying on a `Pass` classification), block
-records (with `unblockAt` timestamps for the jittered scheduler above), and
-a full log of every message plus its classification, all in SQLite. The
-audit log matters more than it sounds: once a message is actually deleted
-via `deleteForMe`, that log is the *only* remaining record of what it said
-and why it was acted on. This is also why `AGENTS.md`'s error-handling rule
-insists on logging classifier failures, not just successes — the log needs
-to be trustworthy in both directions.
+The three stores from README's "Planned architecture" — strike counts,
+block records, and a message/classification audit log — all live in
+SQLite, for one reason worth calling out: once a message is actually
+deleted via `deleteForMe`, the audit log is the *only* remaining record of
+what it said and why it was acted on. This is also why `AGENTS.md`'s
+error-handling rule insists on logging classifier failures, not just
+successes — the log needs to be trustworthy in both directions.
 
 ## Media messages are out of scope for now
 

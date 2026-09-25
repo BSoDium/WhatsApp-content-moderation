@@ -2,15 +2,7 @@ import { Ollama } from 'ollama';
 import { loadPolicy } from './policy.js';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
-// llama3.2:1b was tried first — cheapest fit for the reference deployment
-// target (a 2-core/8GB, GPU-less machine; see README "Reference hardware")
-// — but under JSON-schema-constrained decoding it reliably wrote a correct
-// category and reason (e.g. "insult" / "contains threats directed at me")
-// and then set flagged: false anyway — the verdict field didn't track its
-// own reasoning. llama3.2:3b got every hand-tested case right and stayed
-// consistent, so it's the default despite being heavier; only drop to 1b if
-// the host machine truly can't keep up, and re-verify carefully against
-// known cases if you do (see npm run classifier:test).
+// See README "Classifier" for why 3b, not the cheaper 1b, is the default.
 const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
 const TIMEOUT_MS = Number(process.env.CLASSIFIER_TIMEOUT_MS ?? 15000);
 
