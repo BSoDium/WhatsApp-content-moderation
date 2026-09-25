@@ -10,9 +10,12 @@ node_modules/
 auth_info/
 auth_info*/
 
-# Local state / audit DB once the moderation logic exists.
+# Local state / audit DB (strikes, block records, audit log — see
+# src/store/). WAL mode also produces -wal/-shm sidecar files.
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 .env
 
 # Personal moderation policy — describes a real person/situation, never

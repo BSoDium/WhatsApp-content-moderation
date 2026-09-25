@@ -6,7 +6,11 @@
   "main": "index.js",
   "scripts": {
     "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
-    "classifier:test": "node src/classifier/test-classifier.js"
+    "classifier:test": "node src/classifier/test-classifier.js",
+    "store:test": "node src/store/test-store.js"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "repository": {
     "type": "git",
