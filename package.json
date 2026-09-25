@@ -5,12 +5,14 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
     "prototype:block-unblock": "node src/prototype/test-block-unblock.js",
     "classifier:test": "node src/classifier/test-classifier.js",
     "store:test": "node src/store/test-store.js",
     "buffer:test": "node src/buffer/test-buffer.js",
-    "pipeline:test": "node src/pipeline/test-pipeline.js"
+    "pipeline:test": "node src/pipeline/test-pipeline.js",
+    "whatsapp:test-actions": "node src/whatsapp/test-actions.js"
   },
   "engines": {
     "node": ">=24"

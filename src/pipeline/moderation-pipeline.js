@@ -75,6 +75,17 @@ export async function handleBurst(burst, actions) {
   return serialize(burst.contactId, () => runBurst(burst, actions));
 }
 
+/**
+ * The in-flight handleBurst promise for every contact currently mid-burst,
+ * for a caller (index.js's shutdown()) to await before exiting so a burst
+ * that's already classifying/acting doesn't get silently abandoned.
+ *
+ * @returns {Promise<unknown>[]}
+ */
+export function pendingBursts() {
+  return Array.from(contactQueues.values());
+}
+
 async function runBurst({ contactId, messages }, { deleteForMe, sendWarning, classify = classifyMessage }) {
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
