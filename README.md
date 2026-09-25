@@ -13,12 +13,15 @@ yourself" chat, since no second WhatsApp number was available at the time —
 see the note on that flag below.)
 
 **Classifier module built (2026-09-24).** Ollama-backed, structured JSON
-output, fail-open. See "Classifier" below. Next up: SQLite state (strikes +
-block records + audit log), message debounce, and the strike/block/unblock
-pipeline that actually wires the classifier to `deleteForMe` — see
-[`docs/roadmap.md`](docs/roadmap.md) for the full build order and
+output, fail-open. See "Classifier" below.
+
+**Full pipeline live and validated (2026-09-26).** `deleteForMe`,
+`sendWarning`, and block/unblock all confirmed working end-to-end against
+real WhatsApp accounts (see "Validating..." sections below). The
+strike → warn → delete → block → scheduled-unblock loop is wired up in
+`index.js` — see "Block/unblock scheduler" below and
 [`docs/decisions.md`](docs/decisions.md) for the "why" behind design choices
-not covered elsewhere in this README.
+not covered elsewhere in this README. Remaining roadmap: [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Running it
 
@@ -104,6 +107,17 @@ blocked/unblocked this person" system messages, which are the reliable
 signal). The script retries a few times before reporting either step as
 failed; if it still can't confirm after that, trust the phone over the
 console.
+
+## Block/unblock scheduler
+
+Wired into the live pipeline (`npm start`) — see
+[`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design)
+for the full design. A contact gets blocked the first time their strike
+count reaches `STRIKE_THRESHOLD` (default **3**), and unblocked
+automatically after `BLOCK_DURATION_MS` (default **24h**) ± `BLOCK_JITTER_MS`
+(default **4h**), checked every `UNBLOCK_POLL_INTERVAL_MS` (default
+**2 min**). All four are overridable via environment variable. `SHADOW_MODE`
+skips blocking along with everything else it already skips.
 
 ## Classifier
 

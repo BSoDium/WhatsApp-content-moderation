@@ -16,6 +16,7 @@ const CONTACT = 'test-contact@s.whatsapp.net';
 const actions = {
   deleteForMe: async (contactId, key) => console.log(`[deleteForMe] ${contactId} key=${JSON.stringify(key)}`),
   sendWarning: async (contactId, text) => console.log(`[sendWarning] ${contactId}: ${text}`),
+  block: async (contactId) => console.log(`[block] ${contactId}`),
 };
 
 const buffer = createMessageBuffer(async (contactId, messages) => {

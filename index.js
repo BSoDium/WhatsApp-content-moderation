@@ -5,9 +5,10 @@ import QRCode from 'qrcode';
 import pino from 'pino';
 import { createMessageBuffer } from './src/buffer/message-buffer.js';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.js';
+import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
 import { closeDb } from './src/store/db.js';
-import { deleteForMe, sendWarning } from './src/whatsapp/actions.js';
+import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.js';
 
 const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
@@ -33,6 +34,7 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
       {
         deleteForMe: (jid, key, timestamp) => deleteForMe(sock, jid, key, timestamp),
         sendWarning: (jid, text) => sendWarning(sock, jid, text),
+        block: (jid) => block(sock, jid),
       },
     );
     logger.info({ contactId, strikeCount }, 'burst handled');
@@ -40,6 +42,8 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
     logger.error({ contactId, error: err?.message ?? String(err) }, 'handleBurst failed');
   }
 });
+
+const unblockScheduler = startUnblockScheduler({ unblock: (jid) => unblock(sock, jid) });
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -85,6 +89,7 @@ async function start() {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
+  unblockScheduler.stop();
   await buffer.flushAll();
   await Promise.allSettled(pendingBursts());
   closeDb();
