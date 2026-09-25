@@ -1,0 +1,32 @@
+const BUFFER_WINDOW_MS = Number(process.env.BUFFER_WINDOW_MS ?? 7000);
+
+/**
+ * Creates a per-contact message buffer that groups a burst of messages
+ * arriving within BUFFER_WINDOW_MS of each other into one flush, so the
+ * pipeline (docs/roadmap.md issue #7) can classify the whole burst with the
+ * other messages as context instead of classifying each one in total
+ * isolation (issue #6).
+ *
+ * @param {(contactId: string, messages: string[]) => void} onFlush
+ * @returns {{ push: (contactId: string, message: string) => void }}
+ */
+export function createMessageBuffer(onFlush) {
+  const pending = new Map();
+
+  function flush(contactId) {
+    const entry = pending.get(contactId);
+    if (!entry) return;
+    pending.delete(contactId);
+    onFlush(contactId, entry.messages);
+  }
+
+  function push(contactId, message) {
+    const entry = pending.get(contactId) ?? { messages: [] };
+    entry.messages.push(message);
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => flush(contactId), BUFFER_WINDOW_MS);
+    pending.set(contactId, entry);
+  }
+
+  return { push };
+}
