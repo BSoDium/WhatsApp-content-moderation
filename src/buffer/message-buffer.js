@@ -1,16 +1,22 @@
-const BUFFER_WINDOW_MS = Number(process.env.BUFFER_WINDOW_MS ?? 7000);
+const DEFAULT_BUFFER_WINDOW_MS = Number(process.env.BUFFER_WINDOW_MS ?? 7000);
 
 /**
  * Creates a per-contact message buffer that groups a burst of messages
- * arriving within BUFFER_WINDOW_MS of each other into one flush, so the
- * pipeline (docs/roadmap.md issue #7) can classify the whole burst with the
- * other messages as context instead of classifying each one in total
- * isolation (issue #6).
+ * arriving within windowMs of each other into one flush, so the pipeline
+ * (docs/roadmap.md issue #7) can classify the whole burst with the other
+ * messages as context instead of classifying each one in total isolation
+ * (issue #6).
+ *
+ * windowMs defaults from BUFFER_WINDOW_MS but is a per-instance option
+ * rather than a fixed module constant, so a future settings source (issue
+ * #9) can hand this a live value instead of only what was in the
+ * environment at process start.
  *
  * @param {(contactId: string, messages: string[]) => void} onFlush
+ * @param {{ windowMs?: number }} [options]
  * @returns {{ push: (contactId: string, message: string) => void }}
  */
-export function createMessageBuffer(onFlush) {
+export function createMessageBuffer(onFlush, { windowMs = DEFAULT_BUFFER_WINDOW_MS } = {}) {
   const pending = new Map();
 
   function flush(contactId) {
@@ -24,7 +30,7 @@ export function createMessageBuffer(onFlush) {
     const entry = pending.get(contactId) ?? { messages: [] };
     entry.messages.push(message);
     clearTimeout(entry.timer);
-    entry.timer = setTimeout(() => flush(contactId), BUFFER_WINDOW_MS);
+    entry.timer = setTimeout(() => flush(contactId), windowMs);
     pending.set(contactId, entry);
   }
 
