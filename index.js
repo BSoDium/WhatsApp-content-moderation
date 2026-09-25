@@ -43,7 +43,7 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
   }
 });
 
-const unblockScheduler = startUnblockScheduler({ unblock: (jid) => unblock(sock, jid) });
+let unblockScheduler;
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
@@ -76,6 +76,10 @@ async function start() {
       }
     } else if (connection === 'open') {
       logger.info({ target: TARGET_CONTACT_JID, allowSelf: ALLOW_SELF }, 'connected; moderating target contact');
+      // Only start once — 'open' fires again after every reconnect, but the
+      // scheduler's own unblock(sock, jid) closure always reads the current
+      // sock, so it doesn't need restarting alongside it.
+      unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(sock, jid) });
     }
   });
 
@@ -89,7 +93,7 @@ async function start() {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
-  unblockScheduler.stop();
+  await unblockScheduler?.stop();
   await buffer.flushAll();
   await Promise.allSettled(pendingBursts());
   closeDb();

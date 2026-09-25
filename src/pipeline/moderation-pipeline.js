@@ -12,6 +12,8 @@ const WARNING_MESSAGE =
 const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3);
 const BLOCK_DURATION_MS = Number(process.env.BLOCK_DURATION_MS ?? 24 * 60 * 60 * 1000);
 const BLOCK_JITTER_MS = Number(process.env.BLOCK_JITTER_MS ?? 4 * 60 * 60 * 1000);
+// Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
+const MIN_BLOCK_MS = 60 * 1000;
 
 const logger = pino({ name: 'pipeline' });
 
@@ -94,15 +96,49 @@ export function pendingBursts() {
   return Array.from(contactQueues.values());
 }
 
-// Symmetric jitter in [-ms, +ms], applied once at block time — see
-// docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
+// Symmetric jitter in [-ms, +ms], applied once at block time — see docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
 function jitter(ms) {
   return Math.round((Math.random() * 2 - 1) * ms);
+}
+
+/**
+ * Blocks contactId once strikeCount crosses STRIKE_THRESHOLD, unless they
+ * already have an active block. Logs two distinct failure modes: block()
+ * (the external call) throwing means nothing happened and the next flagged
+ * message will retry cleanly, but block() succeeding and createBlock (the
+ * local record) then throwing leaves the contact actually blocked with no
+ * row for unblock-scheduler.js to ever find — that needs a searchable log
+ * line of its own, not a generic "block failed" that reads as a no-op.
+ *
+ * @returns {Promise<boolean>} whether contactId ends this call blocked, so
+ *   a caller iterating several messages in one burst can skip the
+ *   getActiveBlock read once a block's already succeeded this burst.
+ */
+async function maybeBlockContact(contactId, strikeCount, block) {
+  if (strikeCount < STRIKE_THRESHOLD) return false;
+  if (getActiveBlock(contactId)) return true;
+
+  const unblockAt = Date.now() + Math.max(BLOCK_DURATION_MS + jitter(Math.min(BLOCK_JITTER_MS, BLOCK_DURATION_MS)), MIN_BLOCK_MS);
+  let blockedOnWhatsApp = false;
+  try {
+    await block(contactId);
+    blockedOnWhatsApp = true;
+    createBlock(contactId, unblockAt);
+    logger.info({ contactId, strikeCount, unblockAt }, 'contact blocked');
+    return true;
+  } catch (err) {
+    const message = blockedOnWhatsApp
+      ? 'contact was blocked on WhatsApp but the local block record failed to save — will not auto-unblock, needs manual intervention'
+      : 'block failed';
+    logger.error({ contactId, error: err?.message ?? String(err) }, message);
+    return false;
+  }
 }
 
 async function runBurst({ contactId, messages }, { deleteForMe, sendWarning, block, classify = classifyMessage }) {
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
+  let isBlocked = false;
 
   for (const { text, key, timestamp } of messages) {
     const classification = await classify({ message: text, history });
@@ -136,15 +172,8 @@ async function runBurst({ contactId, messages }, { deleteForMe, sendWarning, blo
     strikeCount = recordStrike(contactId);
     logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete+warn' });
 
-    if (strikeCount >= STRIKE_THRESHOLD && !getActiveBlock(contactId)) {
-      const unblockAt = Date.now() + BLOCK_DURATION_MS + jitter(BLOCK_JITTER_MS);
-      try {
-        await block(contactId);
-        createBlock(contactId, unblockAt);
-        logger.info({ contactId, strikeCount, unblockAt }, 'contact blocked');
-      } catch (err) {
-        logger.error({ contactId, error: err?.message ?? String(err) }, 'block failed');
-      }
+    if (!isBlocked) {
+      isBlocked = await maybeBlockContact(contactId, strikeCount, block);
     }
   }
 
