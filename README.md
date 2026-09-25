@@ -59,8 +59,9 @@ after a socket connects or right after a block/unblock call — a fresh
 `updateBlockStatus` call may not show up in the very next `fetchBlocklist()`
 even though it already took effect (confirmed via the phone's own "You
 blocked/unblocked this person" system messages, which are the reliable
-signal). Don't treat one immediate stale read as the call having failed —
-check again after a beat, or trust the phone.
+signal). The script retries a few times before reporting either step as
+failed; if it still can't confirm after that, trust the phone over the
+console.
 
 ## Classifier
 

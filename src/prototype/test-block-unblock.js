@@ -1,20 +1,8 @@
 // Throwaway validation script — confirms whether Baileys can actually block
-// and unblock a contact (not just delete messages), before issue #8 builds a
-// jittered scheduler on top of that assumption the way deleteForMe's
-// prototype validated its own assumption first (see issue #16).
-//
-// Needs a real second WhatsApp number as BLOCK_TEST_JID — you can't block
-// your own "Message yourself" chat, so there's no self-test fallback here
-// the way test-delete-for-me.js has TEST_ALLOW_SELF. Run on the machine you
-// intend to self-host on (needs an interactive terminal to scan the QR code
-// with your phone, unless auth_info/ is already linked from
-// test-delete-for-me.js):
+// and unblock a contact. Needs a real second WhatsApp number as
+// BLOCK_TEST_JID (see README "Validating block/unblock" for the full setup):
 //
 //   BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock
-//
-// Watch the console for fetchBlocklist() confirmation after each step, AND
-// check the test number's chat on your phone directly: does it show as
-// blocked, then unblocked?
 
 import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -24,6 +12,10 @@ import pino from 'pino';
 
 const AUTH_DIR = './auth_info';
 const UNBLOCK_DELAY_MS = 5000;
+// fetchBlocklist() can lag a live block/unblock call by a few seconds (see
+// README) — a single immediate read isn't a reliable pass/fail signal.
+const CONFIRM_RETRIES = 4;
+const CONFIRM_DELAY_MS = 2000;
 const QR_PNG_PATH = './auth_info/login-qr.png';
 const TARGET_JID = process.env.BLOCK_TEST_JID;
 
@@ -75,17 +67,50 @@ async function start() {
   });
 }
 
+// Some contacts are reachable under more than one JID form (phone-number
+// JID vs the newer @lid form) — comparing fetchBlocklist() against only the
+// literal BLOCK_TEST_JID string can miss a real match. Resolves every form
+// WhatsApp itself associates with this number.
+async function resolveJids(sock) {
+  const jids = new Set([TARGET_JID]);
+  try {
+    const [result] = (await sock.onWhatsApp(TARGET_JID)) ?? [];
+    if (result?.jid) jids.add(result.jid);
+    if (result?.lid) jids.add(result.lid);
+  } catch (err) {
+    console.error('[onWhatsApp] lookup failed, falling back to the literal JID only:', err?.message ?? err);
+  }
+  return [...jids];
+}
+
+// A single immediate fetchBlocklist() read can catch WhatsApp mid-propagation
+// and report a false negative — retries a few times before giving up.
+async function confirmBlocklistState(sock, jids, expectPresent) {
+  for (let attempt = 1; attempt <= CONFIRM_RETRIES; attempt++) {
+    const blocklist = await sock.fetchBlocklist();
+    const present = blocklist.some((entry) => jids.includes(entry));
+    if (present === expectPresent) return { confirmed: true, attempt };
+    if (attempt < CONFIRM_RETRIES) await new Promise((resolve) => setTimeout(resolve, CONFIRM_DELAY_MS));
+  }
+  return { confirmed: false, attempt: CONFIRM_RETRIES };
+}
+
 async function runTest(sock) {
+  const jids = await resolveJids(sock);
+  console.log(`Resolved JID forms for ${TARGET_JID}: ${jids.join(', ')}`);
+
   const before = await sock.fetchBlocklist();
   console.log(
-    `Blocklist before: ${before.length} entries, target ${before.includes(TARGET_JID) ? 'already present' : 'not present'}`,
+    `Blocklist before: ${before.length} entries, target ${before.some((entry) => jids.includes(entry)) ? 'already present' : 'not present'}`,
   );
 
   console.log(`\nBlocking ${TARGET_JID}...`);
   await sock.updateBlockStatus(TARGET_JID, 'block');
-  const afterBlock = await sock.fetchBlocklist();
+  const blocked = await confirmBlocklistState(sock, jids, true);
   console.log(
-    `Blocklist after block: target ${afterBlock.includes(TARGET_JID) ? 'IS present (blocked)' : 'MISSING — block did not register'}`,
+    blocked.confirmed
+      ? `Blocklist after block: target IS present (blocked), confirmed on attempt ${blocked.attempt}`
+      : `Blocklist after block: target still MISSING after ${CONFIRM_RETRIES} checks — check your phone before assuming this failed`,
   );
   console.log('>>> Now check your phone: does this contact show as blocked? <<<');
 
@@ -94,11 +119,15 @@ async function runTest(sock) {
 
   console.log(`Unblocking ${TARGET_JID}...`);
   await sock.updateBlockStatus(TARGET_JID, 'unblock');
-  const afterUnblock = await sock.fetchBlocklist();
+  const unblocked = await confirmBlocklistState(sock, jids, false);
   console.log(
-    `Blocklist after unblock: target ${afterUnblock.includes(TARGET_JID) ? 'still present — unblock did not register' : 'removed (unblocked)'}`,
+    unblocked.confirmed
+      ? `Blocklist after unblock: target removed (unblocked), confirmed on attempt ${unblocked.attempt}`
+      : `Blocklist after unblock: target still present after ${CONFIRM_RETRIES} checks — check your phone before assuming this failed`,
   );
   console.log('>>> Check your phone again: is the contact unblocked? Can they message you again? <<<');
+
+  process.exit(0);
 }
 
 start().catch((err) => {
