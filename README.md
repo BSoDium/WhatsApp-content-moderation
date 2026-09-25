@@ -15,13 +15,31 @@ see the note on that flag below.)
 **Classifier module built (2026-09-24).** Ollama-backed, structured JSON
 output, fail-open. See "Classifier" below.
 
-**Full pipeline live and validated (2026-09-26).** `deleteForMe`,
-`sendWarning`, and block/unblock all confirmed working end-to-end against
-real WhatsApp accounts (see "Validating..." sections below). The
-strike → warn → delete → block → scheduled-unblock loop is wired up in
-`index.js` — see "Block/unblock scheduler" below and
-[`docs/decisions.md`](docs/decisions.md) for the "why" behind design choices
-not covered elsewhere in this README. Remaining roadmap: [`docs/roadmap.md`](docs/roadmap.md).
+**Live pipeline wired up (2026-09-26).** `deleteForMe`, `sendWarning`, and
+block/unblock all confirmed working end-to-end against real WhatsApp
+accounts (see "Validating..." sections below), and `index.js` wires
+strike → warn → delete into a live connection.
+
+**Block/unblock scheduler built and validated (2026-09-26).** Issue #8:
+strikes crossing `STRIKE_THRESHOLD` trigger a block, `src/pipeline/
+unblock-scheduler.js` polls and auto-unblocks once the jittered duration
+passes — see "Block/unblock scheduler" below and
+[`docs/decisions.md`](docs/decisions.md) for the design. Confirmed live in
+two parts: self-chat (strike/delete/warn, plus the block attempt correctly
+failing against your own account — WhatsApp doesn't allow self-blocking)
+and a real second account (block and scheduled auto-unblock both fired for
+real, no manual step). A self-review afterward caught and fixed a real
+crash risk (an uncaught DB error in the scheduler's poll loop could have
+taken down the whole process) and a case where a successful block with a
+failed local write would leave a contact blocked with no record to ever
+auto-unblock — see the PR #21 history for detail, not repeated here.
+
+**Not yet ready to run against a real contact.** `config/policy.md` is
+still the example placeholder — see docs/roadmap.md "Before trusting this
+with a real contact" for the remaining checklist (real policy, shadow-mode
+run first, etc.) before pointing this at anyone for real.
+
+Remaining roadmap: [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Running it
 
