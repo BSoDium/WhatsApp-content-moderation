@@ -54,11 +54,24 @@ intervals, as a partial mitigation against that pattern being recognizable.
   **2 min**), check for rows where `unblock_at <= now() AND unblocked_at IS
   NULL`. The poll cadence itself doesn't need its own jitter — the
   already-randomized `unblock_at` is the signal that matters; the poll is
-  just how promptly a due unblock gets noticed.
-- **Idempotency**: `UPDATE blocks SET unblocked_at = ? WHERE id = ? AND
-  unblocked_at IS NULL` before calling `updateBlockStatus(jid, 'unblock')` —
-  if `changes === 0`, another tick (or a manual override, once #9 exists)
-  already handled it, so skip the API call rather than unblocking twice.
+  just how promptly a due unblock gets noticed. A tick still running when
+  the next one is due is skipped rather than overlapped, and a caller can
+  await any tick already in flight before shutting down — see
+  `src/pipeline/unblock-scheduler.js`.
+- **Idempotency**: calls `updateBlockStatus(jid, 'unblock')` *before*
+  `UPDATE blocks SET unblocked_at = ? WHERE id = ? AND unblocked_at IS NULL`
+  — action first, record second, not the other way around. An earlier draft
+  of this design had it reversed (claim the row, then call the API), but
+  that fails closed: if the API call then throws, the row would already
+  read as resolved with no way left to retry it, leaving the contact
+  blocked forever. Calling the API first means a failed call just leaves
+  the row alone for the next tick to retry (see AGENTS.md "Error
+  handling" — never record an external action as done before it's
+  confirmed). The remaining race this doesn't fully close — two overlapping
+  ticks both calling `unblock` on the same contact before either marks the
+  row — is harmless, since unblocking an already-unblocked contact is a
+  no-op on WhatsApp's side; `markUnblocked`'s `changes === 0` return just
+  tells the second caller it was redundant.
 - The `blocks` table itself (`blocked_at`/`unblock_at`/`unblocked_at`) is the
   audit trail for block state changes — no separate `audit_log` entry needed
   for a block/unblock event, unlike message-level actions.

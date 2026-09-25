@@ -35,10 +35,14 @@ export function getExpiredBlocks(now = Date.now()) {
 
 /**
  * Marks a block record as resolved once the contact has actually been
- * unblocked.
+ * unblocked. Conditioned on the record still being active, so a duplicate
+ * call (e.g. two overlapping scheduler ticks) is a safe no-op rather than
+ * overwriting unblocked_at twice — returns whether this call was the one
+ * that resolved it.
  */
 export function markUnblocked(blockId) {
-  getDb()
-    .prepare('UPDATE blocks SET unblocked_at = ? WHERE id = ?')
+  const { changes } = getDb()
+    .prepare('UPDATE blocks SET unblocked_at = ? WHERE id = ? AND unblocked_at IS NULL')
     .run(Date.now(), blockId);
+  return changes > 0;
 }

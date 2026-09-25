@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE INDEX IF NOT EXISTS blocks_pending_idx
   ON blocks (contact_id, unblocked_at);
 
+CREATE INDEX IF NOT EXISTS blocks_expiry_idx
+  ON blocks (unblocked_at, unblock_at);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   contact_id TEXT NOT NULL,

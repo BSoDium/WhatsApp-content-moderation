@@ -13,3 +13,11 @@ export function deleteForMe(sock, jid, key, timestamp) {
 export function sendWarning(sock, jid, text) {
   return sock.sendMessage(jid, { text });
 }
+
+export function block(sock, jid) {
+  return sock.updateBlockStatus(jid, 'block');
+}
+
+export function unblock(sock, jid) {
+  return sock.updateBlockStatus(jid, 'unblock');
+}
