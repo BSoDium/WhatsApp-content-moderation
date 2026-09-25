@@ -20,6 +20,17 @@ pipeline that actually wires the classifier to `deleteForMe` — see
 [`docs/decisions.md`](docs/decisions.md) for the "why" behind design choices
 not covered elsewhere in this README.
 
+## Running it
+
+Not yet run against a real account — see issue #15. Requires `config/policy.md` filled in (see "Classifier" below), Ollama running, and `TARGET_CONTACT_JID` set to the one contact this should moderate:
+
+```
+npm install
+TARGET_CONTACT_JID=15551234567@s.whatsapp.net npm start
+```
+
+First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Every other incoming message from `TARGET_CONTACT_JID` gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everything else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
+
 ## Validating "delete for me"
 
 This has to be run interactively on the machine you intend to self-host on, since it requires scanning a QR code with your phone.

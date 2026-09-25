@@ -5,6 +5,7 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
     "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
     "classifier:test": "node src/classifier/test-classifier.js",
     "store:test": "node src/store/test-store.js",

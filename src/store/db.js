@@ -54,3 +54,13 @@ export function getDb() {
   db.exec(SCHEMA);
   return db;
 }
+
+/**
+ * Closes the shared connection, if one is open. For graceful shutdown only
+ * — WAL-mode SQLite shouldn't be left mid-write when the process exits.
+ */
+export function closeDb() {
+  if (!db) return;
+  db.close();
+  db = undefined;
+}

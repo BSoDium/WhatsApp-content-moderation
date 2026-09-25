@@ -12,9 +12,13 @@ const DEFAULT_BUFFER_WINDOW_MS = Number(process.env.BUFFER_WINDOW_MS ?? 7000);
  * #9) can hand this a live value instead of only what was in the
  * environment at process start.
  *
- * @param {(contactId: string, messages: string[]) => void} onFlush
+ * The buffer is opaque to what it carries — a message can be any payload
+ * the caller wants flushed back together (see index.js, which pushes
+ * { text, key, timestamp } objects, not plain strings).
+ *
+ * @param {(contactId: string, messages: unknown[]) => void} onFlush
  * @param {{ windowMs?: number }} [options]
- * @returns {{ push: (contactId: string, message: string) => void }}
+ * @returns {{ push: (contactId: string, message: unknown) => void }}
  */
 export function createMessageBuffer(onFlush, { windowMs = DEFAULT_BUFFER_WINDOW_MS } = {}) {
   const pending = new Map();
