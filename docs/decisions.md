@@ -394,13 +394,11 @@ behavior live before enabling on a real deployment** — see README "Web
 control app" for the manual check; nothing here has been confirmed against
 a running `tailscale serve` yet.
 
-**Docker note:** the bind-to-loopback guarantee only holds if the process's
-`127.0.0.1` is the same one `tailscale serve` is proxying from. Under
-`docker-compose.yml`'s default bridge network, the container's loopback is
-its own — `network_mode: host` (or an equivalent) is required to run this
-under Docker with Tailscale on the host. Not yet wired into
-`docker-compose.yml`; treat this feature as bare-metal (`npm start`) only
-until that's done.
+**Docker note:** Compose uses `network_mode: host` for the app so its
+loopback is the same one host `tailscale serve` proxies. Ollama remains on
+the Compose network and publishes port 11434 on host loopback only; the app
+connects to `127.0.0.1:11434`. The app image must include the built
+`web/dist` bundle, produced by the Dockerfile's frontend build stage.
 
 State-changing `POST` endpoints (adding a roster contact, pause/resume/
 unblock, toggling escalation) additionally require `Content-Type:

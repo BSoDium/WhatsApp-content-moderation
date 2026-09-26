@@ -21,7 +21,8 @@ interface ClassifierDependencies {
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 // See README "Classifier" for why 3b, not the cheaper 1b, is the default.
 const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
-const TIMEOUT_MS = Number(process.env.CLASSIFIER_TIMEOUT_MS ?? 15000);
+const DEFAULT_TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = Number(process.env.CLASSIFIER_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
 // Property order matters here: schema-constrained decoding fills fields in
 // this order, so category/reason are written before flagged — the model
