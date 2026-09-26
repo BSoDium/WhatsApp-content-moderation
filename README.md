@@ -203,6 +203,11 @@ in as the allow-listed login. The page moves the token out of the URL and
 into `sessionStorage` on load, so it isn't left sitting in the address bar
 or browser history after that first open.
 
+That link carries the token in cleartext until the page's own script strips
+it, so treat it as a one-time credential: don't paste it into chat, a shared
+note, or shell history you'd keep around. If it ever is, regenerate
+`CONTROL_SERVER_TOKEN` and restart.
+
 **Not yet validated against a live `tailscale serve`.** Automated tests
 (`src/web/control-server.test.js`, `src/web/tailscale-auth.test.js`) cover
 the HTTP/auth logic against a synthetic header, but not that
