@@ -64,6 +64,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test`
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`

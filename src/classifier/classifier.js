@@ -20,14 +20,14 @@ const RESPONSE_SCHEMA = {
   required: ['category', 'reason', 'flagged'],
 };
 
-function buildSystemPrompt() {
+function buildSystemPrompt(policy = loadPolicy()) {
   return [
     "You are a content moderation filter for one specific person's personal WhatsApp chat.",
     "You will be shown recent conversation history for context, then the newest incoming message.",
     'Decide only whether that newest message violates the policy below — do not flag anything based on the history alone.',
     '',
     '# Policy',
-    loadPolicy(),
+    policy,
     '',
     'Respond with JSON only, matching the given schema. Fill in "category" (a short label, ' +
       'e.g. "harassment", "unwanted_contact", or "none" when not flagged) and "reason" (one ' +
@@ -49,10 +49,14 @@ function formatHistory(history) {
  * must never delete/block on ok: false — see AGENTS.md's "Error handling".
  *
  * @param {{ message: string, history?: { from: 'me'|'them', text: string }[], model?: string }} input
+ * @param {{ client?: Ollama, policy?: string }} [deps] - injectable for
+ *   tests: `client` in place of a real Ollama connection, `policy` in place
+ *   of reading config/policy.md (which is gitignored and may not exist on
+ *   a fresh clone or CI box).
  * @returns {Promise<{ ok: true, flagged: boolean, category: string, reason: string } | { ok: false, error: string }>}
  */
-export async function classifyMessage({ message, history = [], model = MODEL }) {
-  const ollama = new Ollama({ host: OLLAMA_HOST });
+export async function classifyMessage({ message, history = [], model = MODEL }, { client, policy } = {}) {
+  const ollama = client ?? new Ollama({ host: OLLAMA_HOST });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -60,7 +64,7 @@ export async function classifyMessage({ message, history = [], model = MODEL }) 
     const response = await ollama.chat({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildSystemPrompt(policy) },
         {
           role: 'user',
           content: `# Recent conversation\n${formatHistory(history)}\n\n# Newest message to classify\nThem: ${message}`,

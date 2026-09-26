@@ -1,19 +1,10 @@
-// Throwaway validation script — confirms whether Baileys can actually block
-// and unblock a contact. Needs a real second WhatsApp number as
-// BLOCK_TEST_JID (see README "Validating block/unblock" for the full setup):
-//
-//   BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock
+// Throwaway validation script — see README "Validating block/unblock" (BLOCK_TEST_JID=<jid> npm run prototype:block-unblock).
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
-import qrcode from 'qrcode-terminal';
-import QRCode from 'qrcode';
-import pino from 'pino';
+import { connectWhatsApp } from '../whatsapp/connection.js';
 
 const AUTH_DIR = './auth_info';
 const UNBLOCK_DELAY_MS = 5000;
-// fetchBlocklist() can lag a live block/unblock call by a few seconds (see
-// README) — a single immediate read isn't a reliable pass/fail signal.
+// fetchBlocklist() can lag a live block/unblock call by a few seconds (see README) — a single read isn't reliable.
 const CONFIRM_RETRIES = 4;
 const CONFIRM_DELAY_MS = 2000;
 const QR_PNG_PATH = './auth_info/login-qr.png';
@@ -27,50 +18,26 @@ if (!TARGET_JID) {
 }
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-
-  const sock = makeWASocket({
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('blocklist.update', ({ blocklist, type }) => {
-    console.log(`[blocklist.update] type=${type} blocklist=${JSON.stringify(blocklist)}`);
-  });
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
-      qrcode.generate(qr, { small: true });
-      QRCode.toFile(QR_PNG_PATH, qr, { width: 400 })
-        .then(() => console.log(`[qr] also saved to ${QR_PNG_PATH}`))
-        .catch((err) => console.error('[qr] failed to save PNG:', err));
-    }
-
-    if (connection === 'close') {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log('Connection closed.', { statusCode, shouldReconnect });
-      if (shouldReconnect) start();
-    } else if (connection === 'open') {
+  await connectWhatsApp({
+    authDir: AUTH_DIR,
+    qrPngPath: QR_PNG_PATH,
+    onSocket: (sock) => {
+      sock.ev.on('blocklist.update', ({ blocklist, type }) => {
+        console.log(`[blocklist.update] type=${type} blocklist=${JSON.stringify(blocklist)}`);
+      });
+    },
+    onOpen: (sock) => {
       console.log(`\nConnected. Testing block/unblock against ${TARGET_JID}...\n`);
       runTest(sock).catch((err) => {
         console.error('Fatal error during block/unblock test:', err);
         process.exit(1);
       });
-    }
+    },
+    onClose: ({ statusCode, shouldReconnect }) => console.log('Connection closed.', { statusCode, shouldReconnect }),
   });
 }
 
-// Some contacts are reachable under more than one JID form (phone-number
-// JID vs the newer @lid form) — comparing fetchBlocklist() against only the
-// literal BLOCK_TEST_JID string can miss a real match. Resolves every form
-// WhatsApp itself associates with this number.
+// Resolves every JID form WhatsApp associates with this number (phone-number vs @lid), since fetchBlocklist() may only report one.
 async function resolveJids(sock) {
   const jids = new Set([TARGET_JID]);
   try {
@@ -83,8 +50,7 @@ async function resolveJids(sock) {
   return [...jids];
 }
 
-// A single immediate fetchBlocklist() read can catch WhatsApp mid-propagation
-// and report a false negative — retries a few times before giving up.
+// Retries a few times — a single immediate fetchBlocklist() read can catch WhatsApp mid-propagation and report a false negative.
 async function confirmBlocklistState(sock, jids, expectPresent) {
   for (let attempt = 1; attempt <= CONFIRM_RETRIES; attempt++) {
     const blocklist = await sock.fetchBlocklist();

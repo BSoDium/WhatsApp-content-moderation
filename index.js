@@ -1,8 +1,5 @@
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
-import qrcode from 'qrcode-terminal';
-import QRCode from 'qrcode';
 import pino from 'pino';
+import { connectWhatsApp } from './src/whatsapp/connection.js';
 import { createMessageBuffer } from './src/buffer/message-buffer.js';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.js';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.js';
@@ -46,48 +43,24 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
 let unblockScheduler;
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-
-  sock = makeWASocket({
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
-      qrcode.generate(qr, { small: true });
-      QRCode.toFile(QR_PNG_PATH, qr, { width: 400 })
-        .then(() => logger.info(`[qr] also saved to ${QR_PNG_PATH}`))
-        .catch((err) => logger.error({ error: err?.message ?? String(err) }, '[qr] failed to save PNG'));
-    }
-
-    if (connection === 'close') {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      logger.warn({ statusCode, shouldReconnect }, 'connection closed');
-      if (shouldReconnect) {
-        start().catch((err) => logger.error({ error: err?.message ?? String(err) }, 'reconnect failed'));
-      }
-    } else if (connection === 'open') {
+  await connectWhatsApp({
+    authDir: AUTH_DIR,
+    qrPngPath: QR_PNG_PATH,
+    onSocket: (s) => {
+      sock = s;
+      s.ev.on('messages.upsert', ({ messages, type }) => {
+        for (const msg of messages) {
+          const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF, type);
+          if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);
+        }
+      });
+    },
+    onOpen: () => {
       logger.info({ target: TARGET_CONTACT_JID, allowSelf: ALLOW_SELF }, 'connected; moderating target contact');
-      // Only start once — 'open' fires again after every reconnect, but the
-      // scheduler's own unblock(sock, jid) closure always reads the current
-      // sock, so it doesn't need restarting alongside it.
+      // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(sock, jid) });
-    }
-  });
-
-  sock.ev.on('messages.upsert', ({ messages, type }) => {
-    for (const msg of messages) {
-      const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF, type);
-      if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);
-    }
+    },
+    onClose: ({ statusCode, shouldReconnect }) => logger.warn({ statusCode, shouldReconnect }, 'connection closed'),
   });
 }
 
