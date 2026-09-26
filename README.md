@@ -392,12 +392,13 @@ cp config/policy.example.md config/policy.md
 mkdir -p auth_info data
 chmod 600 .env config/policy.md
 chmod 700 auth_info data
-sudo chown -R 1000:1000 auth_info data
+sudo chown -R 1000:1000 auth_info data config/policy.md
 ```
 
 Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
 `ALLOWED_TAILSCALE_LOGIN`, generate `CONTROL_SERVER_TOKEN` with
-`openssl rand -hex 24`, and start with `SHADOW_MODE=1`. Write your own
+`openssl rand -hex 24`. `SHADOW_MODE` defaults to `1`; leave it enabled
+until you have reviewed the results. Write your own
 moderation rules in `config/policy.md` before connecting a real account.
 Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` private and
 back up the session and database.

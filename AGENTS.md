@@ -87,6 +87,8 @@ diff in this repo.
   steps in `README.md` whenever these paths, ownership, networking, or the
   source-build/update flow changes. The supported path clones this repo and
   builds locally; GHCR images are published by tagged releases.
+- The runtime image runs as UID 1000. Its policy bind mount is read-only,
+  but the file still must be readable by that UID.
 - Keep first-run instructions in shadow mode. The 90-second classifier
   timeout accommodates the documented CPU-only target; lower it only after
   measuring inference on that hardware.
