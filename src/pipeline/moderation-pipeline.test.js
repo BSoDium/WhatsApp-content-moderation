@@ -10,6 +10,7 @@ process.env.STRIKE_THRESHOLD = '2';
 const { handleBurst } = await import('./moderation-pipeline.js');
 const { getAuditLog } = await import('../store/audit-log.js');
 const { createBlock, getActiveBlock } = await import('../store/blocks.js');
+const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.js');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -134,6 +135,28 @@ test('a contact with an existing active block is not re-blocked', async () => {
   });
 
   assert.equal(blockCalled, false);
+});
+
+test('escalation disabled: strikes/delete/warn/audit-log still happen, but block() is never called', async () => {
+  const contact = 'heidi@s.whatsapp.net';
+  addMonitored(contact);
+  setEscalationEnabled(contact, false);
+  let blockCalled = false;
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+    deleteForMe: async () => {},
+    sendWarning: async () => {},
+    block: async () => {
+      blockCalled = true;
+    },
+    classify: okFlag,
+  });
+
+  assert.equal(strikeCount, 2);
+  assert.equal(blockCalled, false);
+  assert.equal(getActiveBlock(contact), undefined);
+  const log = getAuditLog(contact);
+  assert.ok(log.some((row) => row.action === 'delete+warn'));
 });
 
 test('bursts for the same contact are serialized: a slow classify does not let a second burst interleave', async () => {
