@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.js';
-import { verifyControlToken } from './control-token-auth.js';
+import { verifyControlToken, verifyControlCookie, CONTROL_TOKEN_COOKIE } from './control-token-auth.js';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.js';
 
 const logger = pino({ name: 'control-server' });
@@ -16,6 +16,13 @@ const INDEX_HTML = readFileSync(join(__dirname, 'index.html'), 'utf8');
 const LOOPBACK_HOST = '127.0.0.1';
 
 const COMMAND_ROUTES = new Set(['pause', 'resume', 'unblock']);
+
+// 400 days — the maximum Chrome (and the emerging spec cap) will honor for
+// a Set-Cookie Max-Age regardless of what's sent; matches how long
+// localStorage effectively lasts (indefinitely, until cleared) so the two
+// mechanisms this page relies on don't have surprisingly different
+// lifetimes.
+const CONTROL_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 // The sole auth exemption — see createControlServer's doc comment below.
 const STATIC_ASSETS = {
@@ -194,14 +201,24 @@ async function handleRequest(req, res, deps) {
     return;
   }
 
-  if (!verifyControlToken(req, searchParams, controlToken)) {
+  // Only GET / accepts the cookie — see verifyControlCookie's doc comment
+  // for why every other route (state-changing ones especially) must keep
+  // requiring the header/query token exclusively.
+  const isRootPage = req.method === 'GET' && pathname === '/';
+  const authed = verifyControlToken(req, searchParams, controlToken) || (isRootPage && verifyControlCookie(req, controlToken));
+
+  if (!authed) {
     logger.warn('rejected: missing or invalid control token');
     sendJson(res, 403, { error: 'forbidden' });
     return;
   }
 
-  if (req.method === 'GET' && pathname === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (isRootPage) {
+    // (Re)issued on every successful load, cookie- or token-authenticated
+    // alike, so a returning visit keeps sliding the expiry forward the same
+    // way localStorage never expires on its own.
+    const cookie = `${CONTROL_TOKEN_COOKIE}=${encodeURIComponent(controlToken)}; Path=/; Max-Age=${CONTROL_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': cookie });
     res.end(INDEX_HTML);
     return;
   }
@@ -228,16 +245,20 @@ async function handleRequest(req, res, deps) {
  * 1. A `Tailscale-User-Login` header matching `allowedLogin`, which
  *    `tailscale serve` sets when proxying a tailnet request to a local port.
  * 2. A `controlToken` shared secret (via `X-Control-Token` header or a
- *    `token` query param), because the header alone is not proof the
- *    request actually came through `tailscale serve`'s proxy hop — the
- *    loopback bind in `listen()` stops *remote* access, but any other
- *    local process/user on this host can otherwise set that header
- *    directly. The token isn't derivable from anything Tailscale sets, so
- *    it closes that gap.
+ *    `token` query param — and, for `GET /` alone, a `controlToken` cookie
+ *    set on a prior successful load, since a plain browser navigation can
+ *    never attach a custom header the way `fetch()` can — see
+ *    verifyControlCookie's doc comment for why that cookie is accepted
+ *    nowhere else), because the header alone is not proof the request
+ *    actually came through `tailscale serve`'s proxy hop — the loopback
+ *    bind in `listen()` stops *remote* access, but any other local
+ *    process/user on this host can otherwise set that header directly.
+ *    The token isn't derivable from anything Tailscale sets, so it closes
+ *    that gap.
  *
  * `GET /styles.css` and `GET /app.js` are the sole exception, checked before
  * either factor: neither file contains a secret (the control token only
- * ever lives in the browser's `sessionStorage`, never in served source),
+ * ever lives in the browser's `localStorage`, never in served source),
  * and a `<link>`/`<script src>` tag can't attach `X-Control-Token` the way
  * `fetch()` can anyway — see docs/decisions.md "Control page styling" for
  * the full reasoning.

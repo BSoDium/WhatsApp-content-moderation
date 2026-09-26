@@ -9,36 +9,50 @@
 <body>
   <script>
     // The token only ever needs to travel in the URL once (the initial
-    // link) — persisted to sessionStorage from there, and stripped out of
-    // the visible URL/history so it doesn't linger where it could be seen
-    // or shared by accident. Kept inline (not in app.js) so it runs
-    // synchronously, before a deferred script could, minimizing how long
-    // the raw token sits in the address bar.
+    // link) — persisted to localStorage from there so app.js's own
+    // fetch() calls can keep attaching it as the X-Control-Token header —
+    // and stripped out of the visible URL/history so it doesn't linger
+    // where it could be seen or shared by accident. (Reloading this same
+    // page later works independently of this script: the server also set
+    // a controlToken cookie on this response, which the browser attaches
+    // automatically to the next plain navigation — see
+    // verifyControlCookie's doc comment in control-token-auth.js. Nothing
+    // here needs to read or set that cookie; it's HttpOnly.) Kept inline
+    // (not in app.js) so it runs synchronously, before a deferred script
+    // could, minimizing how long the raw token sits in the address bar.
+    // Only strips the URL once the localStorage write actually succeeds —
+    // a storage write can silently fail (private-browsing restrictions,
+    // storage disabled), and stripping the token from the URL regardless
+    // would lose it both places at once.
     const urlToken = new URLSearchParams(location.search).get('token');
     if (urlToken) {
       try {
-        sessionStorage.setItem('controlToken', urlToken);
+        localStorage.setItem('controlToken', urlToken);
+        history.replaceState(null, '', location.pathname);
       } catch {}
-      history.replaceState(null, '', location.pathname);
     }
   </script>
 
-  <main class="page">
-    <header class="page__header">
-      <h1>WhatsApp moderation control</h1>
-    </header>
+  <div class="app" id="app">
+    <section class="list-pane">
+      <div class="list-pane__top">
+        <header class="page__header">
+          <h1>WhatsApp moderation control</h1>
+          <p class="page__subtext">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+        </header>
 
-    <div id="card-container"></div>
+        <div id="card-container"></div>
 
-    <section class="picker" aria-label="Add a contact to monitor">
-      <input type="search" id="contact-search" placeholder="Search contacts by name or number…" autocomplete="off" />
-      <ul id="contact-results" class="picker__results" role="listbox" hidden></ul>
+        <div class="search">
+          <input type="search" id="contact-search" placeholder="Search by name or number…" autocomplete="off" />
+        </div>
+      </div>
+
+      <ul class="contact-list" id="contact-list" aria-label="All contacts"></ul>
     </section>
 
-    <nav class="tabs" id="tabs" role="tablist" aria-label="Monitored contacts" hidden></nav>
-
-    <div id="panels"></div>
-  </main>
+    <section class="detail-pane" id="detail-pane" aria-label="Contact details"></section>
+  </div>
 
   <script src="/app.js" defer></script>
 </body>

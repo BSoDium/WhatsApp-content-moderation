@@ -127,6 +127,44 @@ test('GET / serves the static control page', async () => {
   });
 });
 
+test('GET / issues a controlToken cookie on a successful load', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(base, { headers: authHeaders() });
+    const cookie = res.headers.get('set-cookie');
+    assert.match(cookie, /controlToken=test-control-token/);
+    assert.match(cookie, /HttpOnly/);
+    assert.match(cookie, /Secure/);
+    assert.match(cookie, /SameSite=Strict/);
+  });
+});
+
+test('GET / accepts the cookie alone on a plain reload (no header, no query token)', async () => {
+  await withServer({}, async (base) => {
+    const first = await fetch(`${base}/?token=${TOKEN}`, { headers: { 'Tailscale-User-Login': ALLOWED } });
+    const cookie = first.headers.get('set-cookie').split(';')[0];
+
+    const reload = await fetch(base, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: cookie } });
+    assert.equal(reload.status, 200);
+  });
+});
+
+test('GET / rejects a mismatched cookie with no other credential', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(base, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: 'controlToken=wrong' } });
+    assert.equal(res.status, 403);
+  });
+});
+
+test('the cookie is not accepted on /api/* routes — only GET / accepts it', async () => {
+  await withServer({}, async (base) => {
+    const first = await fetch(`${base}/?token=${TOKEN}`, { headers: { 'Tailscale-User-Login': ALLOWED } });
+    const cookie = first.headers.get('set-cookie').split(';')[0];
+
+    const res = await fetch(`${base}/api/roster`, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: cookie } });
+    assert.equal(res.status, 403);
+  });
+});
+
 test('GET /api/contacts merges the directory with the monitored flag', async () => {
   const contactDirectory = makeContactDirectory([
     { id: 'alice@s.whatsapp.net', name: 'Alice' },

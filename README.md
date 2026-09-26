@@ -186,16 +186,16 @@ unauthenticated routes — neither contains a secret, and a stylesheet/script
 tag can't attach the token header anyway — see
 [`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
 
-This is where contacts actually get moderated: a top search box adds a
-contact to the monitored-contacts roster (matched by name or JID against
-whatever Baileys has learned about your contacts so far — a contact who's
-never messaged and isn't in your phone's synced address book will only show
-up as a bare number), and each monitored contact gets its own tab with
-strikes, block status, a pause switch, an escalation switch (turn off
-auto-blocking for a contact you can't afford to actually block — the rest
-of moderation still runs), an unblock button, and a "stop monitoring"
-action. Removing a contact from the roster only stops future moderation —
-its strike/block/audit history is kept.
+This is where contacts actually get moderated: a scrollable list shows
+every contact Baileys has learned about so far (a contact who's never
+messaged and isn't in your phone's synced address book will only show up
+as a bare number), searchable by name or number, each with a switch that
+directly turns moderation on/off. Clicking a contact (not the switch) opens
+a detail panel — strikes, block status, a pause switch, an escalation
+switch (turn off auto-blocking for a contact you can't afford to actually
+block — the rest of moderation still runs), and an unblock button. Turning
+a contact's switch off only stops future moderation — its strike/block/
+audit history is kept.
 
 **Enabling it** (`.env` or environment):
 
@@ -222,8 +222,20 @@ tailscale serve --bg 4756
 Then open `https://<tailscale-hostname>/?token=<CONTROL_SERVER_TOKEN>` (the
 hostname is whatever `tailscale serve status` prints) from a device signed
 in as the allow-listed login. The page moves the token out of the URL and
-into `sessionStorage` on load, so it isn't left sitting in the address bar
-or browser history after that first open.
+into `localStorage` on load, so it isn't left sitting in the address bar or
+browser history after that first open — and unlike `sessionStorage`, it
+survives new tabs and reloads, so you won't need that link again on the
+same device/browser (see `docs/decisions.md`'s "Control page styling" for
+the tradeoff this accepts).
+
+**Developing the frontend** (`src/web/`): `npm run dev` runs the server
+under `node --watch` (restarts on any `src/` or `index.js` change) and
+Tailwind's CSS watcher (`src/web/tailwind.src.css` → `src/web/styles.css`)
+side by side, so editing either the backend or the page's styles picks up
+on a plain browser reload without a manual restart. `npm run build:css`
+alone does a one-off production build (minified) — run it before
+committing a styles change, since the compiled `styles.css` is what's
+actually served and checked in.
 
 That link carries the token in cleartext until the page's own script strips
 it, so treat it as a one-time credential: don't paste it into chat, a shared

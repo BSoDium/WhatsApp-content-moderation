@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { verifyControlToken } from './control-token-auth.js';
+import { verifyControlToken, verifyControlCookie } from './control-token-auth.js';
 
 const EXPECTED = 'a-very-secret-token';
 
@@ -35,4 +35,32 @@ test('rejects a mismatched token', () => {
 
 test('rejects a token of different length without throwing', () => {
   assert.equal(verifyControlToken(reqWithHeader('short'), paramsWithToken(undefined), EXPECTED), false);
+});
+
+function reqWithCookie(cookieHeader) {
+  return { headers: cookieHeader === undefined ? {} : { cookie: cookieHeader } };
+}
+
+test('verifyControlCookie accepts a matching controlToken cookie', () => {
+  assert.equal(verifyControlCookie(reqWithCookie(`controlToken=${EXPECTED}`), EXPECTED), true);
+});
+
+test('verifyControlCookie finds the cookie among several others', () => {
+  assert.equal(verifyControlCookie(reqWithCookie(`foo=bar; controlToken=${EXPECTED}; baz=qux`), EXPECTED), true);
+});
+
+test('verifyControlCookie decodes a percent-encoded cookie value', () => {
+  assert.equal(verifyControlCookie(reqWithCookie(`controlToken=${encodeURIComponent(EXPECTED)}`), EXPECTED), true);
+});
+
+test('verifyControlCookie rejects a mismatched cookie', () => {
+  assert.equal(verifyControlCookie(reqWithCookie('controlToken=wrong'), EXPECTED), false);
+});
+
+test('verifyControlCookie rejects a missing Cookie header entirely', () => {
+  assert.equal(verifyControlCookie(reqWithCookie(undefined), EXPECTED), false);
+});
+
+test('verifyControlCookie rejects a Cookie header with no controlToken entry', () => {
+  assert.equal(verifyControlCookie(reqWithCookie('foo=bar'), EXPECTED), false);
 });

@@ -20,11 +20,48 @@ import { timingSafeEqual } from 'node:crypto';
  * @param {string} expectedToken
  * @returns {boolean}
  */
-export function verifyControlToken(req, searchParams, expectedToken) {
-  const provided = req.headers['x-control-token'] ?? searchParams.get('token');
+function tokensMatch(provided, expectedToken) {
   if (typeof provided !== 'string' || provided.length === 0) return false;
 
   const providedBuf = Buffer.from(provided);
   const expectedBuf = Buffer.from(expectedToken);
   return providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf);
+}
+
+export function verifyControlToken(req, searchParams, expectedToken) {
+  const provided = req.headers['x-control-token'] ?? searchParams.get('token');
+  return tokensMatch(provided, expectedToken);
+}
+
+export const CONTROL_TOKEN_COOKIE = 'controlToken';
+
+/**
+ * Verifies the token via the `controlToken` cookie — the only way `GET /`
+ * itself (a plain browser navigation, not a fetch() app.js makes) can carry
+ * a credential on a reload once the bootstrap link's `?token=` has already
+ * been stripped from the URL: browsers attach cookies automatically to a
+ * top-level navigation, but never a custom header, so this is the one auth
+ * path that doesn't depend on any client-side JS having already run.
+ *
+ * Deliberately **not** accepted for `/api/*` — only `GET /` calls this.
+ * `verifyControlToken`'s header/query check remains the sole credential for
+ * every state-changing route specifically because a cookie is what a
+ * cross-origin page can also have the browser attach on its behalf (the
+ * classic CSRF vector); the custom header can't be forged that way. Mixing
+ * the two into one acceptance path for API routes would quietly reopen the
+ * CSRF gap `docs/decisions.md` documents the header as closing.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @param {string} expectedToken
+ * @returns {boolean}
+ */
+export function verifyControlCookie(req, expectedToken) {
+  const header = req.headers.cookie;
+  if (typeof header !== 'string') return false;
+
+  const match = header.split(';').map((part) => part.trim()).find((part) => part.startsWith(`${CONTROL_TOKEN_COOKIE}=`));
+  if (!match) return false;
+
+  const provided = decodeURIComponent(match.slice(CONTROL_TOKEN_COOKIE.length + 1));
+  return tokensMatch(provided, expectedToken);
 }

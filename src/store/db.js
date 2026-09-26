@@ -57,6 +57,20 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 let db;
 
+// One-off, narrowly-scoped exception to this project's "no migrations,
+// pre-release" stance (see docs/decisions.md): CREATE TABLE IF NOT EXISTS
+// can't retroactively add a column to a contacts table that already shipped
+// in an earlier commit, and unlike the roster/env-var concepts that's fine
+// to drop outright, an existing contacts table can hold a real contact list
+// a user only got by actually relinking their WhatsApp device — not
+// something to force them to redo.
+function migrateContactsTable(database) {
+  const hasLastMessageAt = database
+    .prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'last_message_at'")
+    .get();
+  if (!hasLastMessageAt) database.exec('ALTER TABLE contacts ADD COLUMN last_message_at INTEGER');
+}
+
 // Lazy-opened, like policy.js's loadPolicy, so importing this module never
 // has a side effect and every caller shares one connection.
 export function getDb() {
@@ -69,6 +83,7 @@ export function getDb() {
   db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrateContactsTable(db);
   return db;
 }
 

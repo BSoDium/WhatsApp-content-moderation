@@ -214,6 +214,100 @@ an existing `auth_info/` session never re-requests history, full or not —
 so getting a complete initial contact list means deleting `auth_info/` and
 re-scanning the QR code at least once with this flag already in place.
 
+## Control panel: full contact list + slide-in detail panel
+
+The original picker+tabs control-panel UI (see "Web control app" below) was
+replaced after real usage surfaced it as bad UX: a bare search box with no
+visible results until you'd already focused it, no guidance text, and a
+numeric search that silently failed because Baileys JIDs never contain the
+`+` a user naturally types when searching a phone number. The redesign,
+styled after WhatsApp's own chat list:
+
+- **The full contact directory is the default view**, not just the
+  monitored roster — one scrollable list, avatar + name + a relative
+  "Last contacted" subtitle, sorted most-recently-contacted first. A switch
+  on each row directly toggles moderation on/off (`POST`/`DELETE
+  /api/roster`), replacing the old add-then-separately-remove flow.
+- **The list pane is always exactly 50% of the viewport** (floored at a
+  `--list-min-width: 500px`, below which the whole layout collapses to a
+  single full-width column — see the `1000px` media query, `2×` the floor).
+  Centered while browsing; clicking a row (not the switch) docks it flush
+  left and opens a detail panel in the other 50% — an explicit width on
+  each side, not flex-grow distributing space between them, so neither can
+  ever encroach on the other. Below the `1000px` floor the detail panel
+  becomes a full-screen overlay with a back button instead, replacing the
+  old tab-strip-of-monitored-contacts model outright, since only one
+  contact's detail is ever open at a time regardless of how many are
+  monitored. The panel drops the old separate "stop monitoring" button —
+  the same on/off switch, mirrored at the top of the panel, already covers
+  it. This layout is tuned for desktop; the sub-`1000px` floor is a usable
+  fallback, not a tuned mobile experience yet.
+- **Panel controls are always rendered, never hidden.** A contact that
+  isn't monitored yet still shows the full strikes/block/paused/escalation/
+  unblock layout — just `disabled` (and dimmed via the existing
+  `button:disabled`/`.switch:disabled` styling) rather than replaced with a
+  bare guidance paragraph. An empty-looking panel read as broken; disabled
+  controls read as "not turned on yet," and flipping the monitor switch
+  just lifts the `disabled` attributes in place rather than swapping the
+  panel's markup out from under the user.
+- **Search matches name by substring and number by digits-only
+  comparison** (`query.replace(/\D/g, '')` against `id.split('@')[0]`) so a
+  query like `+33769300481` still matches a JID that has no `+` in it.
+- **Avatars are generated initials, not real photos**, deliberately: real
+  WhatsApp profile photos would need a fetch+cache layer and a proxy route
+  (Baileys' `profilePictureUrl(jid)` isn't something you can safely call
+  once per contact for a whole list without rate-limiting), which is
+  meaningfully more backend work than this redesign's scope. The avatar
+  markup is isolated in its own `renderAvatar()` function specifically so a
+  later photo feature can swap its internals without touching row/panel
+  layout.
+- **The subtitle is a timestamp only, never a message preview** — showing
+  what someone actually said, for a contact that isn't even being
+  moderated yet, is a bigger privacy footprint than this app should default
+  to.
+
+**`contacts.last_message_at` is a one-off `ALTER TABLE` migration, not
+folded into `CREATE TABLE IF NOT EXISTS`.** This project's stated
+"pre-release, no migrations" stance (see "Multi-contact moderation roster"
+above) is specifically about roster/env-var concepts that are fine to drop
+outright — it was never meant to justify silently losing a `contacts` table
+a user can only repopulate by actually relinking their WhatsApp device via
+QR code. `getDb()` checks `pragma_table_info('contacts')` for the column
+and adds it if missing, once, right after creating the schema.
+
+**`last_message_at` is seeded two ways**: `messaging-history.set`'s `chats`
+array (each entry's `conversationTimestamp`) backfills it once at link time
+for every contact synced before this feature existed, and every live
+`messages.upsert` event (either direction — sending or receiving both
+count as "contacted") advances it from then on, always taking the `MAX` of
+old vs. new rather than last-write-wins, so an out-of-order event can never
+regress it. This tracking is deliberately separate from the moderation
+pipeline's own `messages.upsert` handling in `index.js` (which only
+processes monitored contacts) — this one runs for every contact, since the
+whole point of the list is to show *everyone*, not just who's being
+moderated.
+
+**The open/close animation is sequenced (slide, then fade), not
+simultaneous.** The first pass animated the list pane's centering via
+`margin: 0 auto` → `margin: 0` and the detail pane's reveal via `width: 0`
+→ `50%` at the same time — `auto` has no defined interpolation for a CSS
+transition (it just snaps), so the list wasn't actually animating at all,
+and the detail pane's width-reveal alone read as the viewport "uncovering"
+a static box rather than anything sliding. Fixed by expressing the list
+pane's position as an explicit `margin-left` (`25%` closed — the space
+that centers a 50%-wide box — `0` open, both concrete values, so the
+transition is well-defined) and adding a `transition-delay` to the detail
+pane's *opacity* equal to its own width transition's duration: the space
+opens immediately (in the same beat as the list sliding out of it), and
+only once that's finished does the content — invisible until then — fade
+in. The opacity lives on `.detail-pane` itself (the persistent element
+`app.js` only ever changes the `innerHTML` of) rather than on the
+freshly-recreated `.detail-pane__inner`, since a transition only plays
+across a genuine before/after change on the *same* element — a brand-new
+element born already-styled never gets one, but a persistent parent's
+opacity change visually cascades to whatever was just inserted into it
+regardless of timing.
+
 ## Web control app: Tailscale identity headers (issue #29)
 
 `src/web/control-server.js` is the control surface #9 needed: a static
@@ -270,10 +364,25 @@ from the one thing a local forger can already fake.
 
 The bootstrap link (`https://<hostname>/?token=<CONTROL_SERVER_TOKEN>`)
 carries that token in cleartext until the page's own script moves it into
-`sessionStorage` and strips the query string — so it's a one-time credential,
-not something to paste into chat, a shared note, or persistent shell
-history. Regenerate `CONTROL_SERVER_TOKEN` if that link is ever exposed that
-way (see README "Web control app").
+`localStorage` and strips the query string — still not something to paste
+into chat, a shared note, or persistent shell history. Regenerate
+`CONTROL_SERVER_TOKEN` if that link is ever exposed that way (see README
+"Web control app").
+
+**`localStorage`, not `sessionStorage`, deliberately.** The original choice
+was `sessionStorage` specifically so the token behaved like a one-time
+credential — gone the moment the tab closed. In practice that meant
+retyping (or re-pasting) the full token link every time the operator
+reopened the page in a new tab, which is exactly the kind of friction that
+leads to a token getting pasted somewhere it shouldn't. `localStorage`
+persists across tabs and reloads until explicitly cleared, trading that
+one property (a stolen/shared browser profile keeps a working credential
+indefinitely, not just for the current tab's lifetime) for not needing the
+link again. Accepted for a single-operator tool on a device only the
+operator uses; the two-factor gate (Tailscale identity + this token) is
+unchanged either way — a cross-origin page still has no way to read
+another origin's `localStorage` any more than its `sessionStorage`, so the
+CSRF reasoning below is unaffected by this switch.
 
 `createControlServer(...).listen()` still hardcodes the loopback interface
 (`127.0.0.1`) rather than taking a host argument, and that's still
@@ -297,7 +406,7 @@ State-changing `POST` endpoints (adding a roster contact, pause/resume/
 unblock, toggling escalation) additionally require `Content-Type:
 application/json`. With `CONTROL_SERVER_TOKEN` in place, that token is the
 primary CSRF defense: a cross-origin page has no way to read
-`sessionStorage` or attach `X-Control-Token` itself, so it can't produce a
+`localStorage` or attach `X-Control-Token` itself, so it can't produce a
 request this server accepts no matter how it's triggered. The Content-Type
 check is a second, independent layer for the case the token is obtained
 some other way (e.g. leaked via the bootstrap URL, see above) — it forces a
@@ -309,6 +418,37 @@ CORS-safelisted method, so a cross-origin request against it already forces
 a preflight regardless of Content-Type — adding the check there would just
 be validation for a scenario that can't happen. Neither layer depends on a
 session or a CSRF token of its own.
+
+**A `controlToken` cookie, accepted on `GET /` only — fixing a real gap,
+not a client-storage bug.** The switch to `localStorage` (above) didn't
+actually fix "reloading the page fails" — it only ever helped `app.js`'s
+own `fetch()` calls attach `X-Control-Token`. `GET /` itself is a plain
+browser navigation, which happens *before* any of this page's JS runs, and
+a browser never attaches a custom header to a navigation the way `fetch()`
+can — so once the bootstrap link's `?token=` query param is stripped from
+the URL (deliberately, so it doesn't linger in the address bar/history),
+there was no way left for a plain reload to ever pass `GET /`'s auth check
+again, no matter what was in `localStorage`. A cookie is the one credential
+type a browser *does* attach automatically to a navigation, which is
+exactly the gap here.
+
+`src/web/control-token-auth.js`'s `verifyControlCookie` reads a
+`controlToken` cookie and is accepted **only** by `GET /`, set (and its
+expiry refreshed) on every successful load of that route — `/api/*` still
+authenticates via `verifyControlToken`'s header/query check exclusively,
+completely unchanged. This split matters: a cookie is exactly what a
+cross-origin page can also have the browser attach on its behalf (the
+classic CSRF vector), whereas the custom header cannot be forged that way
+— accepting the cookie on state-changing routes too would quietly undo the
+CSRF reasoning directly above this entry. `GET /` itself has no side
+effects to protect against CSRF in the first place (loading a page isn't a
+mutation), so accepting the cookie there carries none of that risk. The
+cookie is `HttpOnly` (this page's own JS never needs to read or set it —
+the browser handles the `Set-Cookie` response header and its automatic
+replay entirely on its own) and `Secure`/`SameSite=Strict`, with a 400-day
+`Max-Age` (the practical ceiling Chrome enforces regardless of what's set)
+so it doesn't meaningfully expire sooner than `localStorage` effectively
+does.
 
 ## Control page styling: three files, two of them unauthenticated
 
@@ -331,20 +471,76 @@ reason specific to what those files are: a `<link rel="stylesheet">` or
 `fetch()` call can, so gating them would only break the page rather than
 protect anything — neither file contains the control token or any other
 secret (the token exists only at runtime, in the browser's
-`sessionStorage`, populated by a small bootstrap script that stays inline
+`localStorage`, populated by a small bootstrap script that stays inline
 in `index.html` specifically so it can run synchronously before either
 external file loads). `app.js` reads that token back out of
-`sessionStorage` itself at request time, which is fine even though the
+`localStorage` itself at request time, which is fine even though the
 file's *source* is servable to anyone — an unauthenticated file only means
-its code is public, not that it can read another visitor's session state.
+its code is public, not that it can read another visitor's stored token.
 
-The self-hosted headline font (Source Serif 4, SIL OFL, one static weight)
-is embedded as a base64 `data:` URI directly inside `styles.css`'s
-`@font-face` rule, rather than served as its own file — this keeps the
-exemption at exactly the two routes above instead of adding a third for a
-font, at the cost of the font re-downloading with the CSS on every visit
-instead of getting its own browser cache entry. Accepted for a low-traffic,
-single-operator page; revisit if that tradeoff stops being true.
+**Superseded**: the page originally self-hosted a headline serif font
+(Source Serif 4, SIL OFL) embedded as a base64 `data:` URI directly inside
+`styles.css`'s `@font-face` rule, to keep the auth exemption at exactly the
+two routes above instead of adding a third for a font file. Dropped after
+the contact-list redesign (see "Control panel: full contact list +
+slide-in detail panel" above) in favor of a plain monospace font *stack*
+(`ui-monospace`, `'Roboto Mono'`, platform fallbacks, `monospace`) with no
+webfont file at all — every OS already ships a solid monospace font, so
+there's nothing to fetch, license, or embed, and the auth-exemption
+reasoning above no longer needs to account for a font file either way.
+
+**`styles.css` is now a compiled Tailwind CSS build, not hand-written.**
+Hand-rolled CSS (first a WhatsApp-green glass treatment, before that a
+plain custom stylesheet) repeatedly fell short of a clean, minimal look
+the user could point to a reference for ("shadcn", "Apple Liquid Glass").
+Tailwind gets a real, well-tested neutral design scale (spacing, radius,
+shadows, the zinc color palette) instead of guessing those values by hand
+— but only as a *build-time* tool: `src/web/tailwind.src.css` (the
+authored source, `@tailwind` directives + this page's custom classes,
+mostly via `@apply`) compiles via `npm run build:css`
+(`tailwindcss -i ... -o src/web/styles.css --minify`) to the exact same
+`src/web/styles.css` this page has always served. **Deliberately not** the
+Tailwind CDN/"Play" script (`<script src="https://cdn.tailwindcss.com">`)
+— Tailwind's own docs call that build prototyping-only, and it would mean
+an authenticated page that controls a real WhatsApp account executes
+arbitrary third-party JS from a CDN on every load. The compiled approach
+keeps the exact same posture as before: `styles.css` is still just a
+static file with zero runtime dependencies, generated instead of
+hand-written, committed to git same as always (no CI/build pipeline exists
+to regenerate it on deploy, so a stale build would otherwise silently ship
+old styles). `tailwind.config.js`'s `content` globs
+(`src/web/index.html`, `src/web/app.js`) only affect which utility classes
+get generated — they don't change what actually loads in the browser.
+
+**Palette: neutral black/white/gray (Tailwind's `zinc` scale), not
+WhatsApp's green.** The redesign's first pass ("Control panel: full
+contact list + slide-in detail panel" above) leaned on WhatsApp's own
+teal-green as the accent, reasoning the app should look like what it
+moderates. Superseded once the ask sharpened to a specific reference
+(shadcn's own default neutral theme) — `--color-accent` is `zinc-900`
+(near-black) in light mode, `zinc-50` (near-white) in dark mode, used for
+the switch's checked state and interactive emphasis generally, rather than
+a colored accent.
+
+**`npm run dev` uses Node's built-in `--watch`, not `nodemon`.** Node 20+
+ships file-watching restart natively (`--watch`), so there's no reason to
+add a dependency that exists purely to re-implement it. `--watch-path=./src`
+scopes what's watched explicitly, rather than watching the whole project
+(the default when no `--watch-path` is given is just the entry point's own
+module graph, which wouldn't cover the static `src/web/*.html`/`.js`/`.css`
+files served via `readFileSync` — they're never `import`ed, so they're
+outside that graph without an explicit path). Scoped to `src/` alone, *not*
+the project root and *not* `./index.js` as its own extra `--watch-path`
+entry — passing the entry file itself as a `--watch-path` value doesn't
+narrow anything: in testing it caused `auth_info/creds.json` (a project-
+root sibling, rewritten on every `creds.update`) to be watched too, restart-
+looping the WhatsApp connection on essentially every reconnect. `--watch`
+already tracks the entry point on its own regardless of `--watch-path`, so
+`./index.js` was both redundant and the cause of that leak — dropped
+outright rather than worked around. `concurrently` runs this alongside
+Tailwind's own `--watch` build for `styles.css`, and forwards Ctrl+C to
+both — the alternative (a bare `&`-backgrounded shell job) doesn't reliably
+kill the backgrounded process on interrupt.
 
 ## `auth_info/` is a credential
 

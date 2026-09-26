@@ -109,6 +109,64 @@ test('contacts.upsert bulk-adds multiple contacts', () => {
   );
 });
 
+test('a contact with no activity at all has a null lastMessageAt', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('contacts.upsert', [{ id: 'alice@s.whatsapp.net', name: 'Alice' }]);
+
+  assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, null);
+});
+
+test("messaging-history.set's chats array backfills lastMessageAt via conversationTimestamp", () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messaging-history.set', {
+    contacts: [{ id: 'alice@s.whatsapp.net', name: 'Alice' }],
+    chats: [{ id: 'alice@s.whatsapp.net', conversationTimestamp: 1_700_000_000 }],
+  });
+
+  assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, 1_700_000_000_000);
+});
+
+test('a live messages.upsert event advances lastMessageAt, in either direction', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messages.upsert', {
+    messages: [{ key: { remoteJid: 'alice@s.whatsapp.net', fromMe: true }, messageTimestamp: 1_700_000_100 }],
+    type: 'notify',
+  });
+
+  assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, 1_700_000_100_000);
+});
+
+test('an older/out-of-order timestamp never regresses lastMessageAt', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messages.upsert', { messages: [{ key: { remoteJid: 'alice@s.whatsapp.net' }, messageTimestamp: 1_700_000_200 }], type: 'notify' });
+  sock.emit('messages.upsert', { messages: [{ key: { remoteJid: 'alice@s.whatsapp.net' }, messageTimestamp: 1_700_000_100 }], type: 'notify' });
+
+  assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, 1_700_000_200_000);
+});
+
+test('a name-only update never clears an existing lastMessageAt', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messages.upsert', { messages: [{ key: { remoteJid: 'alice@s.whatsapp.net' }, messageTimestamp: 1_700_000_100 }], type: 'notify' });
+  sock.emit('contacts.update', [{ id: 'alice@s.whatsapp.net', notify: 'Al' }]);
+
+  assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, 1_700_000_100_000);
+});
+
 test('contacts persist across separate createContactDirectory() instances (i.e. across restarts)', () => {
   const first = createContactDirectory();
   const sock = fakeSock();
