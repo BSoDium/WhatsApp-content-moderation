@@ -387,6 +387,71 @@ setup does not pull that image.
 ```sh
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
+./scripts/setup.sh
+```
+
+[`scripts/setup.sh`](scripts/setup.sh) does the tedious, error-prone part of
+first-time setup for you, and is safe to re-run if you need to fill in
+something it couldn't (it never overwrites a value you've already set):
+
+- copies `.env.example` → `.env` and `config/policy.example.md` →
+  `config/policy.md` if they don't already exist
+- creates `auth_info/` and `data/`, and chowns those plus `config/policy.md`
+  to UID 1000 (the container's user) via `sudo`, prompting for it only if
+  needed
+- generates `CONTROL_SERVER_TOKEN` with `openssl rand -hex 24` and sets
+  `WEB_CONTROL_PORT=4756`
+- auto-detects this host's Tailscale login (via `tailscale status`/`whois`)
+  and fills in `ALLOWED_TAILSCALE_LOGIN` — this assumes a single-user
+  tailnet, where the host and the device you'll open the control app from
+  belong to the same Tailscale account; double-check the value it picks
+
+It won't write your moderation policy for you — edit `config/policy.md`
+before connecting a real account, and leave `SHADOW_MODE=1` (the default)
+until you've reviewed how it behaves against real traffic. Keep `.env`,
+`config/policy.md`, `auth_info/`, and `data/` private and back up the
+session and database.
+
+If you'd rather do it by hand (or the script can't run on your setup), see
+the "What the script does" note below.
+
+```sh
+docker compose up -d --build
+docker compose exec ollama ollama pull llama3.2:3b
+docker compose logs -f app
+```
+
+Scan the displayed QR from WhatsApp → Linked devices. Then run
+`sudo tailscale serve --bg 4756` and run
+[`scripts/preflight.sh`](scripts/preflight.sh) — it checks Compose, the
+pulled model, bind-mount ownership, the control port, and `tailscale serve`
+in one pass, including whether this host's Tailscale login matches
+`ALLOWED_TAILSCALE_LOGIN` (a mismatch there is the most common cause of a
+403 from the control app). Fix anything it flags, then open the URL from
+`sudo tailscale serve status` with `?token=<CONTROL_SERVER_TOKEN>` appended
+(get the token with `grep CONTROL_SERVER_TOKEN .env` — don't paste it into
+chat, a shared note, or shell history you'd keep around). Add a contact in
+the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
+
+The app uses host networking so its loopback-only control server is the
+same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and
+is published on host loopback only. To update from GitHub, run:
+
+```sh
+./scripts/update.sh
+```
+
+[`scripts/update.sh`](scripts/update.sh) refuses to run if you have local
+tracked changes (commit or stash them first), otherwise it runs
+`git pull --ff-only` followed by `docker compose up -d --build app`, then
+flags any settings `.env.example` gained since your last update that aren't
+in your `.env` yet. Your `.env`, policy, WhatsApp session, SQLite data, and
+downloaded model persist across app rebuilds. Back them up before host
+maintenance.
+
+### What the script does, by hand
+
+```sh
 cp .env.example .env
 cp config/policy.example.md config/policy.md
 mkdir -p auth_info data
@@ -399,34 +464,6 @@ The container runs as UID 1000. If your Debian login has a different UID,
 use `sudoedit config/policy.md` to edit the private, container-owned policy.
 
 Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
-`ALLOWED_TAILSCALE_LOGIN`, generate `CONTROL_SERVER_TOKEN` with
-`openssl rand -hex 24`. `SHADOW_MODE` defaults to `1`; leave it enabled
-until you have reviewed the results. Write your own
-moderation rules in `config/policy.md` before connecting a real account.
-Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` private and
-back up the session and database.
-
-```sh
-docker compose up -d --build
-docker compose exec ollama ollama pull llama3.2:3b
-docker compose logs -f app
-```
-
-Scan the displayed QR from WhatsApp → Linked devices. Then run
-`sudo tailscale serve --bg 4756` and open the URL from `sudo tailscale
-serve status` with `?token=<CONTROL_SERVER_TOKEN>` appended. Add a contact
-in the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
-Check that the page works from your allowed Tailscale login and is rejected
-for another login; this live check is not automated.
-
-The app uses host networking so its loopback-only control server is the
-same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and
-is published on host loopback only. To update from GitHub, run:
-
-```sh
-git pull --ff-only
-docker compose up -d --build app
-```
-
-Your `.env`, policy, WhatsApp session, SQLite data, and downloaded model
-persist across app rebuilds. Back them up before host maintenance.
+`ALLOWED_TAILSCALE_LOGIN` (run `tailscale status` and use exactly what it
+reports for your account), generate `CONTROL_SERVER_TOKEN` with
+`openssl rand -hex 24`.
