@@ -1,12 +1,4 @@
-// Manual smoke test for the message buffer — no WhatsApp connection needed.
-// Type lines quickly to see them grouped into one flush; pause past
-// BUFFER_WINDOW_MS to see a new burst start.
-//
-//   BUFFER_WINDOW_MS=2000 npm run buffer:test
-//   > hey
-//   > you there
-//   (2s of silence)
-//   [flush] test-contact: [ 'hey', 'you there' ]
+// Manual smoke test for the message buffer — see README "Testing each layer in isolation" (npm run buffer:test).
 
 import { createInterface } from 'node:readline';
 import { createMessageBuffer } from './message-buffer.js';

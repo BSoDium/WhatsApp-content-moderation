@@ -1,13 +1,10 @@
-// Throwaway validation script — see README "Validating block/unblock".
-//
-//   BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock
+// Throwaway validation script — see README "Validating block/unblock" (BLOCK_TEST_JID=<jid> npm run prototype:block-unblock).
 
 import { connectWhatsApp } from '../whatsapp/connection.js';
 
 const AUTH_DIR = './auth_info';
 const UNBLOCK_DELAY_MS = 5000;
-// fetchBlocklist() can lag a live block/unblock call by a few seconds (see
-// README) — a single immediate read isn't a reliable pass/fail signal.
+// fetchBlocklist() can lag a live block/unblock call by a few seconds (see README) — a single read isn't reliable.
 const CONFIRM_RETRIES = 4;
 const CONFIRM_DELAY_MS = 2000;
 const QR_PNG_PATH = './auth_info/login-qr.png';

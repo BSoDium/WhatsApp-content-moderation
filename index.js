@@ -57,9 +57,7 @@ async function start() {
     },
     onOpen: () => {
       logger.info({ target: TARGET_CONTACT_JID, allowSelf: ALLOW_SELF }, 'connected; moderating target contact');
-      // 'open' fires again after every reconnect, but startUnblockScheduler
-      // only needs to run once — its unblock(jid) closure always reads the
-      // current outer `sock`, so it doesn't need restarting alongside it.
+      // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(sock, jid) });
     },
     onClose: ({ statusCode, shouldReconnect }) => logger.warn({ statusCode, shouldReconnect }, 'connection closed'),

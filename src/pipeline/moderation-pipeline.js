@@ -23,12 +23,7 @@ function loadHistory(contactId) {
     .map((row) => ({ from: row.direction === 'me' ? 'me' : 'them', text: row.message }));
 }
 
-// Per-contact promise chain so two bursts for the same contact never run
-// handleBurst concurrently. Without this, createMessageBuffer (which frees
-// a contact's slot before calling onFlush — see src/buffer/message-buffer.js)
-// would let a slow classify/deleteForMe/sendWarning round-trip overlap with
-// the next burst's handleBurst, interleaving reads/writes to the strikes and
-// audit_log tables.
+// Per-contact promise chain so two bursts for the same contact never run handleBurst concurrently (see handleBurst's own JSDoc below).
 const contactQueues = new Map();
 
 function serialize(contactId, run) {

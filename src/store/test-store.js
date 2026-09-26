@@ -1,8 +1,4 @@
-// Manual smoke test for the SQLite store — exercises strikes, blocks, and
-// the audit log against a throwaway on-disk database, no WhatsApp
-// connection needed.
-//
-//   npm run store:test
+// Manual smoke test for the SQLite store — see README "Testing each layer in isolation" (npm run store:test).
 
 import { rmSync } from 'node:fs';
 import { getStrikeCount, recordStrike, decayStrike } from './strikes.js';

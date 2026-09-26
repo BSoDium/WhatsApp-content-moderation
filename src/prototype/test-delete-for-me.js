@@ -1,7 +1,4 @@
-// Throwaway validation script — see README "Validating 'delete for me'".
-//
-//   npm run prototype:delete-for-me
-//   TEST_ALLOW_SELF=1 npm run prototype:delete-for-me   # no second number handy
+// Throwaway validation script — see README "Validating 'delete for me'" (npm run prototype:delete-for-me, or TEST_ALLOW_SELF=1 with no second number handy).
 
 import { connectWhatsApp } from '../whatsapp/connection.js';
 

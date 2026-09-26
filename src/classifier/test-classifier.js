@@ -1,10 +1,4 @@
-// Manual smoke test for the classifier — no WhatsApp connection needed.
-// Reads lines from stdin, classifies each as a standalone "newest message"
-// (empty conversation history), and prints the verdict.
-//
-//   npm run classifier:test
-//   > hey are you free later
-//   { flagged: false, category: 'none', reason: '...' }
+// Manual smoke test for the classifier — see README "Testing each layer in isolation" (npm run classifier:test).
 
 import { createInterface } from 'node:readline';
 import { classifyMessage } from './classifier.js';

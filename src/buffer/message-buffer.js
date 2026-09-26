@@ -42,9 +42,7 @@ export function createMessageBuffer(onFlush, { windowMs = DEFAULT_BUFFER_WINDOW_
     pending.set(contactId, entry);
   }
 
-  // Flushes every contact still waiting out its debounce window immediately,
-  // instead of letting shutdown silently drop messages that haven't hit
-  // windowMs yet — see index.js's shutdown().
+  // Flushes every contact's pending window immediately, so shutdown (see index.js) doesn't silently drop unflushed messages.
   function flushAll() {
     return Promise.allSettled(Array.from(pending.keys(), flush));
   }

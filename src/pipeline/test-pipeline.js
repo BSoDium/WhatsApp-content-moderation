@@ -1,9 +1,4 @@
-// Manual smoke test for the moderation pipeline — buffers stdin lines like
-// test-buffer.js, then runs each flush through handleBurst with
-// deleteForMe/sendWarning stubbed as console logs. Needs Ollama running and
-// config/policy.md filled in, same as classifier:test.
-//
-//   npm run pipeline:test
+// Manual smoke test for the moderation pipeline (needs Ollama + config/policy.md, like classifier:test) — see README "Testing each layer in isolation" (npm run pipeline:test).
 
 import { createInterface } from 'node:readline';
 import { rmSync } from 'node:fs';

@@ -1,6 +1,4 @@
-// Isolated smoke test for src/whatsapp/actions.js — see README "Testing
-// each layer in isolation". Don't run alongside `npm start`, they'd fight
-// over one session.
+// Isolated smoke test for src/whatsapp/actions.js — see README "Testing each layer in isolation". Don't run alongside `npm start`.
 
 import { connectWhatsApp } from './connection.js';
 import { deleteForMe, sendWarning } from './actions.js';
