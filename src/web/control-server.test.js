@@ -43,6 +43,7 @@ function makeMonitoredContacts(initial = []) {
   return {
     list: () => Array.from(roster.values()),
     isMonitored: (contactId) => roster.has(contactId),
+    get: (contactId) => roster.get(contactId),
     add: (contactId) => {
       if (!roster.has(contactId)) roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now() });
     },
@@ -181,6 +182,18 @@ test('POST /api/roster adds a contact and returns its roster entry', async () =>
   });
 });
 
+test('POST /api/roster rejects a group JID', async () => {
+  await withServer({}, async (base, { monitoredContacts }) => {
+    const res = await fetch(`${base}/api/roster`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ contactId: '1203630xxxx@g.us' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(monitoredContacts.isMonitored('1203630xxxx@g.us'), false);
+  });
+});
+
 test('POST /api/roster rejects a missing/empty contactId', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster`, {
@@ -241,12 +254,25 @@ test('POST /api/roster/:contactId/pause|resume|unblock route to the right contac
 });
 
 test('POST /api/roster/:contactId/pause without JSON content-type is rejected', async () => {
-  await withServer({}, async (base) => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  await withServer({ monitoredContacts }, async (base) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/pause`, {
       method: 'POST',
       headers: authHeaders(),
     });
     assert.equal(res.status, 415);
+  });
+});
+
+test('POST /api/roster/:contactId/pause|resume|unblock on an unmonitored contact returns 404', async () => {
+  await withServer({}, async (base, { manualOverride }) => {
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/unblock`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: '{}',
+    });
+    assert.equal(res.status, 404);
+    assert.deepEqual(manualOverride.calls, []);
   });
 });
 
@@ -282,6 +308,17 @@ test('POST /api/roster/:contactId/escalation on an unmonitored contact returns 4
       body: JSON.stringify({ enabled: false }),
     });
     assert.equal(res.status, 404);
+  });
+});
+
+test('a malformed percent-encoded path segment returns 400, not a 500', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster/%E0%A4%A/pause`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: '{}',
+    });
+    assert.equal(res.status, 400);
   });
 });
 

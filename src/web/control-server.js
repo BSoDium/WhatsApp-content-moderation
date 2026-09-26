@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.js';
 import { verifyControlToken } from './control-token-auth.js';
+import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.js';
 
 const logger = pino({ name: 'control-server' });
 
@@ -16,11 +17,7 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 const COMMAND_ROUTES = new Set(['pause', 'resume', 'unblock']);
 
-// Neither file contains a secret (the control token only ever lives in the
-// browser's sessionStorage, never in served source), and a <link>/<script
-// src> tag can't attach X-Control-Token the way fetch() can — so these two
-// routes, and only these two, skip both auth factors. See
-// docs/decisions.md "Control page styling".
+// The sole auth exemption — see createControlServer's doc comment below.
 const STATIC_ASSETS = {
   '/styles.css': { file: join(__dirname, 'styles.css'), contentType: 'text/css; charset=utf-8' },
   '/app.js': { file: join(__dirname, 'app.js'), contentType: 'text/javascript; charset=utf-8' },
@@ -53,15 +50,35 @@ function readJsonBody(req) {
   });
 }
 
-// e.g. '/api/roster/15551234567%40s.whatsapp.net/pause' -> ['roster', '15551234567@s.whatsapp.net', 'pause']
+// e.g. '/api/roster/15551234567%40s.whatsapp.net/pause' -> ['roster', '15551234567@s.whatsapp.net', 'pause'].
+// Returns null for a non-/api/ path, or undefined for a malformed percent-encoded segment.
 function apiSegments(pathname) {
   const parts = pathname.split('/').filter(Boolean);
-  return parts[0] === 'api' ? parts.slice(1).map(decodeURIComponent) : null;
+  if (parts[0] !== 'api') return null;
+  try {
+    return parts.slice(1).map(decodeURIComponent);
+  } catch {
+    return undefined;
+  }
 }
 
 // CSRF guard (forces a CORS preflight on cross-origin requests) — see createControlServer's doc comment.
 function hasJsonContentType(req) {
   return req.headers['content-type']?.split(';')[0].trim() === 'application/json';
+}
+
+async function readValidatedJsonBody(req, res) {
+  try {
+    return await readJsonBody(req);
+  } catch (err) {
+    logger.warn({ error: err?.message ?? String(err) }, 'rejected: invalid JSON body');
+    sendJson(res, 400, { error: 'invalid JSON body' });
+    return undefined;
+  }
+}
+
+function isIndividualJid(contactId) {
+  return !NON_INDIVIDUAL_JID_SUFFIXES.some((suffix) => contactId.endsWith(suffix));
 }
 
 function rosterEntry({ contactId, escalationEnabled }, { contactDirectory, manualOverride }) {
@@ -94,20 +111,18 @@ async function handleApi(req, res, segments, deps) {
       sendJson(res, 415, { error: 'Content-Type must be application/json' });
       return true;
     }
-    let body;
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      sendJson(res, 400, { error: 'invalid JSON body' });
-      return true;
-    }
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
     if (typeof body.contactId !== 'string' || body.contactId.length === 0) {
       sendJson(res, 400, { error: 'contactId must be a non-empty string' });
       return true;
     }
+    if (!isIndividualJid(body.contactId)) {
+      sendJson(res, 400, { error: 'contactId must be an individual contact, not a group or broadcast list' });
+      return true;
+    }
     monitoredContacts.add(body.contactId);
-    const row = monitoredContacts.list().find((r) => r.contactId === body.contactId);
-    sendJson(res, 201, rosterEntry(row, deps));
+    sendJson(res, 201, rosterEntry(monitoredContacts.get(body.contactId), deps));
     return true;
   }
 
@@ -125,6 +140,10 @@ async function handleApi(req, res, segments, deps) {
     const [, contactId, action] = segments;
 
     if (COMMAND_ROUTES.has(action)) {
+      if (!monitoredContacts.isMonitored(contactId)) {
+        sendJson(res, 404, { error: 'not monitored' });
+        return true;
+      }
       if (!hasJsonContentType(req)) {
         sendJson(res, 415, { error: 'Content-Type must be application/json' });
         return true;
@@ -139,13 +158,8 @@ async function handleApi(req, res, segments, deps) {
         sendJson(res, 415, { error: 'Content-Type must be application/json' });
         return true;
       }
-      let body;
-      try {
-        body = await readJsonBody(req);
-      } catch {
-        sendJson(res, 400, { error: 'invalid JSON body' });
-        return true;
-      }
+      const body = await readValidatedJsonBody(req, res);
+      if (body === undefined) return true;
       if (typeof body.enabled !== 'boolean') {
         sendJson(res, 400, { error: 'enabled must be a boolean' });
         return true;
@@ -193,6 +207,10 @@ async function handleRequest(req, res, deps) {
   }
 
   const segments = apiSegments(pathname);
+  if (segments === undefined) {
+    sendJson(res, 400, { error: 'malformed path' });
+    return;
+  }
   if (segments && (await handleApi(req, res, segments, deps))) return;
 
   sendJson(res, 404, { error: 'not found' });
@@ -217,8 +235,12 @@ async function handleRequest(req, res, deps) {
  *    directly. The token isn't derivable from anything Tailscale sets, so
  *    it closes that gap.
  *
- * `GET /styles.css` and `GET /app.js` are the sole exception, checked
- * before either factor — see docs/decisions.md for why that's safe.
+ * `GET /styles.css` and `GET /app.js` are the sole exception, checked before
+ * either factor: neither file contains a secret (the control token only
+ * ever lives in the browser's `sessionStorage`, never in served source),
+ * and a `<link>`/`<script src>` tag can't attach `X-Control-Token` the way
+ * `fetch()` can anyway — see docs/decisions.md "Control page styling" for
+ * the full reasoning.
  *
  * State-changing POSTs additionally require `Content-Type: application/json`
  * (a CSRF defense — see the inline comments at each check). `DELETE` doesn't
@@ -240,6 +262,7 @@ async function handleRequest(req, res, deps) {
  *   monitoredContacts: {
  *     list: () => { contactId: string, escalationEnabled: boolean }[],
  *     isMonitored: (contactId: string) => boolean,
+ *     get: (contactId: string) => { contactId: string, escalationEnabled: boolean } | undefined,
  *     add: (contactId: string) => void,
  *     remove: (contactId: string) => boolean,
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,

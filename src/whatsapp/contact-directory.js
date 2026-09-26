@@ -1,4 +1,4 @@
-const NON_INDIVIDUAL_JID_SUFFIXES = ['@g.us', '@broadcast'];
+export const NON_INDIVIDUAL_JID_SUFFIXES = ['@g.us', '@broadcast'];
 
 function formatJid(jid) {
   const [user] = jid.split('@');

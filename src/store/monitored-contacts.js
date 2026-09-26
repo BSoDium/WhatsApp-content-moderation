@@ -19,6 +19,16 @@ export function isMonitored(contactId) {
 }
 
 /**
+ * @returns {{ contactId: string, escalationEnabled: boolean, addedAt: number } | undefined}
+ */
+export function getMonitored(contactId) {
+  const row = getDb()
+    .prepare('SELECT contact_id, escalation_enabled, added_at FROM monitored_contacts WHERE contact_id = ?')
+    .get(contactId);
+  return row ? { contactId: row.contact_id, escalationEnabled: Boolean(row.escalation_enabled), addedAt: row.added_at } : undefined;
+}
+
+/**
  * Adds a contact to the roster with escalation on by default. Idempotent —
  * a contact already on the roster keeps its current escalation_enabled
  * value rather than being reset to the default.
@@ -55,12 +65,15 @@ export function setEscalationEnabled(contactId, enabled) {
 }
 
 /**
- * Defaults to true for a contactId with no roster row, matching the
- * always-escalate behavior from before this roster existed.
+ * Defaults to false for a contactId with no roster row — the only way
+ * maybeBlockContact reaches this with an unknown contactId is a contact
+ * removed from the roster while a burst for them was already buffered or
+ * in flight, and a block is the wrong thing to fail toward for a contact
+ * the operator just stopped monitoring.
  */
 export function isEscalationEnabled(contactId) {
   const row = getDb()
     .prepare('SELECT escalation_enabled FROM monitored_contacts WHERE contact_id = ?')
     .get(contactId);
-  return row ? Boolean(row.escalation_enabled) : true;
+  return row ? Boolean(row.escalation_enabled) : false;
 }

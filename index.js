@@ -11,6 +11,7 @@ import { closeDb } from './src/store/db.js';
 import {
   listMonitored,
   isMonitored,
+  getMonitored,
   addMonitored,
   removeMonitored,
   setEscalationEnabled,
@@ -61,7 +62,14 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
 
 const manualOverride = createManualOverride({ unblock: (jid) => unblock(sock, jid) });
 const contactDirectory = createContactDirectory();
-const monitoredContacts = { list: listMonitored, isMonitored, add: addMonitored, remove: removeMonitored, setEscalationEnabled };
+const monitoredContacts = {
+  list: listMonitored,
+  isMonitored,
+  get: getMonitored,
+  add: addMonitored,
+  remove: removeMonitored,
+  setEscalationEnabled,
+};
 
 let unblockScheduler;
 let controlServer;

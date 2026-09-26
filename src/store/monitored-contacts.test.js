@@ -4,16 +4,26 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-monitored-contacts.test.sqlite';
 
-const { listMonitored, isMonitored, addMonitored, removeMonitored, setEscalationEnabled, isEscalationEnabled } =
+const { listMonitored, isMonitored, getMonitored, addMonitored, removeMonitored, setEscalationEnabled, isEscalationEnabled } =
   await import('./monitored-contacts.js');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
 });
 
-test('a contact not on the roster is not monitored and defaults to escalation enabled', () => {
+test('a contact not on the roster is not monitored and defaults to escalation disabled', () => {
   assert.equal(isMonitored('nobody@s.whatsapp.net'), false);
-  assert.equal(isEscalationEnabled('nobody@s.whatsapp.net'), true);
+  assert.equal(isEscalationEnabled('nobody@s.whatsapp.net'), false);
+});
+
+test('getMonitored returns the roster row, or undefined if there is none', () => {
+  assert.equal(getMonitored('nobody@s.whatsapp.net'), undefined);
+  const contact = 'eve@s.whatsapp.net';
+  addMonitored(contact);
+  const row = getMonitored(contact);
+  assert.equal(row.contactId, contact);
+  assert.equal(row.escalationEnabled, true);
+  assert.equal(typeof row.addedAt, 'number');
 });
 
 test('addMonitored adds a contact with escalation on by default', () => {

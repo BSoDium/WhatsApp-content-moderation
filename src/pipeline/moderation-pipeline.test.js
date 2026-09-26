@@ -104,6 +104,7 @@ test('deleteForMe/sendWarning throwing logs action_failed and does not record a 
 
 test('crossing STRIKE_THRESHOLD triggers block()', async () => {
   const contact = 'erin@s.whatsapp.net';
+  addMonitored(contact); // escalation defaults to enabled once a contact is actually on the roster
   let blockedJid;
 
   // STRIKE_THRESHOLD=2 (set at the top of this file) — two flagged messages in one burst cross it.
@@ -157,6 +158,24 @@ test('escalation disabled: strikes/delete/warn/audit-log still happen, but block
   assert.equal(getActiveBlock(contact), undefined);
   const log = getAuditLog(contact);
   assert.ok(log.some((row) => row.action === 'delete+warn'));
+});
+
+test('a contact with no roster row at all (e.g. removed mid-burst) fails toward not blocking', async () => {
+  const contact = 'ivan@s.whatsapp.net';
+  let blockCalled = false;
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+    deleteForMe: async () => {},
+    sendWarning: async () => {},
+    block: async () => {
+      blockCalled = true;
+    },
+    classify: okFlag,
+  });
+
+  assert.equal(strikeCount, 2);
+  assert.equal(blockCalled, false);
+  assert.equal(getActiveBlock(contact), undefined);
 });
 
 test('bursts for the same contact are serialized: a slow classify does not let a second burst interleave', async () => {
