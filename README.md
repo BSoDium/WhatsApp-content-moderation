@@ -231,7 +231,7 @@ set on that same response so a later plain reload (no `?token=...` in the
 URL) still authenticates — see `docs/decisions.md`'s "Web control app:
 Tailscale identity headers" for why only `GET /` accepts that cookie.
 
-**Developing the frontend**: the page is a Vite + React app in
+**Developing the frontend**: the page is a Vite + React + TypeScript app in
 [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) components
 on Tailwind CSS v4 — add a component with `npx shadcn@latest add
 <component>` from inside `web/`. `npm run dev` (repo root) runs the backend

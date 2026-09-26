@@ -1,13 +1,15 @@
+import type { Contact } from './types';
+
 // A small fixed palette, not a full HSL wheel, so colors stay legible against both light and dark surfaces without per-theme tuning.
 const AVATAR_COLORS = ['#1d7874', '#c65102', '#5b3a9e', '#0f6e94', '#a8325e', '#2f7a3f', '#8a5a00', '#3f51b5'];
 
-export function colorFor(contactId) {
+export function colorFor(contactId: string): string {
   let hash = 0;
   for (let i = 0; i < contactId.length; i++) hash = (hash * 31 + contactId.charCodeAt(i)) | 0;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-export function initialsFor(name) {
+export function initialsFor(name: string): string {
   if (name.startsWith('+')) return name.slice(1, 3);
   const words = name.trim().split(/\s+/);
   const letters = words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2);
@@ -15,7 +17,7 @@ export function initialsFor(name) {
 }
 
 const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
-const RELATIVE_UNITS = [
+const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ['year', 365 * 24 * 60 * 60 * 1000],
   ['month', 30 * 24 * 60 * 60 * 1000],
   ['day', 24 * 60 * 60 * 1000],
@@ -23,7 +25,7 @@ const RELATIVE_UNITS = [
   ['minute', 60 * 1000],
 ];
 
-export function relativeTime(ms) {
+export function relativeTime(ms: number | null): string {
   if (!ms) return 'Never contacted';
   const diff = Date.now() - ms;
   for (const [unit, unitMs] of RELATIVE_UNITS) {
@@ -33,12 +35,12 @@ export function relativeTime(ms) {
   return 'Last contacted just now';
 }
 
-function digitsOnly(value) {
+function digitsOnly(value: string): string {
   return value.replace(/\D/g, '');
 }
 
 // A JID never contains the '+' a user naturally types, so numbers match on digits-only strings instead of substring.
-export function matchesQuery(contact, query) {
+export function matchesQuery(contact: Contact, query: string): boolean {
   if (!query) return true;
   if (contact.name.toLowerCase().includes(query)) return true;
   const digits = digitsOnly(query);

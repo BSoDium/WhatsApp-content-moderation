@@ -8,7 +8,7 @@ function Avatar({
   className,
   size = "default",
   ...props
-}) {
+}: React.ComponentProps<typeof AvatarPrimitive.Root> & { size?: "default" | "sm" | "lg" }) {
   return (
     <AvatarPrimitive.Root
       data-slot="avatar"
@@ -25,7 +25,7 @@ function Avatar({
 function AvatarImage({
   className,
   ...props
-}) {
+}: React.ComponentProps<typeof AvatarPrimitive.Image>) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
@@ -41,7 +41,7 @@ function AvatarImage({
 function AvatarFallback({
   className,
   ...props
-}) {
+}: React.ComponentProps<typeof AvatarPrimitive.Fallback>) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
@@ -57,7 +57,7 @@ function AvatarFallback({
 function AvatarBadge({
   className,
   ...props
-}) {
+}: React.ComponentProps<"span">) {
   return (
     <span
       data-slot="avatar-badge"
@@ -76,7 +76,7 @@ function AvatarBadge({
 function AvatarGroup({
   className,
   ...props
-}) {
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="avatar-group"
@@ -92,7 +92,7 @@ function AvatarGroup({
 function AvatarGroupCount({
   className,
   ...props
-}) {
+}: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="avatar-group-count"

@@ -6,19 +6,30 @@ import { Separator } from '@/components/ui/separator';
 import { ContactAvatar } from './ContactAvatar';
 import { SettingRow } from './SettingRow';
 import { relativeTime } from '@/lib/contact';
+import type { Contact, OverrideCommand, RosterEntry } from '@/lib/types';
+
+interface ContactDetailPanelProps {
+  contact: Contact | null;
+  entry: RosterEntry | undefined;
+  onClose: () => void;
+  onToggleMonitor: (contactId: string, monitored: boolean) => Promise<void>;
+  onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
+  onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
+}
 
 // The caller mounts this with `key={contact.id}` so `message` resets by
 // remounting on a new selection, rather than needing an effect to reset it.
-export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation }) {
+export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation }: ContactDetailPanelProps) {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(() => new Set());
 
   if (!contact) return null;
 
+  const contactId = contact.id;
   const monitored = Boolean(entry);
 
   // Guards against a rapid double-click firing two overlapping requests for the same control (each key here is independent, so other controls stay usable).
-  async function withPending(key, fn) {
+  async function withPending(key: string, fn: () => Promise<unknown>): Promise<void> {
     setPending((prev) => new Set(prev).add(key));
     try {
       await fn();
@@ -31,8 +42,8 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
     }
   }
 
-  async function runAndReport(action) {
-    const result = await onRunCommand(contact.id, action);
+  async function runAndReport(action: OverrideCommand): Promise<void> {
+    const result = await onRunCommand(contactId, action);
     if (result !== undefined) setMessage(result);
   }
 

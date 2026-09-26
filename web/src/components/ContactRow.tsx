@@ -5,12 +5,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils';
 import { relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
+import type { Contact } from '@/lib/types';
 
-export function ContactRow({ contact, monitored, selected, onSelect, onToggle }) {
+interface ContactRowProps {
+  contact: Contact;
+  monitored: boolean;
+  selected: boolean;
+  onSelect: (contactId: string) => void;
+  onToggle: (contactId: string, monitored: boolean) => Promise<void>;
+}
+
+export function ContactRow({ contact, monitored, selected, onSelect, onToggle }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   const label = monitored ? 'Stop moderating this contact' : 'Moderate this contact';
 
-  async function handleToggle(event) {
+  async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
     setPending(true);
     try {
