@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY index.js ./
+COPY index.ts ./
 COPY src ./src
 COPY config/policy.example.md ./config/policy.example.md
 
@@ -20,4 +20,4 @@ VOLUME ["/app/auth_info", "/app/data", "/app/config"]
 
 USER node
 
-CMD ["node", "index.js"]
+CMD ["node", "--experimental-strip-types", "index.ts"]

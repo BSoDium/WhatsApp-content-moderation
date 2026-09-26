@@ -3,22 +3,23 @@
   "version": "0.1.0",
   "description": "A localised, background-hosted \"digital curtain\" for a personal WhatsApp account.",
   "type": "module",
-  "main": "index.js",
   "scripts": {
-    "start": "node --env-file-if-exists=.env index.js",
+    "start": "node --experimental-strip-types --env-file-if-exists=.env index.ts",
     "dev": "concurrently -n web,server -c cyan,green \"npm:watch:web\" \"npm:dev:server\"",
-    "dev:server": "nodemon --watch src --signal SIGTERM --exec \"node --env-file-if-exists=.env\" index.js",
+    "dev:server": "nodemon --watch src --ext ts --signal SIGTERM --exec \"node --experimental-strip-types --env-file-if-exists=.env\" index.ts",
     "build:web": "npm run --prefix web build",
     "watch:web": "npm run --prefix web watch",
     "pretest": "npm run build:web",
-    "test": "node --test src/buffer/message-buffer.test.js src/store/strikes.test.js src/store/blocks.test.js src/store/audit-log.test.js src/store/monitored-contacts.test.js src/pipeline/incoming-message.test.js src/pipeline/unblock-scheduler.test.js src/pipeline/moderation-pipeline.test.js src/classifier/classifier.test.js src/override/manual-override.test.js src/whatsapp/contact-directory.test.js src/web/tailscale-auth.test.js src/web/control-token-auth.test.js src/web/control-server.test.js",
-    "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
-    "prototype:block-unblock": "node src/prototype/test-block-unblock.js",
-    "classifier:test": "node src/classifier/test-classifier.js",
-    "store:test": "node src/store/test-store.js",
-    "buffer:test": "node src/buffer/test-buffer.js",
-    "pipeline:test": "node src/pipeline/test-pipeline.js",
-    "whatsapp:test-actions": "node src/whatsapp/test-actions.js"
+    "test": "node --experimental-strip-types --test src/buffer/message-buffer.test.ts src/store/strikes.test.ts src/store/blocks.test.ts src/store/audit-log.test.ts src/store/monitored-contacts.test.ts src/pipeline/incoming-message.test.ts src/pipeline/unblock-scheduler.test.ts src/pipeline/moderation-pipeline.test.ts src/classifier/classifier.test.ts src/override/manual-override.test.ts src/whatsapp/contact-directory.test.ts src/web/tailscale-auth.test.ts src/web/control-token-auth.test.ts src/web/control-server.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint index.ts 'src/**/*.ts'",
+    "prototype:delete-for-me": "node --experimental-strip-types src/prototype/test-delete-for-me.ts",
+    "prototype:block-unblock": "node --experimental-strip-types src/prototype/test-block-unblock.ts",
+    "classifier:test": "node --experimental-strip-types src/classifier/test-classifier.ts",
+    "store:test": "node --experimental-strip-types src/store/test-store.ts",
+    "buffer:test": "node --experimental-strip-types src/buffer/test-buffer.ts",
+    "pipeline:test": "node --experimental-strip-types src/pipeline/test-pipeline.ts",
+    "whatsapp:test-actions": "node --experimental-strip-types src/whatsapp/test-actions.ts"
   },
   "engines": {
     "node": ">=24"
@@ -43,7 +44,14 @@
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/qrcode-terminal": "^0.12.2",
     "concurrently": "^10.0.5",
-    "nodemon": "^3.1.14"
+    "eslint": "^10.11.0",
+    "nodemon": "^3.1.14",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1"
   }
 }

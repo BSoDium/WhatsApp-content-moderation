@@ -35,7 +35,7 @@ intervals, as a partial mitigation against that pattern being recognizable.
 ### Trigger, duration, and jitter (issue #8 design)
 
 - **Trigger**: a block fires the first time a contact's strike count (already
-  tracked by `src/store/strikes.js`) reaches `STRIKE_THRESHOLD` (default
+  tracked by `src/store/strikes.ts`) reaches `STRIKE_THRESHOLD` (default
   **3**) *and* they have no currently-active block row
   (`SELECT ... FROM blocks WHERE contact_id = ? AND unblocked_at IS NULL`).
   Checked right after `moderation-pipeline.js` records a strike, inside the
@@ -57,7 +57,7 @@ intervals, as a partial mitigation against that pattern being recognizable.
   just how promptly a due unblock gets noticed. A tick still running when
   the next one is due is skipped rather than overlapped, and a caller can
   await any tick already in flight before shutting down — see
-  `src/pipeline/unblock-scheduler.js`.
+  `src/pipeline/unblock-scheduler.ts`.
 - **Idempotency**: calls `updateBlockStatus(jid, 'unblock')` *before*
   `UPDATE blocks SET unblocked_at = ? WHERE id = ? AND unblocked_at IS NULL`
   — action first, record second, not the other way around. An earlier draft
@@ -105,7 +105,7 @@ scope to cover media without deciding this again first.
 
 ## Manual override channel (issue #9)
 
-The pause/status/unblock routines exist (`src/override/manual-override.js`),
+The pause/status/unblock routines exist (`src/override/manual-override.ts`),
 but **WhatsApp self-chat commands are not, and won't be, the way to drive
 them.** The issue's own follow-up comment called this out directly: a
 `!pause`-style chat command is too primitive a control surface — no room
@@ -129,7 +129,7 @@ reason above, not because the routines themselves were wrong:
   where losing the pause flag surprises anyone — persisting a flag whose
   whole purpose is a temporary human override would be the actual surprise.
 - **`unblock` bypasses the jittered schedule but reuses its exact
-  unblock-then-mark-resolved ordering** (`src/pipeline/unblock-scheduler.js`'s
+  unblock-then-mark-resolved ordering** (`src/pipeline/unblock-scheduler.ts`'s
   `runTick`): call `actions.unblock` first, only mark the local block record
   resolved if that succeeds. A failed WhatsApp call must leave the block
   record active for a later retry (manual or scheduled), not silently
@@ -142,7 +142,7 @@ Both of these still apply verbatim to whatever ends up calling
 
 Originally this ran against exactly one `TARGET_CONTACT_JID` env var. The
 pipeline, buffer, and all three SQLite stores were already parameterized by
-`contactId` throughout — only `index.js`'s wiring and
+`contactId` throughout — only `index.ts`'s wiring and
 `manual-override.js`'s constructor-bound target and global `paused` flag
 carried the single-contact assumption, so extending to many contacts was a
 wiring change, not a rearchitecture.
@@ -184,7 +184,7 @@ the audit log is the permanent record (see "State & audit log via SQLite"
 above). Re-adding the same contact later picks up wherever its strike count
 already was.
 
-**Known limitation, not yet solved:** `src/whatsapp/contact-directory.js`
+**Known limitation, not yet solved:** `src/whatsapp/contact-directory.ts`
 keys contacts by whatever id each Baileys event reports (the same id space
 `moderation-pipeline.js` already keys off `msg.key.remoteJid`), and does not
 cross-reference Baileys 7's split `@lid`/`@s.whatsapp.net` id spaces for the
@@ -282,7 +282,7 @@ for every contact synced before this feature existed, and every live
 count as "contacted") advances it from then on, always taking the `MAX` of
 old vs. new rather than last-write-wins, so an out-of-order event can never
 regress it. This tracking is deliberately separate from the moderation
-pipeline's own `messages.upsert` handling in `index.js` (which only
+pipeline's own `messages.upsert` handling in `index.ts` (which only
 processes monitored contacts) — this one runs for every contact, since the
 whole point of the list is to show *everyone*, not just who's being
 moderated.
@@ -310,7 +310,7 @@ regardless of timing.
 
 ## Web control app: Tailscale identity headers (issue #29)
 
-`src/web/control-server.js` is the control surface #9 needed: a static
+`src/web/control-server.ts` is the control surface #9 needed: a static
 page plus a JSON API in front of `manual-override.js`'s per-contact
 pause/resume/unblock routines, `contact-directory.js`'s known-contacts
 list, and the monitored-contacts roster (see "Multi-contact moderation
@@ -324,7 +324,7 @@ or unblock a contact.
 sets when proxying a tailnet request to a local port.** Tailscale has
 already authenticated the connection (tailnet membership itself requires
 signing in via the tailnet's own identity provider) before the request
-ever reaches this app, so `src/web/tailscale-auth.js` only has to compare
+ever reaches this app, so `src/web/tailscale-auth.ts` only has to compare
 that header against one allow-listed login (`ALLOWED_TAILSCALE_LOGIN`) —
 no login page, no password, no session/cookie handling, and no custom
 credential storage to get wrong. Chosen over the two other options raised
@@ -350,7 +350,7 @@ doesn't authenticate who's on the other end of a connection that already
 got there.
 
 **So there are two required factors, not one:** the header above, plus a
-`CONTROL_SERVER_TOKEN` shared secret (`src/web/control-token-auth.js`,
+`CONTROL_SERVER_TOKEN` shared secret (`src/web/control-token-auth.ts`,
 constant-time compared) that has to travel with every request via an
 `X-Control-Token` header, or a `token` query parameter for the very first
 page load. Nothing about a locally-forged `Tailscale-User-Login` header
@@ -432,7 +432,7 @@ again, no matter what was in `localStorage`. A cookie is the one credential
 type a browser *does* attach automatically to a navigation, which is
 exactly the gap here.
 
-`src/web/control-token-auth.js`'s `verifyControlCookie` reads a
+`src/web/control-token-auth.ts`'s `verifyControlCookie` reads a
 `controlToken` cookie and is accepted **only** by `GET /`, set (and its
 expiry refreshed) on every successful load of that route — `/api/*` still
 authenticates via `verifyControlToken`'s header/query check exclusively,
@@ -509,7 +509,7 @@ static file with zero runtime dependencies, generated instead of
 hand-written, committed to git same as always (no CI/build pipeline exists
 to regenerate it on deploy, so a stale build would otherwise silently ship
 old styles). `tailwind.config.js`'s `content` globs
-(`src/web/index.html`, `src/web/app.js`) only affect which utility classes
+(`src/web/index.html`, `src/web/app.ts`) only affect which utility classes
 get generated — they don't change what actually loads in the browser.
 
 **Palette: neutral black/white/gray (Tailwind's `zinc` scale), not
@@ -528,7 +528,7 @@ anything on this project's Node build.** The original reasoning: Node 20+
 ships file-watching restart natively (`--watch`), so there's no reason to
 add a dependency that exists purely to re-implement it, and `--watch-path`
 should scope what's watched explicitly rather than the whole project. A
-first bug under that design — passing `./index.js` as its own extra
+first bug under that design — passing `./index.ts` as its own extra
 `--watch-path` entry broadened scope enough to pick up
 `auth_info/creds.json` (rewritten on every WhatsApp reconnect),
 restart-looping the connection — was fixed by dropping that redundant
@@ -564,7 +564,7 @@ form.
 background) to correctly restart only on a genuine `src/` change** — the
 exact scoping the original decision wanted from `--watch-path` and didn't
 get. `dev:server` is now `nodemon --watch src --exec "node
---env-file-if-exists=.env" index.js`. The dependency-avoidance reasoning
+--env-file-if-exists=.env" index.ts`. The dependency-avoidance reasoning
 from the original decision no longer applies: the built-in flag doesn't do
 the one job it needed to do, so there's nothing left to avoid re-implementing.
 

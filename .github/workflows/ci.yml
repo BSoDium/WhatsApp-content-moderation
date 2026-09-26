@@ -31,6 +31,15 @@ jobs:
       - name: Install web dependencies
         run: npm ci --prefix web
 
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Check frontend types
+        run: npm run --prefix web typecheck
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run tests
         run: npm test
 
