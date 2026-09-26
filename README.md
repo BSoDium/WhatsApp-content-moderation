@@ -34,10 +34,12 @@ taken down the whole process) and a case where a successful block with a
 failed local write would leave a contact blocked with no record to ever
 auto-unblock — see the PR #21 history for detail, not repeated here.
 
-**Manual override routines built (2026-09-26).** Issue #9: pause/status/
-unblock logic for the live pipeline exists (`src/override/
-manual-override.js`), but isn't driven by WhatsApp chat commands — see
-"Manual override channel" below for why, and what will actually call it.
+**Manual override + web control app built (2026-09-26).** Issue #9's
+pause/status/unblock routines (`src/override/manual-override.js`) are
+driven by issue #29's Tailscale-authenticated web app (`src/web/`), not
+WhatsApp chat commands — see "Manual override routines" and "Web control
+app" below. Not yet validated against a live `tailscale serve` — see "Web
+control app"'s own callout.
 
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
@@ -69,7 +71,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines — `pause`/`resume`/`status`/`unblock`)
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port — not against a live `tailscale serve`, see "Web control app")
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -143,24 +145,16 @@ automatically after `BLOCK_DURATION_MS` (default **24h**) ± `BLOCK_JITTER_MS`
 **2 min**). All four are overridable via environment variable. `SHADOW_MODE`
 skips blocking along with everything else it already skips.
 
-## Manual override channel
+## Manual override routines
 
 Issue #9 originally proposed driving this via `!pause`/`!unblock`/`!status`
 commands sent from your own "Message yourself" chat. That's not how this
 ends up working — [see the issue's own follow-up
 comment](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9#issuecomment-5833459230):
 a WhatsApp chat command is too primitive a control surface (no room for
-things like rate limiting, no real visibility). The actual plan, tracked as
-[#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
-a small web app hosted by the same process, reachable only over the
-self-host's VPN — the main open question there is authentication, not the
-app itself.
-
-What does exist: the routines themselves
-(`src/override/manual-override.js`), already wired into the live pipeline
-so `isPaused()` gates it — see
-[`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9).
-Nothing calls `runCommand()` yet; that's for the eventual web app to do.
+things like rate limiting, no real visibility). The routines themselves
+(`src/override/manual-override.js`) are driven instead by the web control
+app below.
 
 - `pause` / `resume` — stop/resume classifying and actioning incoming
   messages entirely (no audit-log entries either while paused). Resets on
@@ -168,6 +162,50 @@ Nothing calls `runCommand()` yet; that's for the eventual web app to do.
 - `unblock` — unblock the moderated contact immediately, ahead of the
   jittered schedule.
 - `status` — current pause state, strike count, and block status.
+
+## Web control app
+
+Issue #29. A small web app hosted by the same process (`src/web/`),
+authenticated via Tailscale identity rather than any password/OAuth login
+— see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
+for the full reasoning. In short: the app trusts the `Tailscale-User-Login`
+header `tailscale serve` sets when proxying a request from the tailnet,
+checked against a single allow-listed login — no password, no session,
+no OAuth flow to get wrong.
+
+**Enabling it** (`.env` or environment):
+
+```
+WEB_CONTROL_PORT=4756
+ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
+```
+
+The process refuses to start if `WEB_CONTROL_PORT` is set without
+`ALLOWED_TAILSCALE_LOGIN` — fail closed rather than run unauthenticated.
+The server binds to `127.0.0.1` only, on purpose: it must be reachable
+*only* through `tailscale serve`'s local proxy hop, never directly, or the
+identity header becomes attacker-controlled input instead of an actual
+identity.
+
+**Running it**, on the same machine (bare-metal `npm start`, not yet
+supported under the default Docker Compose setup — see
+`docs/decisions.md`'s Docker note):
+
+```
+tailscale serve --bg 4756
+```
+
+Then open the HTTPS URL `tailscale serve status` prints, from a device on
+your tailnet, signed in as the allow-listed login.
+
+**Not yet validated against a live `tailscale serve`.** Automated tests
+(`src/web/control-server.test.js`, `src/web/tailscale-auth.test.js`) cover
+the HTTP/auth logic against a synthetic header, but not that
+`tailscale serve` actually sets/sanitizes `Tailscale-User-Login` the way
+this relies on. Before trusting this: open the page from the allow-listed
+device and confirm it works, then from a different tailnet device/login
+and confirm you're rejected. A request from any device that isn't on the
+tailnet shouldn't even reach the port at all, since it's bound to loopback.
 
 ## Classifier
 

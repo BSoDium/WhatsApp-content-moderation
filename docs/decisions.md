@@ -113,12 +113,8 @@ for things like rate limiting or a real view into what's happening, and it
 doesn't compose with an actual UI. The plan instead, tracked as
 [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
 a small web app hosted by the same process, reachable only over the
-self-host's VPN. That app is what will eventually call `runCommand()`;
-until it exists, `manual-override.js`'s routines are wired into `index.js`
-(`isPaused()` already gates the live pipeline) but unreachable from
-anywhere, which is expected — see that file's own comment. #29's real open
-question is authentication (VPN reachability alone isn't a fine-grained
-enough boundary — see that issue), not the app itself.
+self-host's VPN — see "Web control app: Tailscale identity headers (issue
+#29)" below for that app and what actually calls `runCommand()`.
 
 An earlier version of this feature did parse `!pause`/`!resume`/`!unblock`/
 `!status` out of the self-chat and reply there; it was removed for the
@@ -141,6 +137,70 @@ reason above, not because the routines themselves were wrong:
 
 Both of these still apply verbatim to whatever ends up calling
 `runCommand()`.
+
+## Web control app: Tailscale identity headers (issue #29)
+
+`src/web/control-server.js` is the control surface #9 needed: a static
+page plus a JSON API in front of `manual-override.js`'s
+pause/resume/status/unblock routines. The interesting decision is
+authentication, since "only reachable over the self-host's VPN" is not by
+itself a fine-grained enough boundary — anyone else who can reach that VPN
+(a guest, another device sharing it) shouldn't be able to pause moderation
+or unblock a contact.
+
+**Chosen: trust the `Tailscale-User-Login` header that `tailscale serve`
+sets when proxying a tailnet request to a local port.** Tailscale has
+already authenticated the connection (tailnet membership itself requires
+signing in via the tailnet's own identity provider) before the request
+ever reaches this app, so `src/web/tailscale-auth.js` only has to compare
+that header against one allow-listed login (`ALLOWED_TAILSCALE_LOGIN`) —
+no login page, no password, no session/cookie handling, and no custom
+credential storage to get wrong. Chosen over the two other options raised
+in #29:
+
+- **GitHub OAuth SSO** — sound, but strictly more code (OAuth callback
+  handling, state parameter, session cookie) for identity Tailscale is
+  already providing for free once you're actually using Tailscale day to
+  day, which is the case here. Left for later if this ever needs to run
+  without Tailscale in front of it — #29 stays open for that.
+- **Passkeys/WebAuthn directly** — ruled out for the reason already given
+  in #29: relying-party config, credential storage, and origin/HTTPS
+  requirements are real security-critical surface, disproportionate to a
+  single-user control panel.
+
+**This is only safe because the server is unreachable except through that
+proxy.** `createControlServer(...).listen()` hardcodes the loopback
+interface (`127.0.0.1`) rather than taking a host argument — if this
+process were reachable directly (bound to `0.0.0.0` or the tailnet
+interface IP), any tailnet peer could set `Tailscale-User-Login` on a
+request themselves and the header would stop meaning anything. The
+loopback bind is what makes `tailscale serve`'s local proxy hop the only
+path in, and its documented behavior is to overwrite (not merge)
+`Tailscale-User-*` headers on the way in — that documented sanitization,
+combined with this app never being reachable any other way, is the entire
+trust boundary. **Verify this behavior live before enabling on a real
+deployment** — see README "Web control app" for the manual check; nothing
+here has been confirmed against a running `tailscale serve` yet.
+
+**Docker note:** the bind-to-loopback guarantee only holds if the process's
+`127.0.0.1` is the same one `tailscale serve` is proxying from. Under
+`docker-compose.yml`'s default bridge network, the container's loopback is
+its own — `network_mode: host` (or an equivalent) is required to run this
+under Docker with Tailscale on the host. Not yet wired into
+`docker-compose.yml`; treat this feature as bare-metal (`npm start`) only
+until that's done.
+
+State-changing endpoints (`/api/pause`, `/api/resume`, `/api/unblock`)
+additionally require `Content-Type: application/json`. Auth here is
+header-based rather than a same-origin cookie, so without this check a
+malicious page open in the same browser could still trigger a mutating
+request over the tailnet (the browser sends it regardless of which site
+asked, since the tailnet is what authenticates it, not app-side state) —
+classic CSRF, just with network identity as the ambient credential instead
+of a cookie. Requiring a JSON content type forces a CORS preflight for any
+cross-origin request, and since this server never sends
+`Access-Control-Allow-Origin`, the browser refuses to send the real
+request. No CSRF token or session needed for that.
 
 ## `auth_info/` is a credential
 
