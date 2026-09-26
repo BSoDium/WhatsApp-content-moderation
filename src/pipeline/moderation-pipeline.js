@@ -166,6 +166,14 @@ async function runBurst({ contactId, messages }, { deleteForMe, sendWarning, blo
 
     strikeCount = recordStrike(contactId);
     logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete+warn' });
+    logMessage({
+      contactId,
+      direction: 'me',
+      message: WARNING_MESSAGE,
+      classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
+      action: 'warning_sent',
+    });
+    history.push({ from: 'me', text: WARNING_MESSAGE });
 
     if (!isBlocked) {
       isBlocked = await maybeBlockContact(contactId, strikeCount, block);
