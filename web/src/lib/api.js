@@ -1,8 +1,6 @@
 const TOKEN_KEY = 'controlToken';
 
-// Read at runtime from localStorage (populated by the inline bootstrap
-// script in index.html) — safe to serve this bundle unauthenticated since
-// its source never contains the token itself.
+// Populated by index.html's inline bootstrap script — safe to serve this bundle unauthenticated since its source never contains the token itself.
 export function getToken() {
   try {
     return localStorage.getItem(TOKEN_KEY);

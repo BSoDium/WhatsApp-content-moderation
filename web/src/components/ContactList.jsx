@@ -13,6 +13,7 @@ function sortedFiltered(contacts, query) {
 export function ContactList({ contacts, roster, selectedId, onSelect, onToggle }) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase()), [contacts, query]);
+  const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
 
   return (
     <div className="flex h-full flex-col">
@@ -29,7 +30,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle }
           <ContactRow
             key={contact.id}
             contact={contact}
-            monitored={roster.some((entry) => entry.id === contact.id)}
+            monitored={monitoredIds.has(contact.id)}
             selected={contact.id === selectedId}
             onSelect={onSelect}
             onToggle={onToggle}

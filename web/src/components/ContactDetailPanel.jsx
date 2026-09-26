@@ -11,10 +11,25 @@ import { relativeTime } from '@/lib/contact';
 // remounting on a new selection, rather than needing an effect to reset it.
 export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation }) {
   const [message, setMessage] = useState('');
+  const [pending, setPending] = useState(() => new Set());
 
   if (!contact) return null;
 
   const monitored = Boolean(entry);
+
+  // Guards against a rapid double-click firing two overlapping requests for the same control (each key here is independent, so other controls stay usable).
+  async function withPending(key, fn) {
+    setPending((prev) => new Set(prev).add(key));
+    try {
+      await fn();
+    } finally {
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
 
   async function runAndReport(action) {
     const result = await onRunCommand(contact.id, action);
@@ -38,7 +53,13 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         <SettingRow
           title="Moderate this contact"
           description={monitored ? undefined : 'Start tracking strikes and enable auto-blocking for this contact.'}
-          control={<Switch checked={monitored} onCheckedChange={(checked) => onToggleMonitor(contact.id, checked)} />}
+          control={
+            <Switch
+              checked={monitored}
+              disabled={pending.has('monitor')}
+              onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
+            />
+          }
         />
         <Separator />
         <SettingRow title="Strikes" control={<span>{entry?.strikeCount ?? 0}</span>} />
@@ -51,21 +72,35 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         <SettingRow
           title="Paused"
           description="Temporarily stop moderating without losing strike history."
-          control={<Switch checked={Boolean(entry?.paused)} disabled={!monitored} onCheckedChange={(checked) => runAndReport(checked ? 'pause' : 'resume')} />}
+          control={
+            <Switch
+              checked={Boolean(entry?.paused)}
+              disabled={!monitored || pending.has('pause')}
+              onCheckedChange={(checked) => withPending('pause', () => runAndReport(checked ? 'pause' : 'resume'))}
+            />
+          }
         />
         <Separator />
         <SettingRow
           title="Escalation"
           description="Automatically block this contact after too many strikes."
           control={
-            <Switch checked={entry?.escalationEnabled ?? true} disabled={!monitored} onCheckedChange={(checked) => onSetEscalation(contact.id, checked)} />
+            <Switch
+              checked={entry?.escalationEnabled ?? true}
+              disabled={!monitored || pending.has('escalation')}
+              onCheckedChange={(checked) => withPending('escalation', () => onSetEscalation(contact.id, checked))}
+            />
           }
         />
         <Separator />
       </div>
 
       <div className="mt-6">
-        <Button variant="destructive" disabled={!monitored} onClick={() => runAndReport('unblock')}>
+        <Button
+          variant="destructive"
+          disabled={!monitored || pending.has('unblock')}
+          onClick={() => withPending('unblock', () => runAndReport('unblock'))}
+        >
           Unblock now
         </Button>
         <p className="mt-3 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>

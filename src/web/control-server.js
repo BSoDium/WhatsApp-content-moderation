@@ -17,11 +17,7 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 const COMMAND_ROUTES = new Set(['pause', 'resume', 'unblock']);
 
-// 400 days — the maximum Chrome (and the emerging spec cap) will honor for
-// a Set-Cookie Max-Age regardless of what's sent; matches how long
-// localStorage effectively lasts (indefinitely, until cleared) so the two
-// mechanisms this page relies on don't have surprisingly different
-// lifetimes.
+// 400 days: the max Chrome will honor for Set-Cookie Max-Age, matching how long localStorage effectively lasts.
 const CONTROL_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 const ASSET_CONTENT_TYPES = {
@@ -32,19 +28,19 @@ const ASSET_CONTENT_TYPES = {
   '.woff': 'font/woff',
 };
 
-// Read per-request rather than cached at startup: `web/dist` is rebuilt by
-// a live `vite build --watch` while this server keeps running (unlike the
-// old two-fixed-file setup, a frontend change no longer needs a backend
-// restart at all — see docs/decisions.md's "Control page styling" for why
-// that coupling used to exist and why it was actively harmful once Vite's
-// rebuild could race a restart). `resolve` + a prefix check stops a
-// `/assets/../../..` escaping `DIST_DIR`.
+// Read per-request, not cached at startup — see docs/decisions.md's "Control page styling". A single try/catch (not existsSync+readFileSync) avoids racing a concurrent `vite build --watch`.
 function serveDistFile(res, pathname) {
   const filePath = resolve(DIST_DIR, `.${pathname}`);
   if (!filePath.startsWith(DIST_DIR + '/') && filePath !== DIST_DIR) return false;
-  if (!existsSync(filePath)) return false;
+  let body;
+  try {
+    body = readFileSync(filePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
   res.writeHead(200, { 'Content-Type': ASSET_CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream' });
-  res.end(readFileSync(filePath));
+  res.end(body);
   return true;
 }
 
@@ -89,6 +85,12 @@ function hasJsonContentType(req) {
   return req.headers['content-type']?.split(';')[0].trim() === 'application/json';
 }
 
+function requireJsonContentType(req, res) {
+  if (hasJsonContentType(req)) return true;
+  sendJson(res, 415, { error: 'Content-Type must be application/json' });
+  return false;
+}
+
 async function readValidatedJsonBody(req, res) {
   try {
     return await readJsonBody(req);
@@ -129,10 +131,7 @@ async function handleApi(req, res, segments, deps) {
   }
 
   if (req.method === 'POST' && segments.length === 1) {
-    if (!hasJsonContentType(req)) {
-      sendJson(res, 415, { error: 'Content-Type must be application/json' });
-      return true;
-    }
+    if (!requireJsonContentType(req, res)) return true;
     const body = await readValidatedJsonBody(req, res);
     if (body === undefined) return true;
     if (typeof body.contactId !== 'string' || body.contactId.length === 0) {
@@ -166,20 +165,14 @@ async function handleApi(req, res, segments, deps) {
         sendJson(res, 404, { error: 'not monitored' });
         return true;
       }
-      if (!hasJsonContentType(req)) {
-        sendJson(res, 415, { error: 'Content-Type must be application/json' });
-        return true;
-      }
+      if (!requireJsonContentType(req, res)) return true;
       const message = await manualOverride.runCommand(contactId, action);
       sendJson(res, 200, { message, ...manualOverride.getStatus(contactId) });
       return true;
     }
 
     if (action === 'escalation') {
-      if (!hasJsonContentType(req)) {
-        sendJson(res, 415, { error: 'Content-Type must be application/json' });
-        return true;
-      }
+      if (!requireJsonContentType(req, res)) return true;
       const body = await readValidatedJsonBody(req, res);
       if (body === undefined) return true;
       if (typeof body.enabled !== 'boolean') {
@@ -226,12 +219,18 @@ async function handleRequest(req, res, deps) {
   }
 
   if (isRootPage) {
-    // (Re)issued on every successful load, cookie- or token-authenticated
-    // alike, so a returning visit keeps sliding the expiry forward the same
-    // way localStorage never expires on its own.
+    let indexHtml;
+    try {
+      indexHtml = readFileSync(resolve(DIST_DIR, 'index.html'), 'utf8');
+    } catch (err) {
+      logger.error({ error: err.message }, 'web/dist/index.html missing — run `npm run build:web`');
+      sendJson(res, 503, { error: 'frontend not built' });
+      return;
+    }
+    // (Re)issued on every successful load, cookie- or token-authenticated alike, so a returning visit keeps sliding the expiry forward the same way localStorage never expires on its own.
     const cookie = `${CONTROL_TOKEN_COOKIE}=${encodeURIComponent(controlToken)}; Path=/; Max-Age=${CONTROL_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': cookie });
-    res.end(readFileSync(resolve(DIST_DIR, 'index.html'), 'utf8'));
+    res.end(indexHtml);
     return;
   }
 
@@ -306,6 +305,10 @@ async function handleRequest(req, res, deps) {
  * @returns {{ listen: (port: number) => Promise<number>, close: () => Promise<void> }}
  */
 export function createControlServer(deps) {
+  if (!existsSync(resolve(DIST_DIR, 'index.html'))) {
+    throw new Error(`${DIST_DIR}/index.html not found — run \`npm run build:web\` before starting the server`);
+  }
+
   const server = createServer((req, res) => {
     handleRequest(req, res, deps).catch((err) => {
       logger.error({ error: err?.message ?? String(err) }, 'request handler failed');

@@ -601,6 +601,17 @@ their working directory rather than merging into an existing one. Root
 `package.json` gained thin orchestration scripts instead
 (`build:web`/`watch:web` → `npm run --prefix web build`/`watch`).
 
+**Reconsidered during review, not changed: an npm workspace would get the
+same dependency-tree isolation with fewer seams.** Two independent
+lockfiles, the `npm run --prefix web` indirection in every root script, and
+`pretest` needing a full frontend build before backend unit tests can run
+at all are all real friction this two-`package.json` split pays for, and a
+single-root-lockfile npm workspace keeps the two dependency trees just as
+separate without any of it. Left as-is for now rather than restructured
+mid-review — the coming TypeScript migration will touch this same tooling
+boundary anyway (tsconfig project references, a shared build step), so
+it's a more natural point to revisit than a standalone change today.
+
 **Tailwind v4, not v3.** shadcn's current CLI scaffolds Tailwind v4 by
 default (`@tailwindcss/vite`, CSS-first config via `@theme`/`@import
 "tailwindcss"` — no more `tailwind.config.js` content globs), and fighting

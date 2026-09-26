@@ -32,9 +32,12 @@ function upsert(entry) {
     )
     .run({
       contactId: entry.id,
-      name: entry.name ?? null,
-      notify: entry.notify ?? null,
-      verifiedName: entry.verifiedName ?? null,
+      // `|| null`, not `?? null`: an empty string must COALESCE the same as
+      // a missing field (SQLite's COALESCE treats '' as non-null and would
+      // otherwise let it erase a previously-found name).
+      name: entry.name || null,
+      notify: entry.notify || null,
+      verifiedName: entry.verifiedName || null,
       lastMessageAt: entry.lastMessageAt ?? null,
       updatedAt: Date.now(),
     });
@@ -47,12 +50,14 @@ function ingest(entries = []) {
   }
 }
 
-// messaging-history.set's own `contacts` array carries name metadata but no
-// activity timestamp — `chats[].conversationTimestamp` is the only source
-// of "last contacted" for a contact synced before this feature existed,
-// i.e. everyone right after a fresh QR relink.
+// chats[].conversationTimestamp is the only source of "last contacted" for a contact synced before this feature existed, i.e. everyone right after a fresh QR relink.
 function ingestChats(chats = []) {
-  ingest(chats.map((chat) => ({ id: chat.id, lastMessageAt: chat.conversationTimestamp ? Number(chat.conversationTimestamp) * 1000 : null })));
+  ingest(
+    chats.map((chat) => ({
+      id: chat.id,
+      lastMessageAt: chat.conversationTimestamp != null ? Number(chat.conversationTimestamp) * 1000 : null,
+    })),
+  );
 }
 
 // Tracks activity for every contact, monitored or not (unlike the

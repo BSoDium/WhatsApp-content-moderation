@@ -49,6 +49,17 @@ test('a later contacts.update partial does not erase a fuller name from history 
   assert.equal(directory.get('alice@s.whatsapp.net').name, 'Alice');
 });
 
+test('an empty-string notify never erases a fuller name (COALESCE treats "" as non-null)', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messaging-history.set', { contacts: [{ id: 'alice@s.whatsapp.net', name: 'Alice' }] });
+  sock.emit('contacts.update', [{ id: 'alice@s.whatsapp.net', notify: '' }]);
+
+  assert.equal(directory.get('alice@s.whatsapp.net').name, 'Alice');
+});
+
 test('contacts.update on a never-seen contact still produces a usable entry via notify', () => {
   const directory = createContactDirectory();
   const sock = fakeSock();

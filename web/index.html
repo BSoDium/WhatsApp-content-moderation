@@ -7,6 +7,16 @@
     <title>Moderation control</title>
   </head>
   <body>
+    <script>
+      // Runs before the module script below to minimize how long the token sits in the address bar.
+      const urlToken = new URLSearchParams(location.search).get('token');
+      if (urlToken) {
+        try {
+          localStorage.setItem('controlToken', urlToken);
+          history.replaceState(null, '', location.pathname);
+        } catch {}
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

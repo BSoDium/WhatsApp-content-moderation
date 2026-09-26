@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -6,7 +7,18 @@ import { relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
 
 export function ContactRow({ contact, monitored, selected, onSelect, onToggle }) {
+  const [pending, setPending] = useState(false);
   const label = monitored ? 'Stop moderating this contact' : 'Moderate this contact';
+
+  async function handleToggle(event) {
+    event.stopPropagation();
+    setPending(true);
+    try {
+      await onToggle(contact.id, !monitored);
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <li
@@ -25,10 +37,8 @@ export function ContactRow({ contact, monitored, selected, onSelect, onToggle })
             size="icon"
             aria-label={label}
             aria-pressed={monitored}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggle(contact.id, !monitored);
-            }}
+            disabled={pending}
+            onClick={handleToggle}
           >
             <Ban />
           </Button>

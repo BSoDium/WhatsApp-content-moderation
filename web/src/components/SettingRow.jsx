@@ -1,6 +1,4 @@
-// Android-settings-style row: title (+ optional subtitle) on the left,
-// a single control flush right — reused for both toggles and read-only
-// stats so the whole panel lines up on one consistent grid.
+// Android-settings-style row: title/subtitle left, one control flush right — shared by toggles and read-only stats so the panel lines up on one grid.
 export function SettingRow({ title, description, control }) {
   return (
     <div className="flex items-center justify-between gap-6 py-3.5">

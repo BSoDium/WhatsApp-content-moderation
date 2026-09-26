@@ -4,20 +4,14 @@ import { apiFetch, getToken } from './api';
 const ROSTER_POLL_MS = 5000;
 const NO_TOKEN_ERROR = { title: 'No control token', description: 'Reload using the full link with ?token=... in the URL.' };
 
-// Controlled Switch/inputs read straight from `contacts`/`roster` state, so
-// a failed mutation just never applies the optimistic change React already
-// rendered — no separate "revert the switch" step needed, unlike the old
-// vanilla-DOM version this replaces.
+// Controlled Switch/inputs read straight from contacts/roster state, so a failed mutation never applies the optimistic change React already rendered.
 export function useControlData() {
   const [contacts, setContacts] = useState([]);
   const [roster, setRoster] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState(() => (getToken() ? null : NO_TOKEN_ERROR));
 
-  // Named function expressions (not bare arrows assigned to the outer
-  // const) so a retry closure can call the in-progress function by name
-  // without reading the outer binding before useCallback finishes
-  // returning it.
+  // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
   const refreshContacts = useCallback(async function refreshContacts() {
     try {
       setContacts(await apiFetch('/api/contacts'));
@@ -58,12 +52,13 @@ export function useControlData() {
           await apiFetch(`/api/roster/${encodeURIComponent(contactId)}`, { method: 'DELETE' });
         }
         setError(null);
-        await Promise.all([refreshRoster(), refreshContacts()]);
+        // Not refreshContacts() too: nothing reads /api/contacts' `monitored` field — ContactList derives it from `roster` instead.
+        await refreshRoster();
       } catch (err) {
         setError({ title: 'Could not update moderation', description: err.message, retry: () => setMonitored(contactId, monitored) });
       }
     },
-    [refreshContacts, refreshRoster],
+    [refreshRoster],
   );
 
   const runCommand = useCallback(
@@ -102,5 +97,7 @@ export function useControlData() {
     [refreshRoster],
   );
 
-  return { contacts, roster, selectedId, setSelectedId, error, setMonitored, runCommand, setEscalation };
+  const dismissError = useCallback(() => setError(null), []);
+
+  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation };
 }

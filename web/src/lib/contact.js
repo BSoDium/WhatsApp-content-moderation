@@ -1,5 +1,4 @@
-// A small fixed palette rather than a full HSL wheel, so colors stay
-// legible against both light and dark surfaces without per-theme tuning.
+// A small fixed palette, not a full HSL wheel, so colors stay legible against both light and dark surfaces without per-theme tuning.
 const AVATAR_COLORS = ['#1d7874', '#c65102', '#5b3a9e', '#0f6e94', '#a8325e', '#2f7a3f', '#8a5a00', '#3f51b5'];
 
 export function colorFor(contactId) {
@@ -15,6 +14,7 @@ export function initialsFor(name) {
   return letters.toUpperCase();
 }
 
+const RELATIVE_TIME_FORMAT = new Intl.RelativeTimeFormat('en', { numeric: 'always' });
 const RELATIVE_UNITS = [
   ['year', 365 * 24 * 60 * 60 * 1000],
   ['month', 30 * 24 * 60 * 60 * 1000],
@@ -28,7 +28,7 @@ export function relativeTime(ms) {
   const diff = Date.now() - ms;
   for (const [unit, unitMs] of RELATIVE_UNITS) {
     const count = Math.floor(diff / unitMs);
-    if (count >= 1) return `Last contacted ${count} ${unit}${count > 1 ? 's' : ''} ago`;
+    if (count >= 1) return `Last contacted ${RELATIVE_TIME_FORMAT.format(-count, unit)}`;
   }
   return 'Last contacted just now';
 }
@@ -37,8 +37,7 @@ function digitsOnly(value) {
   return value.replace(/\D/g, '');
 }
 
-// Numbers never match by substring alone: a JID never contains the '+' a
-// user naturally types, so search on digits-only strings for that half.
+// A JID never contains the '+' a user naturally types, so numbers match on digits-only strings instead of substring.
 export function matchesQuery(contact, query) {
   if (!query) return true;
   if (contact.name.toLowerCase().includes(query)) return true;
