@@ -214,9 +214,7 @@ mistyped port silently disabling the whole thing. The server binds to
 `127.0.0.1` only, on purpose: it must be reachable *only* through
 `tailscale serve`'s local proxy hop, never directly.
 
-**Running it**, on the same machine (bare-metal `npm start`, not yet
-supported under the default Docker Compose setup — see
-`docs/decisions.md`'s Docker note):
+**Running it**, on the same machine:
 
 ```
 tailscale serve --bg 4756
@@ -378,40 +376,49 @@ Sources: [Celeron G3930T spec (Intel)](https://www.intel.com/content/www/us/en/p
 - **Scheduler**: periodic check for expired blocks, jittered rather than fixed-interval
 - **Deployment**: self-hosted on the reference hardware above, Docker with `restart: always`, auth state on a persisted + backed-up volume
 
-## Container deployment
+## Debian install and updates
 
-Cloning this repo onto the reference hardware and running
-`docker compose up -d` brings up the whole stack — the bot and an `ollama`
-service — with `restart: always`, so it survives a reboot without a
-systemd unit of its own.
+On a Debian x86-64 host with Docker Compose and Tailscale installed:
 
-```
+```sh
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
-cp .env.example .env            # fill in the values you need — see .env.example
-cp config/policy.example.md config/policy.md   # fill in the real policy
-docker compose up -d
-docker compose exec ollama ollama pull llama3.2:3b   # one-time, until the model volume has it
+cp .env.example .env
+cp config/policy.example.md config/policy.md
+mkdir -p auth_info data
+chmod 600 .env config/policy.md
+chmod 700 auth_info data
+sudo chown -R 1000:1000 auth_info data
 ```
 
-First run still needs the QR code scanned interactively (see "Running
-it"): `docker compose logs -f app` prints it the same way `npm start`
-does, and it's also written to `auth_info/login-qr.png` on the host, since
-that directory is bind-mounted. Every later restart reuses the linked
-session in `auth_info/` without a rescan.
+Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
+`ALLOWED_TAILSCALE_LOGIN`, generate `CONTROL_SERVER_TOKEN` with
+`openssl rand -hex 24`, and start with `SHADOW_MODE=1`. Write your own
+moderation rules in `config/policy.md` before connecting a real account.
+Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` private and
+back up the session and database.
 
-`auth_info/`, `data/`, and `config/policy.md` are bind-mounted from the
-host (see `docker-compose.yml`) rather than baked into the image or left
-as anonymous volumes — same reasoning as `docs/decisions.md`'s
-"`auth_info/` is a credential": back up `auth_info/` and `data/` like you
-would any other credential/state, not just the repo.
+```sh
+docker compose up -d --build
+docker compose exec ollama ollama pull llama3.2:3b
+docker compose logs -f app
+```
 
-The container runs as the image's non-root `node` user; if the bot fails
-to write to `auth_info/` or `data/` after a fresh `git clone`, `chown` those
-host directories to that user's uid (`1000` on the `node:24-alpine` base).
+Scan the displayed QR from WhatsApp → Linked devices. Then run
+`sudo tailscale serve --bg 4756` and open the URL from `sudo tailscale
+serve status` with `?token=<CONTROL_SERVER_TOKEN>` appended. Add a contact
+in the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
+Check that the page works from your allowed Tailscale login and is rejected
+for another login; this live check is not automated.
 
-Pulling `ghcr.io/bsodium/whatsapp-content-moderation:latest` instead of
-building locally works too — every tagged release publishes an image
-there (see `.github/workflows/container.yml`) — but `docker-compose.yml`
-builds from source by default so a local change is always what actually
-runs.
+The app uses host networking so its loopback-only control server is the
+same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and
+is published on host loopback only. To update from GitHub, run:
+
+```sh
+git pull --ff-only
+docker compose up -d --build app
+```
+
+Your `.env`, policy, WhatsApp session, SQLite data, and downloaded model
+persist across app rebuilds. Back them up before host maintenance.

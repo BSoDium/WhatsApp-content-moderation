@@ -1,3 +1,11 @@
+FROM node:24-alpine AS web-build
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM node:24-alpine
 
 WORKDIR /app
@@ -7,6 +15,7 @@ RUN npm ci --omit=dev
 
 COPY index.ts ./
 COPY src ./src
+COPY --from=web-build /web/dist ./web/dist
 COPY config/policy.example.md ./config/policy.example.md
 
 ENV NODE_ENV=production

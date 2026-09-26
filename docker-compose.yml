@@ -3,13 +3,12 @@ services:
     build: .
     image: ghcr.io/bsodium/whatsapp-content-moderation:latest
     restart: always
+    # Shares the Debian host loopback so host Tailscale Serve can proxy safely.
+    network_mode: host
     env_file:
       - .env
     environment:
-      # Reachable by service name on the compose network — overrides
-      # whatever OLLAMA_HOST is set to in .env, which defaults to
-      # 127.0.0.1 for the non-Docker "npm start" case.
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: http://127.0.0.1:11434
     volumes:
       # WhatsApp session keys — see docs/decisions.md "auth_info/ is a
       # credential". Back this directory up; losing it means re-linking.
@@ -25,6 +24,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: always
+    ports:
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama:/root/.ollama
 
