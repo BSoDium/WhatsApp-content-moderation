@@ -1,6 +1,6 @@
 # WhatsApp-content-moderation
 
-A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from one specific contact through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks the contact after repeated strikes.
+A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from an operator-chosen set of monitored contacts through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks a contact after repeated strikes (unless that contact has escalation turned off).
 
 ## Status
 
@@ -41,6 +41,12 @@ WhatsApp chat commands — see "Manual override routines" and "Web control
 app" below. Not yet validated against a live `tailscale serve` — see "Web
 control app"'s own callout.
 
+**Multi-contact roster + redesigned control app built (2026-09-26).** Issue
+#32: `TARGET_CONTACT_JID` is gone — moderated contacts are now an
+operator-managed roster with a per-contact escalation toggle, added/removed
+through the control app's contact picker and tabs. See "Web control app"
+below and [`docs/decisions.md`](docs/decisions.md#multi-contact-moderation-roster-issue-32).
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -50,22 +56,18 @@ Remaining roadmap: [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Running it
 
-Not yet run against a real account — see issue #15. Requires `config/policy.md` filled in (see "Classifier" below), Ollama running, and `TARGET_CONTACT_JID` set to the one contact this should moderate:
+Not yet run against a real account — see issue #15. Requires `config/policy.md` filled in (see "Classifier" below), Ollama running, and the [web control app](#web-control-app) enabled — moderated contacts are chosen entirely through its picker now, there's no env var to set here:
 
 ```
 npm install
-TARGET_CONTACT_JID=15551234567@s.whatsapp.net npm start
+WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com CONTROL_SERVER_TOKEN=... npm start
 ```
 
-First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Every other incoming message from `TARGET_CONTACT_JID` gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everything else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
+First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Once connected, open the control app and add a contact to the monitored-contacts roster — every incoming message from a monitored contact gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everyone else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
 
-No second number handy? Set `TEST_ALLOW_SELF=1` and point `TARGET_CONTACT_JID` at your own JID — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself:
+No second number handy? Set `TEST_ALLOW_SELF=1` and add your own JID to the roster instead — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself.
 
-```
-TARGET_CONTACT_JID=15551234567@s.whatsapp.net TEST_ALLOW_SELF=1 SHADOW_MODE=1 npm start
-```
-
-Your own "Message yourself" chat isn't always addressed by your phone-number JID — some accounts route it through the newer `@lid` form instead (e.g. `110599736393979@lid`). If messages you send yourself never reach the pipeline under `TEST_ALLOW_SELF`, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`) rather than assuming the phone-number form.
+Your own "Message yourself" chat isn't always addressed by your phone-number JID — some accounts route it through the newer `@lid` form instead (e.g. `110599736393979@lid`). If messages you send yourself never reach the pipeline under `TEST_ALLOW_SELF`, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`, or check the control app's contact picker) rather than assuming the phone-number form.
 
 ## Testing each layer in isolation
 
@@ -156,24 +158,44 @@ things like rate limiting, no real visibility). The routines themselves
 (`src/override/manual-override.js`) are driven instead by the web control
 app below.
 
+Every routine is per-contact (issue #32) — pausing or unblocking one
+monitored contact never affects another:
+
 - `pause` / `resume` — stop/resume classifying and actioning incoming
-  messages entirely (no audit-log entries either while paused). Resets on
-  restart.
-- `unblock` — unblock the moderated contact immediately, ahead of the
-  jittered schedule.
-- `status` — current pause state, strike count, and block status.
+  messages for that contact entirely (no audit-log entries either while
+  paused). Resets on restart.
+- `unblock` — unblock that contact immediately, ahead of the jittered
+  schedule.
+- Status (pause state, strike count, block status) isn't a command — it's
+  read directly via `getStatus(contactId)`, which the control app polls to
+  render each contact's tab.
 
 ## Web control app
 
-Issue #29. A small web app hosted by the same process (`src/web/`),
-authenticated via Tailscale identity rather than any password/OAuth login
-— see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
-for the full reasoning. Two factors, both required: the `Tailscale-User-Login`
-header `tailscale serve` sets when proxying a request from the tailnet,
-checked against a single allow-listed login; and a `CONTROL_SERVER_TOKEN`
-shared secret, because the header alone isn't proof a request actually came
-through `tailscale serve` rather than some other local process on the same
-machine setting it directly.
+Issues #29 and #32. A small web app hosted by the same process
+(`src/web/`), authenticated via Tailscale identity rather than any
+password/OAuth login — see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
+for the full reasoning. Two factors, both required on the page (`GET /`)
+and every `/api/*` route: the `Tailscale-User-Login` header `tailscale
+serve` sets when proxying a request from the tailnet, checked against a
+single allow-listed login; and a `CONTROL_SERVER_TOKEN` shared secret,
+because the header alone isn't proof a request actually came through
+`tailscale serve` rather than some other local process on the same machine
+setting it directly. `GET /styles.css` and `GET /app.js` are the only two
+unauthenticated routes — neither contains a secret, and a stylesheet/script
+tag can't attach the token header anyway — see
+[`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
+
+This is where contacts actually get moderated: a top search box adds a
+contact to the monitored-contacts roster (matched by name or JID against
+whatever Baileys has learned about your contacts so far — a contact who's
+never messaged and isn't in your phone's synced address book will only show
+up as a bare number), and each monitored contact gets its own tab with
+strikes, block status, a pause switch, an escalation switch (turn off
+auto-blocking for a contact you can't afford to actually block — the rest
+of moderation still runs), an unblock button, and a "stop monitoring"
+action. Removing a contact from the roster only stops future moderation —
+its strike/block/audit history is kept.
 
 **Enabling it** (`.env` or environment):
 
@@ -344,7 +366,7 @@ systemd unit of its own.
 ```
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
-cp .env.example .env            # fill in TARGET_CONTACT_JID, etc. — see .env.example
+cp .env.example .env            # fill in the values you need — see .env.example
 cp config/policy.example.md config/policy.md   # fill in the real policy
 docker compose up -d
 docker compose exec ollama ollama pull llama3.2:3b   # one-time, until the model volume has it
