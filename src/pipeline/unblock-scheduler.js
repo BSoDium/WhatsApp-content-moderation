@@ -6,7 +6,16 @@ const POLL_INTERVAL_MS = Number(process.env.UNBLOCK_POLL_INTERVAL_MS ?? 2 * 60 *
 
 const logger = pino({ name: 'unblock-scheduler' });
 
-async function runTick(actions) {
+/**
+ * Runs one poll pass: unblocks every expired block via actions.unblock,
+ * then marks it resolved (see startUnblockScheduler's JSDoc for why in
+ * that order). Exported so tests can drive a single pass directly against
+ * a real store instead of waiting on setInterval.
+ *
+ * @param {{ unblock: (contactId: string) => Promise<void> }} actions
+ * @returns {Promise<void>}
+ */
+export async function runTick(actions) {
   for (const record of getExpiredBlocks()) {
     try {
       await actions.unblock(record.contact_id);
