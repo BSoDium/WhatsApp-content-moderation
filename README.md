@@ -1,6 +1,6 @@
 # WhatsApp-content-moderation
 
-A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from one specific contact through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks the contact after repeated strikes.
+A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from an operator-chosen set of monitored contacts through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks a contact after repeated strikes (unless that contact has escalation turned off).
 
 ## Status
 
@@ -34,6 +34,19 @@ taken down the whole process) and a case where a successful block with a
 failed local write would leave a contact blocked with no record to ever
 auto-unblock — see the PR #21 history for detail, not repeated here.
 
+**Manual override + web control app built (2026-09-26).** Issue #9's
+pause/status/unblock routines (`src/override/manual-override.js`) are
+driven by issue #29's Tailscale-authenticated web app (`src/web/`), not
+WhatsApp chat commands — see "Manual override routines" and "Web control
+app" below. Not yet validated against a live `tailscale serve` — see "Web
+control app"'s own callout.
+
+**Multi-contact roster + redesigned control app built (2026-09-26).** Issue
+#32: `TARGET_CONTACT_JID` is gone — moderated contacts are now an
+operator-managed roster with a per-contact escalation toggle, added/removed
+through the control app's contact picker and tabs. See "Web control app"
+below and [`docs/decisions.md`](docs/decisions.md#multi-contact-moderation-roster-issue-32).
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -43,28 +56,24 @@ Remaining roadmap: [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Running it
 
-Not yet run against a real account — see issue #15. Requires `config/policy.md` filled in (see "Classifier" below), Ollama running, and `TARGET_CONTACT_JID` set to the one contact this should moderate:
+Not yet run against a real account — see issue #15. Requires `config/policy.md` filled in (see "Classifier" below), Ollama running, and the [web control app](#web-control-app) enabled — moderated contacts are chosen entirely through its picker now, there's no env var to set here:
 
 ```
 npm install
-TARGET_CONTACT_JID=15551234567@s.whatsapp.net npm start
+WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com CONTROL_SERVER_TOKEN=... npm start
 ```
 
-First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Every other incoming message from `TARGET_CONTACT_JID` gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everything else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
+First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Once connected, open the control app and add a contact to the monitored-contacts roster — every incoming message from a monitored contact gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everyone else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
 
-No second number handy? Set `TEST_ALLOW_SELF=1` and point `TARGET_CONTACT_JID` at your own JID — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself:
+No second number handy? Set `TEST_ALLOW_SELF=1` and add your own JID to the roster instead — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself.
 
-```
-TARGET_CONTACT_JID=15551234567@s.whatsapp.net TEST_ALLOW_SELF=1 SHADOW_MODE=1 npm start
-```
-
-Your own "Message yourself" chat isn't always addressed by your phone-number JID — some accounts route it through the newer `@lid` form instead (e.g. `110599736393979@lid`). If messages you send yourself never reach the pipeline under `TEST_ALLOW_SELF`, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`) rather than assuming the phone-number form.
+Your own "Message yourself" chat isn't always addressed by your phone-number JID — some accounts route it through the newer `@lid` form instead (e.g. `110599736393979@lid`). If messages you send yourself never reach the pipeline under `TEST_ALLOW_SELF`, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`, or check the control app's contact picker) rather than assuming the phone-number form.
 
 ## Testing each layer in isolation
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test`
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port — not against a live `tailscale serve`, see "Web control app")
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -137,6 +146,117 @@ automatically after `BLOCK_DURATION_MS` (default **24h**) ± `BLOCK_JITTER_MS`
 (default **4h**), checked every `UNBLOCK_POLL_INTERVAL_MS` (default
 **2 min**). All four are overridable via environment variable. `SHADOW_MODE`
 skips blocking along with everything else it already skips.
+
+## Manual override routines
+
+Issue #9 originally proposed driving this via `!pause`/`!unblock`/`!status`
+commands sent from your own "Message yourself" chat. That's not how this
+ends up working — [see the issue's own follow-up
+comment](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9#issuecomment-5833459230):
+a WhatsApp chat command is too primitive a control surface (no room for
+things like rate limiting, no real visibility). The routines themselves
+(`src/override/manual-override.js`) are driven instead by the web control
+app below.
+
+Every routine is per-contact (issue #32) — pausing or unblocking one
+monitored contact never affects another:
+
+- `pause` / `resume` — stop/resume classifying and actioning incoming
+  messages for that contact entirely (no audit-log entries either while
+  paused). Resets on restart.
+- `unblock` — unblock that contact immediately, ahead of the jittered
+  schedule.
+- Status (pause state, strike count, block status) isn't a command — it's
+  read directly via `getStatus(contactId)`, which the control app polls to
+  render each contact's tab.
+
+## Web control app
+
+Issues #29 and #32. A small web app hosted by the same process
+(`src/web/`), authenticated via Tailscale identity rather than any
+password/OAuth login — see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
+for the full reasoning. Two factors, both required on the page (`GET /`)
+and every `/api/*` route: the `Tailscale-User-Login` header `tailscale
+serve` sets when proxying a request from the tailnet, checked against a
+single allow-listed login; and a `CONTROL_SERVER_TOKEN` shared secret,
+because the header alone isn't proof a request actually came through
+`tailscale serve` rather than some other local process on the same machine
+setting it directly. `GET /assets/*` (the built frontend's JS/CSS/font
+bundle) is the only unauthenticated route — none of it contains a secret,
+and a stylesheet/script tag can't attach the token header anyway — see
+[`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
+
+This is where contacts actually get moderated: a scrollable list shows
+every contact Baileys has learned about so far (a contact who's never
+messaged and isn't in your phone's synced address book will only show up
+as a bare number), searchable by name or number, each with a switch that
+directly turns moderation on/off. Clicking a contact (not the switch) opens
+a detail panel — strikes, block status, a pause switch, an escalation
+switch (turn off auto-blocking for a contact you can't afford to actually
+block — the rest of moderation still runs), and an unblock button. Turning
+a contact's switch off only stops future moderation — its strike/block/
+audit history is kept.
+
+**Enabling it** (`.env` or environment):
+
+```
+WEB_CONTROL_PORT=4756
+ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
+CONTROL_SERVER_TOKEN=                     # generate: node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+```
+
+The process refuses to start if `WEB_CONTROL_PORT` is set without both of
+the other two — fail closed rather than run unauthenticated or with a
+mistyped port silently disabling the whole thing. The server binds to
+`127.0.0.1` only, on purpose: it must be reachable *only* through
+`tailscale serve`'s local proxy hop, never directly.
+
+**Running it**, on the same machine (bare-metal `npm start`, not yet
+supported under the default Docker Compose setup — see
+`docs/decisions.md`'s Docker note):
+
+```
+tailscale serve --bg 4756
+```
+
+Then open `https://<tailscale-hostname>/?token=<CONTROL_SERVER_TOKEN>` (the
+hostname is whatever `tailscale serve status` prints) from a device signed
+in as the allow-listed login. The page moves the token out of the URL and
+into `localStorage` on load, so it isn't left sitting in the address bar or
+browser history after that first open, and a `controlToken` cookie is also
+set on that same response so a later plain reload (no `?token=...` in the
+URL) still authenticates — see `docs/decisions.md`'s "Web control app:
+Tailscale identity headers" for why only `GET /` accepts that cookie.
+
+**Developing the frontend**: the page is a Vite + React app in
+[`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) components
+on Tailwind CSS v4 — add a component with `npx shadcn@latest add
+<component>` from inside `web/`. `npm run dev` (repo root) runs the backend
+under `nodemon` (scoped to `src/` only — see `docs/decisions.md`'s "`npm run
+dev`" note for why this is `nodemon` and not Node's own `--watch`) and `vite
+build --watch` side by side; `control-server.js` reads `web/dist/` fresh on
+every request rather than caching it at startup, so a frontend change just
+needs a plain browser reload — no server restart, and no risk of hitting
+the backend mid-rebuild (see `docs/decisions.md`'s "Control page styling"
+for why an earlier version restarted the server on every frontend change,
+and why that was a real bug, not a feature). `npm run build:web` alone does
+a one-off production build; `npm test` runs it automatically first
+(`pretest`), since `control-server.test.js` serves real files out of
+`web/dist/`.
+
+That link carries the token in cleartext until the page's own script strips
+it, so treat it as a one-time credential: don't paste it into chat, a shared
+note, or shell history you'd keep around. If it ever is, regenerate
+`CONTROL_SERVER_TOKEN` and restart.
+
+**Not yet validated against a live `tailscale serve`.** Automated tests
+(`src/web/control-server.test.js`, `src/web/tailscale-auth.test.js`) cover
+the HTTP/auth logic against a synthetic header, but not that
+`tailscale serve` actually sets/sanitizes `Tailscale-User-Login` the way
+this relies on. Before trusting this: open the page from the allow-listed
+device and confirm it works, then from a different tailnet device/login
+and confirm you're rejected. A request from any device that isn't on the
+tailnet shouldn't even reach the port at all, since it's bound to loopback.
 
 ## Classifier
 
@@ -265,7 +385,7 @@ systemd unit of its own.
 ```
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
-cp .env.example .env            # fill in TARGET_CONTACT_JID, etc. — see .env.example
+cp .env.example .env            # fill in the values you need — see .env.example
 cp config/policy.example.md config/policy.md   # fill in the real policy
 docker compose up -d
 docker compose exec ollama ollama pull llama3.2:3b   # one-time, until the model volume has it

@@ -5,8 +5,13 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "node --test src/buffer/message-buffer.test.js src/store/strikes.test.js src/store/blocks.test.js src/store/audit-log.test.js src/pipeline/incoming-message.test.js src/pipeline/unblock-scheduler.test.js src/pipeline/moderation-pipeline.test.js src/classifier/classifier.test.js",
+    "start": "node --env-file-if-exists=.env index.js",
+    "dev": "concurrently -n web,server -c cyan,green \"npm:watch:web\" \"npm:dev:server\"",
+    "dev:server": "nodemon --watch src --signal SIGTERM --exec \"node --env-file-if-exists=.env\" index.js",
+    "build:web": "npm run --prefix web build",
+    "watch:web": "npm run --prefix web watch",
+    "pretest": "npm run build:web",
+    "test": "node --test src/buffer/message-buffer.test.js src/store/strikes.test.js src/store/blocks.test.js src/store/audit-log.test.js src/store/monitored-contacts.test.js src/pipeline/incoming-message.test.js src/pipeline/unblock-scheduler.test.js src/pipeline/moderation-pipeline.test.js src/classifier/classifier.test.js src/override/manual-override.test.js src/whatsapp/contact-directory.test.js src/web/tailscale-auth.test.js src/web/control-token-auth.test.js src/web/control-server.test.js",
     "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
     "prototype:block-unblock": "node src/prototype/test-block-unblock.js",
     "classifier:test": "node src/classifier/test-classifier.js",
@@ -36,5 +41,9 @@
     "pino": "^9.5.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5",
+    "nodemon": "^3.1.14"
   }
 }

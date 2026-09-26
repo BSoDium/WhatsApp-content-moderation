@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Moderation control</title>
+  </head>
+  <body>
+    <script>
+      // Runs before the module script below to minimize how long the token sits in the address bar.
+      const urlToken = new URLSearchParams(location.search).get('token');
+      if (urlToken) {
+        try {
+          localStorage.setItem('controlToken', urlToken);
+          history.replaceState(null, '', location.pathname);
+        } catch {}
+      }
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

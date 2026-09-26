@@ -28,7 +28,13 @@ import pino from 'pino';
 export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSocket, onOpen, onClose } = {}) {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-  const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false });
+  // Requests the phone's *complete* chat history at link time (not just a
+  // recent window), so contact-directory.js's one-time messaging-history.set
+  // sync seeds every contact ever messaged, not a trimmed recent subset —
+  // see docs/decisions.md's contact-directory persistence note. Only takes
+  // effect on a fresh link (QR scan); a reconnect using an existing
+  // auth_info/ session never re-requests history at all, full or not.
+  const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false, syncFullHistory: true });
 
   sock.ev.on('creds.update', saveCreds);
   onSocket?.(sock);

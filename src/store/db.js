@@ -39,9 +39,37 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS audit_log_contact_idx
   ON audit_log (contact_id, created_at);
+
+CREATE TABLE IF NOT EXISTS monitored_contacts (
+  contact_id TEXT PRIMARY KEY,
+  escalation_enabled INTEGER NOT NULL DEFAULT 1,
+  added_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  contact_id TEXT PRIMARY KEY,
+  name TEXT,
+  notify TEXT,
+  verified_name TEXT,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 let db;
+
+// One-off, narrowly-scoped exception to this project's "no migrations,
+// pre-release" stance (see docs/decisions.md): CREATE TABLE IF NOT EXISTS
+// can't retroactively add a column to a contacts table that already shipped
+// in an earlier commit, and unlike the roster/env-var concepts that's fine
+// to drop outright, an existing contacts table can hold a real contact list
+// a user only got by actually relinking their WhatsApp device — not
+// something to force them to redo.
+function migrateContactsTable(database) {
+  const hasLastMessageAt = database
+    .prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'last_message_at'")
+    .get();
+  if (!hasLastMessageAt) database.exec('ALTER TABLE contacts ADD COLUMN last_message_at INTEGER');
+}
 
 // Lazy-opened, like policy.js's loadPolicy, so importing this module never
 // has a side effect and every caller shares one connection.
@@ -55,6 +83,7 @@ export function getDb() {
   db = new DatabaseSync(dbPath);
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
+  migrateContactsTable(db);
   return db;
 }
 
