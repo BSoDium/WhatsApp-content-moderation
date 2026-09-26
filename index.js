@@ -5,6 +5,7 @@ import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.j
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
 import { createManualOverride } from './src/override/manual-override.js';
+import { createControlServer } from './src/web/control-server.js';
 import { closeDb } from './src/store/db.js';
 import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.js';
 
@@ -13,11 +14,20 @@ const QR_PNG_PATH = './auth_info/login-qr.png';
 const TARGET_CONTACT_JID = process.env.TARGET_CONTACT_JID;
 // No second number handy? Set TEST_ALLOW_SELF=1 — see README "Testing each layer in isolation".
 const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
+// See README "Web control app" / docs/decisions.md "Web control app:
+// Tailscale identity headers (issue #29)" before enabling this.
+const WEB_CONTROL_PORT = process.env.WEB_CONTROL_PORT ? Number(process.env.WEB_CONTROL_PORT) : undefined;
+const ALLOWED_TAILSCALE_LOGIN = process.env.ALLOWED_TAILSCALE_LOGIN;
 
 if (!TARGET_CONTACT_JID) {
   console.error(
     'Set TARGET_CONTACT_JID to the WhatsApp JID of the contact to moderate (e.g. 15551234567@s.whatsapp.net).',
   );
+  process.exit(1);
+}
+
+if (WEB_CONTROL_PORT && !ALLOWED_TAILSCALE_LOGIN) {
+  console.error('WEB_CONTROL_PORT is set but ALLOWED_TAILSCALE_LOGIN is not — refusing to start the control server unauthenticated.');
   process.exit(1);
 }
 
@@ -41,18 +51,20 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
   }
 });
 
-// Not yet driven by anything — see docs/decisions.md "Manual override
-// channel (issue #9)". Wired here so isPaused() already gates the pipeline
-// once a control surface (planned: a VPN-accessible web app) exists to call
-// runCommand().
 const manualOverride = createManualOverride({
   targetContactId: TARGET_CONTACT_JID,
   unblock: (jid) => unblock(sock, jid),
 });
 
 let unblockScheduler;
+let controlServer;
 
 async function start() {
+  if (WEB_CONTROL_PORT) {
+    controlServer = createControlServer({ manualOverride, allowedLogin: ALLOWED_TAILSCALE_LOGIN });
+    await controlServer.listen(WEB_CONTROL_PORT);
+  }
+
   await connectWhatsApp({
     authDir: AUTH_DIR,
     qrPngPath: QR_PNG_PATH,
@@ -78,6 +90,7 @@ async function start() {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
+  await controlServer?.close();
   await unblockScheduler?.stop();
   await buffer.flushAll();
   await Promise.allSettled(pendingBursts());
