@@ -23,7 +23,7 @@ got `HANDOFF.md` retired in the first place.
    Block/unblock flow with jittered scheduler.
 6. ~~[#9](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9)~~ —
    **done**. Manual override routines (pause/status/unblock —
-   `src/override/manual-override.js`); not via the WhatsApp self-chat
+   `src/override/manual-override.ts`); not via the WhatsApp self-chat
    commands originally proposed — see `docs/decisions.md`.
 6b. [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29) —
    the actual control surface: a Tailscale-authenticated web app

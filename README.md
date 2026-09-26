@@ -17,7 +17,7 @@ output, fail-open. See "Classifier" below.
 
 **Live pipeline wired up (2026-09-26).** `deleteForMe`, `sendWarning`, and
 block/unblock all confirmed working end-to-end against real WhatsApp
-accounts (see "Validating..." sections below), and `index.js` wires
+accounts (see "Validating..." sections below), and `index.ts` wires
 strike → warn → delete into a live connection.
 
 **Block/unblock scheduler built and validated (2026-09-26).** Issue #8:
@@ -35,7 +35,7 @@ failed local write would leave a contact blocked with no record to ever
 auto-unblock — see the PR #21 history for detail, not repeated here.
 
 **Manual override + web control app built (2026-09-26).** Issue #9's
-pause/status/unblock routines (`src/override/manual-override.js`) are
+pause/status/unblock routines (`src/override/manual-override.ts`) are
 driven by issue #29's Tailscale-authenticated web app (`src/web/`), not
 WhatsApp chat commands — see "Manual override routines" and "Web control
 app" below. Not yet validated against a live `tailscale serve` — see "Web
@@ -63,7 +63,10 @@ npm install
 WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com CONTROL_SERVER_TOKEN=... npm start
 ```
 
-First run needs the QR code scanned interactively, same as the prototypes below — `index.js` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Once connected, open the control app and add a contact to the monitored-contacts roster — every incoming message from a monitored contact gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everyone else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
+The backend uses Node 24's built-in TypeScript stripping at runtime. Run
+`npm run typecheck` and `npm run lint` to check the backend before starting it.
+
+First run needs the QR code scanned interactively, same as the prototypes below — `index.ts` reuses `auth_info/`, so it picks up an existing link from `prototype:delete-for-me` if you've already run that. Once connected, open the control app and add a contact to the monitored-contacts roster — every incoming message from a monitored contact gets buffered, classified, and acted on for real (delete-for-me + warning + strike on a flag); everyone else is ignored. `SHADOW_MODE=1` classifies and logs without acting, for watching it against real traffic first.
 
 No second number handy? Set `TEST_ALLOW_SELF=1` and add your own JID to the roster instead — same idea as `prototype:delete-for-me`'s flag of the same name — to validate the live pipeline against messages you send yourself.
 
@@ -155,7 +158,7 @@ ends up working — [see the issue's own follow-up
 comment](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9#issuecomment-5833459230):
 a WhatsApp chat command is too primitive a control surface (no room for
 things like rate limiting, no real visibility). The routines themselves
-(`src/override/manual-override.js`) are driven instead by the web control
+(`src/override/manual-override.ts`) are driven instead by the web control
 app below.
 
 Every routine is per-contact (issue #32) — pausing or unblocking one
@@ -250,7 +253,7 @@ note, or shell history you'd keep around. If it ever is, regenerate
 `CONTROL_SERVER_TOKEN` and restart.
 
 **Not yet validated against a live `tailscale serve`.** Automated tests
-(`src/web/control-server.test.js`, `src/web/tailscale-auth.test.js`) cover
+(`src/web/control-server.test.ts`, `src/web/tailscale-auth.test.ts`) cover
 the HTTP/auth logic against a synthetic header, but not that
 `tailscale serve` actually sets/sanitizes `Tailscale-User-Login` the way
 this relies on. Before trusting this: open the page from the allow-listed

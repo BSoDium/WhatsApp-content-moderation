@@ -1,0 +1,212 @@
+import pino from 'pino';
+import { classifyMessage } from '../classifier/classifier.ts';
+import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
+import { logMessage, getAuditLog } from '../store/audit-log.ts';
+import { createBlock, getActiveBlock } from '../store/blocks.ts';
+import { isEscalationEnabled } from '../store/monitored-contacts.ts';
+import type { WAMessageKey } from '@whiskeysockets/baileys';
+import type { IncomingMessage } from '../types.ts';
+
+interface Burst {
+  contactId: string;
+  messages: IncomingMessage[];
+}
+
+interface BurstActions {
+  deleteForMe: (contactId: string, key: WAMessageKey, timestamp: number) => Promise<unknown>;
+  sendWarning: (contactId: string, text: string) => Promise<unknown>;
+  block: (contactId: string) => Promise<unknown>;
+  classify?: typeof classifyMessage;
+}
+
+type ConversationMessage = { from: 'me' | 'them'; text: string };
+
+const SHADOW_MODE = process.env.SHADOW_MODE === '1';
+const HISTORY_LIMIT = Number(process.env.CLASSIFIER_HISTORY_LIMIT ?? 10);
+const WARNING_MESSAGE =
+  process.env.WARNING_MESSAGE ?? "That message was removed for violating this chat's policy.";
+// See docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
+const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3);
+const BLOCK_DURATION_MS = Number(process.env.BLOCK_DURATION_MS ?? 24 * 60 * 60 * 1000);
+const BLOCK_JITTER_MS = Number(process.env.BLOCK_JITTER_MS ?? 4 * 60 * 60 * 1000);
+// Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
+const MIN_BLOCK_MS = 60 * 1000;
+
+const logger = pino({ name: 'pipeline' });
+
+function loadHistory(contactId: string): ConversationMessage[] {
+  return getAuditLog(contactId, HISTORY_LIMIT)
+    .reverse()
+    .map((row) => ({ from: row.direction === 'me' ? 'me' : 'them', text: row.message }));
+}
+
+// Per-contact promise chain so two bursts for the same contact never run handleBurst concurrently (see handleBurst's own JSDoc below).
+const contactQueues = new Map<string, Promise<unknown>>();
+
+function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
+  const prior = contactQueues.get(contactId) ?? Promise.resolve();
+  const next = prior.then(run, run);
+  contactQueues.set(
+    contactId,
+    next.catch(() => {}),
+  );
+  return next;
+}
+
+/**
+ * Runs one flushed burst of messages from a contact (src/buffer/) through
+ * the classifier and acts on each verdict: delete-for-me + a warning reply
+ * + a strike for a flagged message, a strike decay for a passed one. Prior
+ * audit-log entries seed classifyMessage's history, and earlier messages in
+ * this same burst are folded in as they're processed, so a burst is judged
+ * as a conversation rather than message-by-message in isolation (see
+ * docs/roadmap.md issue #6).
+ *
+ * Fails open per classifyMessage's { ok: false } contract: an
+ * unclassifiable message is logged and left alone, never deleted, warned,
+ * or struck. The same applies if deleteForMe/sendWarning themselves throw
+ * (a real possibility — see AGENTS.md's "Error handling"): the failure is
+ * logged and the message is left unstruck rather than recording a strike
+ * for an action that didn't actually complete.
+ *
+ * Shadow mode (SHADOW_MODE=1) classifies and audit-logs every message but
+ * skips delete/warn/strike/block entirely, for watching classifier behavior
+ * on real traffic before trusting it to act — see docs/roadmap.md issue #7.
+ *
+ * A strike count reaching STRIKE_THRESHOLD triggers a block, unless the
+ * contact already has one active or has escalation disabled on the
+ * monitored-contacts roster (strikes/delete/warn/audit-log still happen
+ * either way — only the block step is gated) — see docs/decisions.md
+ * "Trigger, duration, and jitter (issue #8 design)". Unblocking is handled
+ * separately by src/pipeline/unblock-scheduler.ts, not here.
+ *
+ * Bursts for the same contactId are serialized (see `serialize` above), so
+ * this is safe to call concurrently from the buffer's per-contact flushes.
+ *
+ * @param {{
+ *   contactId: string,
+ *   messages: { text: string, key: object, timestamp: number }[],
+ * }} burst
+ * @param {{
+ *   deleteForMe: (contactId: string, key: object, timestamp: number) => Promise<void>,
+ *   sendWarning: (contactId: string, text: string) => Promise<void>,
+ *   block: (contactId: string) => Promise<void>,
+ *   classify?: typeof classifyMessage,
+ * }} actions
+ * @returns {Promise<{ strikeCount: number }>}
+ */
+export async function handleBurst(burst: Burst, actions: BurstActions): Promise<{ strikeCount: number }> {
+  return serialize(burst.contactId, () => runBurst(burst, actions));
+}
+
+/**
+ * The in-flight handleBurst promise for every contact currently mid-burst,
+ * for a caller (index.ts's shutdown()) to await before exiting so a burst
+ * that's already classifying/acting doesn't get silently abandoned.
+ *
+ * @returns {Promise<unknown>[]}
+ */
+export function pendingBursts(): Promise<unknown>[] {
+  return [...contactQueues.values()];
+}
+
+// Symmetric jitter in [-ms, +ms], applied once at block time — see docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
+function jitter(ms: number): number {
+  return Math.round((Math.random() * 2 - 1) * ms);
+}
+
+/**
+ * Blocks contactId once strikeCount crosses STRIKE_THRESHOLD, unless they
+ * already have an active block. Logs two distinct failure modes: block()
+ * (the external call) throwing means nothing happened and the next flagged
+ * message will retry cleanly, but block() succeeding and createBlock (the
+ * local record) then throwing leaves the contact actually blocked with no
+ * row for unblock-scheduler.js to ever find — that needs a searchable log
+ * line of its own, not a generic "block failed" that reads as a no-op.
+ *
+ * @returns {Promise<boolean>} whether contactId ends this call blocked, so
+ *   a caller iterating several messages in one burst can skip the
+ *   getActiveBlock read once a block's already succeeded this burst.
+ */
+async function maybeBlockContact(contactId: string, strikeCount: number, block: BurstActions['block']): Promise<boolean> {
+  if (strikeCount < STRIKE_THRESHOLD) return false;
+  if (getActiveBlock(contactId)) return true;
+
+  if (!isEscalationEnabled(contactId)) {
+    logger.info({ contactId, strikeCount }, 'strike threshold crossed but escalation is disabled for this contact; skipping block');
+    return false;
+  }
+
+  const unblockAt = Date.now() + Math.max(BLOCK_DURATION_MS + jitter(Math.min(BLOCK_JITTER_MS, BLOCK_DURATION_MS)), MIN_BLOCK_MS);
+  let blockedOnWhatsApp = false;
+  try {
+    await block(contactId);
+    blockedOnWhatsApp = true;
+    createBlock(contactId, unblockAt);
+    logger.info({ contactId, strikeCount, unblockAt }, 'contact blocked');
+    return true;
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    const message = blockedOnWhatsApp
+      ? 'contact was blocked on WhatsApp but the local block record failed to save — will not auto-unblock, needs manual intervention'
+      : 'block failed';
+    logger.error({ contactId, error }, message);
+    return false;
+  }
+}
+
+async function runBurst(
+  { contactId, messages }: Burst,
+  { deleteForMe, sendWarning, block, classify = classifyMessage }: BurstActions,
+): Promise<{ strikeCount: number }> {
+  const history = loadHistory(contactId);
+  let strikeCount = getStrikeCount(contactId);
+  let isBlocked = false;
+
+  for (const { text, key, timestamp } of messages) {
+    const classification = await classify({ message: text, history });
+    history.push({ from: 'them', text });
+
+    if (!classification.ok) {
+      logger.warn({ contactId, error: classification.error }, 'classification failed; fail-open, no action taken');
+      logMessage({ contactId, direction: 'them', message: text, classification, action: 'classifier_error' });
+      continue;
+    }
+
+    if (SHADOW_MODE) {
+      logMessage({ contactId, direction: 'them', message: text, classification, action: 'shadow' });
+      continue;
+    }
+
+    if (!classification.flagged) {
+      strikeCount = decayStrike(contactId);
+      logMessage({ contactId, direction: 'them', message: text, classification, action: 'none' });
+      continue;
+    }
+
+    try {
+      await Promise.all([deleteForMe(contactId, key, timestamp), sendWarning(contactId, WARNING_MESSAGE)]);
+    } catch (err) {
+      logger.error({ contactId, error: err instanceof Error ? err.message : String(err) }, 'deleteForMe/sendWarning failed');
+      logMessage({ contactId, direction: 'them', message: text, classification, action: 'action_failed' });
+      continue;
+    }
+
+    strikeCount = recordStrike(contactId);
+    logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete+warn' });
+    logMessage({
+      contactId,
+      direction: 'me',
+      message: WARNING_MESSAGE,
+      classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
+      action: 'warning_sent',
+    });
+    history.push({ from: 'me', text: WARNING_MESSAGE });
+
+    if (!isBlocked) {
+      isBlocked = await maybeBlockContact(contactId, strikeCount, block);
+    }
+  }
+
+  return { strikeCount };
+}
