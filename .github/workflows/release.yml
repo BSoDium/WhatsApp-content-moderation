@@ -85,5 +85,5 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
           script: |
-            const script = require('./.github/scripts/summarize-release.js');
+            const script = require('./.github/scripts/summarize-release.cjs');
             await script({ github, context, core });
