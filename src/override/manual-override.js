@@ -26,15 +26,15 @@ const logger = pino({ name: 'manual-override' });
  * @returns {{
  *   isPaused: () => boolean,
  *   getStatus: () => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null },
- *   runCommand: (command: 'pause' | 'resume' | 'status' | 'unblock') => Promise<string | null>,
+ *   runCommand: (command: 'pause' | 'resume' | 'unblock') => Promise<string | null>,
  * }}
  */
 export function createManualOverride({ targetContactId, unblock }) {
   let paused = false;
+  // contactIds with an unblock in flight, so concurrent 'unblock' calls can't both call the real unblock() action.
+  const unblockInFlight = new Set();
 
-  // Structured form of "status", for a caller (src/web/control-server.js's
-  // JSON API) that wants fields to render rather than a formatted string —
-  // runCommand('status') below is just this, rendered as text.
+  // Structured form of "status" for a JSON caller (src/web/control-server.js).
   function getStatus() {
     const strikeCount = getStrikeCount(targetContactId);
     const activeBlock = getActiveBlock(targetContactId);
@@ -53,26 +53,32 @@ export function createManualOverride({ targetContactId, unblock }) {
         logger.info('moderation resumed via manual override');
         return 'Moderation resumed.';
 
-      case 'status': {
-        const status = getStatus();
-        const blockStatus = status.block ? `blocked until ${new Date(status.block.unblockAt).toISOString()}` : 'not blocked';
-        return `Paused: ${status.paused}\nStrikes: ${status.strikeCount}\nBlock: ${blockStatus}`;
-      }
-
       case 'unblock': {
+        if (unblockInFlight.has(targetContactId)) return 'Unblock already in progress.';
+
         const block = getActiveBlock(targetContactId);
         if (!block) return 'Contact is not currently blocked.';
 
+        unblockInFlight.add(targetContactId);
         try {
-          await unblock(targetContactId);
-        } catch (err) {
-          logger.error({ error: err?.message ?? String(err) }, 'manual unblock failed');
-          return `Unblock failed: ${err?.message ?? String(err)}`;
-        }
+          try {
+            await unblock(targetContactId);
+          } catch (err) {
+            logger.error({ error: err?.message ?? String(err) }, 'manual unblock failed');
+            return `Unblock failed: ${err?.message ?? String(err)}`;
+          }
 
-        markUnblocked(block.id);
-        logger.info({ targetContactId, blockId: block.id }, 'contact manually unblocked via manual override');
-        return 'Contact unblocked.';
+          // Matches src/pipeline/unblock-scheduler.js's runTick — don't report success for a block someone else already resolved.
+          if (!markUnblocked(block.id)) {
+            logger.warn({ targetContactId, blockId: block.id }, 'block was already marked unblocked (overlapping request or scheduler tick)');
+            return 'Contact was already unblocked.';
+          }
+
+          logger.info({ targetContactId, blockId: block.id }, 'contact manually unblocked via manual override');
+          return 'Contact unblocked.';
+        } finally {
+          unblockInFlight.delete(targetContactId);
+        }
       }
 
       default:
