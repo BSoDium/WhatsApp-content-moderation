@@ -1,0 +1,89 @@
+name: Release CI
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to re-summarize (e.g. v0.5.0)'
+        required: true
+      apply:
+        description: 'Write the summary to the release (unchecked = dry-run, just logs it)'
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Node.js
+        if: github.event_name == 'push'
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: github.event_name == 'push'
+        run: npm ci
+
+      # Tags aren't required to have gone through CI first — run the same
+      # suite here so a release can't be cut from a broken tree.
+      - name: Run tests
+        if: github.event_name == 'push'
+        run: npm test
+
+      - name: Get tag name
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if pre-release
+        if: github.event_name == 'push'
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Strip leading 'v' then check for hyphen (e.g. 1.0.0-alpha.1)
+          VERSION="${TAG#v}"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summarize release notes with AI
+        uses: actions/github-script@v9
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          APPLY: ${{ github.event_name == 'push' || inputs.apply }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          script: |
+            const script = require('./.github/scripts/summarize-release.js');
+            await script({ github, context, core });
