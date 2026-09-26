@@ -103,13 +103,33 @@ explicitly if/when multimodal classification is worth the added complexity
 and (for a CPU-only host) the added inference cost; don't silently expand
 scope to cover media without deciding this again first.
 
-## Manual override channel (not yet built)
+## Manual override channel (issue #9)
 
-A nice-to-have: send yourself commands (`!pause`, `!unblock`, `!status`)
-from your own "Message yourself" chat, so you can intervene without
-shelling into the host machine. Not built yet — the strike/block pipeline
-(see `docs/roadmap.md`) needs to exist first before there's anything to
-override.
+Send yourself commands (`!pause`, `!resume`, `!unblock`, `!status`) from
+your own "Message yourself" chat, to intervene without shelling into the
+host machine — see `src/override/override-channel.js`.
+
+- **Gating mirrors the moderated-contact side, inverted.** `extractIncomingMessage`
+  (see `src/pipeline/incoming-message.js`) accepts messages from the target
+  contact and rejects our own; `extractOverrideMessage` does the opposite —
+  only `fromMe: true` messages in the chat whose `remoteJid` is the
+  account's own JID. An override is by definition something only the
+  account owner can send.
+- **`!pause`/`!resume` state is in-memory only**, reset on restart. A
+  restart already means someone is actively working on the host, so there's
+  no scenario where losing the pause flag surprises anyone — persisting a
+  flag whose whole purpose is a temporary human override would be the
+  actual surprise.
+- **Pausing skips the pipeline entirely** rather than routing through
+  shadow mode: no classification, no audit-log entry, nothing pushed to the
+  buffer. `!status` still works while paused since it reads the strike/block
+  stores directly, not the buffer.
+- **`!unblock` bypasses the jittered schedule but reuses its exact
+  unblock-then-mark-resolved ordering** (`src/pipeline/unblock-scheduler.js`'s
+  `runTick`): call `actions.unblock` first, only mark the local block record
+  resolved if that succeeds. A failed WhatsApp call must leave the block
+  record active for a later retry (manual or scheduled), not silently
+  "succeed" locally while the contact stays blocked on WhatsApp.
 
 ## `auth_info/` is a credential
 

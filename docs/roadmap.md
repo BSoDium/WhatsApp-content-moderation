@@ -21,8 +21,9 @@ got `HANDOFF.md` retired in the first place.
    Strike → warning-reply → delete-for-me pipeline (includes shadow mode).
 5. [#8](https://github.com/BSoDium/WhatsApp-content-moderation/issues/8) —
    Block/unblock flow with jittered scheduler.
-6. [#9](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9) —
-   Manual override channel (optional).
+6. ~~[#9](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9)~~ —
+   **done**. Manual override channel (optional). See `src/override/`,
+   README "Manual override channel", and `docs/decisions.md`.
 7. [#10](https://github.com/BSoDium/WhatsApp-content-moderation/issues/10) —
    Docker packaging for the reference-hardware deployment.
 

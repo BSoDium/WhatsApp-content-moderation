@@ -34,6 +34,11 @@ taken down the whole process) and a case where a successful block with a
 failed local write would leave a contact blocked with no record to ever
 auto-unblock — see the PR #21 history for detail, not repeated here.
 
+**Manual override channel built (2026-09-26).** Issue #9: `!pause`,
+`!resume`, `!unblock`, and `!status` sent from your own "Message yourself"
+chat, so the live pipeline can be paused/checked/unblocked without shelling
+into the host — see "Manual override channel" below.
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -64,7 +69,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test`
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override channel — command parsing, self-chat gating, `!pause`/`!resume`/`!status`/`!unblock`)
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -137,6 +142,24 @@ automatically after `BLOCK_DURATION_MS` (default **24h**) ± `BLOCK_JITTER_MS`
 (default **4h**), checked every `UNBLOCK_POLL_INTERVAL_MS` (default
 **2 min**). All four are overridable via environment variable. `SHADOW_MODE`
 skips blocking along with everything else it already skips.
+
+## Manual override channel
+
+Issue #9. Send commands from your own "Message yourself" chat to intervene
+without shelling into the host machine — see
+[`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9)
+for the design:
+
+- `!pause` — stop classifying/actioning incoming messages entirely (no
+  audit-log entries either) until `!resume`. Resets on restart.
+- `!resume` — undo `!pause`.
+- `!unblock` — unblock the moderated contact immediately, ahead of the
+  jittered schedule.
+- `!status` — reply with current pause state, strike count, and block
+  status.
+
+The bot replies in the same "Message yourself" chat with the result of each
+command.
 
 ## Classifier
 
