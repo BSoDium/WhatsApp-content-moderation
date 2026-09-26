@@ -1,30 +1,9 @@
-// Throwaway validation script — confirms whether Baileys' "delete for me"
-// app-state sync action actually removes an incoming message from the
-// linked phone, before any of the moderation logic gets built on top of it.
+// Throwaway validation script — see README "Validating 'delete for me'".
 //
-// Run on the machine you intend to self-host on (needs an interactive
-// terminal to scan the QR code with your phone):
-//
-//   npm install
 //   npm run prototype:delete-for-me
-//
-// Then, from a second WhatsApp account, send this account a test message.
-// The script will delete it "for me" a few seconds later and log the
-// result. Check your phone: did the message disappear?
-//
-// No second number handy? Set TEST_ALLOW_SELF=1 to also react to messages
-// you send yourself (e.g. the "Message yourself" chat). The deleteForMe
-// app-state patch doesn't care who sent the message, so this still tests
-// the mechanism this prototype exists to validate — just skip straight to
-// production with a real contact once this establishes it works:
-//
-//   TEST_ALLOW_SELF=1 npm run prototype:delete-for-me
+//   TEST_ALLOW_SELF=1 npm run prototype:delete-for-me   # no second number handy
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
-import qrcode from 'qrcode-terminal';
-import QRCode from 'qrcode';
-import pino from 'pino';
+import { connectWhatsApp } from '../whatsapp/connection.js';
 
 const AUTH_DIR = './auth_info';
 const DELETE_DELAY_MS = 3000;
@@ -32,75 +11,54 @@ const QR_PNG_PATH = './auth_info/login-qr.png';
 const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  await connectWhatsApp({
+    authDir: AUTH_DIR,
+    qrPngPath: QR_PNG_PATH,
+    onSocket: (sock) => {
+      sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
 
-  const sock = makeWASocket({
-    auth: state,
-    logger: pino({ level: 'silent' }),
-    printQRInTerminal: false,
-  });
+        for (const msg of messages) {
+          if (!msg.message) continue;
+          if (msg.key.fromMe && !ALLOW_SELF) continue;
 
-  sock.ev.on('creds.update', saveCreds);
+          const from = msg.key.remoteJid;
+          const text =
+            msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? '(non-text message)';
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
+          console.log(`[received] from=${from} text=${JSON.stringify(text)}`);
+          console.log(`Deleting for me in ${DELETE_DELAY_MS}ms...`);
 
-    if (qr) {
-      console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
-      qrcode.generate(qr, { small: true });
-      QRCode.toFile(QR_PNG_PATH, qr, { width: 400 })
-        .then(() => console.log(`[qr] also saved to ${QR_PNG_PATH}`))
-        .catch((err) => console.error('[qr] failed to save PNG:', err));
-    }
-
-    if (connection === 'close') {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log('Connection closed.', { statusCode, shouldReconnect });
-      if (shouldReconnect) start();
-    } else if (connection === 'open') {
+          setTimeout(async () => {
+            try {
+              await sock.chatModify(
+                {
+                  deleteForMe: {
+                    deleteMedia: false,
+                    key: msg.key,
+                    timestamp: Number(msg.messageTimestamp) * 1000,
+                  },
+                },
+                from,
+              );
+              console.log(`[deleteForMe] app-state patch sent for key=${msg.key.id}`);
+              console.log('>>> Now check your phone: did the message vanish? <<<');
+            } catch (err) {
+              console.error('[deleteForMe] failed:', err);
+            }
+          }, DELETE_DELAY_MS);
+        }
+      });
+    },
+    onOpen: () => {
       console.log('\nConnected. Waiting for a message from a test contact...\n');
       if (ALLOW_SELF) {
         console.log('TEST_ALLOW_SELF=1: also watching for messages you send yourself.\n');
       } else {
         console.log('Send this account any text message from another number, then watch your phone.\n');
       }
-    }
-  });
-
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-
-    for (const msg of messages) {
-      if (!msg.message) continue;
-      if (msg.key.fromMe && !ALLOW_SELF) continue;
-
-      const from = msg.key.remoteJid;
-      const text =
-        msg.message.conversation ?? msg.message.extendedTextMessage?.text ?? '(non-text message)';
-
-      console.log(`[received] from=${from} text=${JSON.stringify(text)}`);
-      console.log(`Deleting for me in ${DELETE_DELAY_MS}ms...`);
-
-      setTimeout(async () => {
-        try {
-          await sock.chatModify(
-            {
-              deleteForMe: {
-                deleteMedia: false,
-                key: msg.key,
-                timestamp: Number(msg.messageTimestamp) * 1000,
-              },
-            },
-            from,
-          );
-          console.log(`[deleteForMe] app-state patch sent for key=${msg.key.id}`);
-          console.log('>>> Now check your phone: did the message vanish? <<<');
-        } catch (err) {
-          console.error('[deleteForMe] failed:', err);
-        }
-      }, DELETE_DELAY_MS);
-    }
+    },
+    onClose: ({ statusCode, shouldReconnect }) => console.log('Connection closed.', { statusCode, shouldReconnect }),
   });
 }
 
