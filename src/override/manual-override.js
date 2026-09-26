@@ -25,11 +25,21 @@ const logger = pino({ name: 'manual-override' });
  * }} deps
  * @returns {{
  *   isPaused: () => boolean,
+ *   getStatus: () => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null },
  *   runCommand: (command: 'pause' | 'resume' | 'status' | 'unblock') => Promise<string | null>,
  * }}
  */
 export function createManualOverride({ targetContactId, unblock }) {
   let paused = false;
+
+  // Structured form of "status", for a caller (src/web/control-server.js's
+  // JSON API) that wants fields to render rather than a formatted string —
+  // runCommand('status') below is just this, rendered as text.
+  function getStatus() {
+    const strikeCount = getStrikeCount(targetContactId);
+    const activeBlock = getActiveBlock(targetContactId);
+    return { paused, strikeCount, block: activeBlock ? { unblockAt: activeBlock.unblock_at } : null };
+  }
 
   async function runCommand(command) {
     switch (command) {
@@ -44,10 +54,9 @@ export function createManualOverride({ targetContactId, unblock }) {
         return 'Moderation resumed.';
 
       case 'status': {
-        const strikeCount = getStrikeCount(targetContactId);
-        const block = getActiveBlock(targetContactId);
-        const blockStatus = block ? `blocked until ${new Date(block.unblock_at).toISOString()}` : 'not blocked';
-        return `Paused: ${paused}\nStrikes: ${strikeCount}\nBlock: ${blockStatus}`;
+        const status = getStatus();
+        const blockStatus = status.block ? `blocked until ${new Date(status.block.unblockAt).toISOString()}` : 'not blocked';
+        return `Paused: ${status.paused}\nStrikes: ${status.strikeCount}\nBlock: ${blockStatus}`;
       }
 
       case 'unblock': {
@@ -71,5 +80,5 @@ export function createManualOverride({ targetContactId, unblock }) {
     }
   }
 
-  return { isPaused: () => paused, runCommand };
+  return { isPaused: () => paused, getStatus, runCommand };
 }
