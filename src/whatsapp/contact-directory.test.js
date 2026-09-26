@@ -1,6 +1,19 @@
-import { test } from 'node:test';
+import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { createContactDirectory } from './contact-directory.js';
+import { rmSync } from 'node:fs';
+
+process.env.DB_PATH = 'data/test-contact-directory.test.sqlite';
+
+const { createContactDirectory } = await import('./contact-directory.js');
+const { getDb } = await import('../store/db.js');
+
+beforeEach(() => {
+  getDb().exec('DELETE FROM contacts');
+});
+
+after(() => {
+  for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
+});
 
 function fakeSock() {
   const handlers = {};
@@ -94,4 +107,14 @@ test('contacts.upsert bulk-adds multiple contacts', () => {
     directory.list().map((c) => c.name).sort(),
     ['Alice', 'Bob'],
   );
+});
+
+test('contacts persist across separate createContactDirectory() instances (i.e. across restarts)', () => {
+  const first = createContactDirectory();
+  const sock = fakeSock();
+  first.attach(sock);
+  sock.emit('messaging-history.set', { contacts: [{ id: 'carol@s.whatsapp.net', name: 'Carol' }] });
+
+  const second = createContactDirectory();
+  assert.equal(second.get('carol@s.whatsapp.net').name, 'Carol');
 });

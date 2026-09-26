@@ -194,6 +194,16 @@ theoretically appear as two different roster entries if WhatsApp ever
 routes their messages under both forms. Revisit if that's observed to
 actually happen.
 
+**The directory is persisted (`contacts` table), not in-memory.** Baileys
+only emits `messaging-history.set` (the phone's synced address book) on a
+contact's very first login — a reconnect that reuses an existing
+`auth_info/` session never re-fires it. An in-memory directory therefore
+started empty on every restart, and the picker only ever filled back in as
+people happened to message again, which is the wrong UX for "browse my
+whole contact list." Persisting means a contact learned once, however that
+happened, stays known across restarts, and the roster only grows over time
+instead of resetting.
+
 ## Web control app: Tailscale identity headers (issue #29)
 
 `src/web/control-server.js` is the control surface #9 needed: a static

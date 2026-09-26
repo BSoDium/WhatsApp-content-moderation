@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS monitored_contacts (
   escalation_enabled INTEGER NOT NULL DEFAULT 1,
   added_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS contacts (
+  contact_id TEXT PRIMARY KEY,
+  name TEXT,
+  notify TEXT,
+  verified_name TEXT,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 let db;
