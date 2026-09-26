@@ -22,7 +22,13 @@ got `HANDOFF.md` retired in the first place.
 5. [#8](https://github.com/BSoDium/WhatsApp-content-moderation/issues/8) —
    Block/unblock flow with jittered scheduler.
 6. [#9](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9) —
-   Manual override channel (optional).
+   Manual override channel (optional). **Routines built** (pause/status/
+   unblock — `src/override/manual-override.js`), but not the WhatsApp
+   self-chat command surface originally proposed — see
+   `docs/decisions.md`. Actually driving these needs a real control
+   surface, tracked separately as
+   [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29)
+   (VPN-accessible web app — auth approach still to be decided there).
 7. [#10](https://github.com/BSoDium/WhatsApp-content-moderation/issues/10) —
    Docker packaging for the reference-hardware deployment.
 

@@ -4,6 +4,7 @@ import { createMessageBuffer } from './src/buffer/message-buffer.js';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.js';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
+import { createManualOverride } from './src/override/manual-override.js';
 import { closeDb } from './src/store/db.js';
 import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.js';
 
@@ -40,6 +41,15 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
   }
 });
 
+// Not yet driven by anything — see docs/decisions.md "Manual override
+// channel (issue #9)". Wired here so isPaused() already gates the pipeline
+// once a control surface (planned: a VPN-accessible web app) exists to call
+// runCommand().
+const manualOverride = createManualOverride({
+  targetContactId: TARGET_CONTACT_JID,
+  unblock: (jid) => unblock(sock, jid),
+});
+
 let unblockScheduler;
 
 async function start() {
@@ -49,6 +59,8 @@ async function start() {
     onSocket: (s) => {
       sock = s;
       s.ev.on('messages.upsert', ({ messages, type }) => {
+        if (manualOverride.isPaused()) return;
+
         for (const msg of messages) {
           const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF, type);
           if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);

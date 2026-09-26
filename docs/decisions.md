@@ -103,13 +103,44 @@ explicitly if/when multimodal classification is worth the added complexity
 and (for a CPU-only host) the added inference cost; don't silently expand
 scope to cover media without deciding this again first.
 
-## Manual override channel (not yet built)
+## Manual override channel (issue #9)
 
-A nice-to-have: send yourself commands (`!pause`, `!unblock`, `!status`)
-from your own "Message yourself" chat, so you can intervene without
-shelling into the host machine. Not built yet — the strike/block pipeline
-(see `docs/roadmap.md`) needs to exist first before there's anything to
-override.
+The pause/status/unblock routines exist (`src/override/manual-override.js`),
+but **WhatsApp self-chat commands are not, and won't be, the way to drive
+them.** The issue's own follow-up comment called this out directly: a
+`!pause`-style chat command is too primitive a control surface — no room
+for things like rate limiting or a real view into what's happening, and it
+doesn't compose with an actual UI. The plan instead, tracked as
+[#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
+a small web app hosted by the same process, reachable only over the
+self-host's VPN. That app is what will eventually call `runCommand()`;
+until it exists, `manual-override.js`'s routines are wired into `index.js`
+(`isPaused()` already gates the live pipeline) but unreachable from
+anywhere, which is expected — see that file's own comment. #29's real open
+question is authentication (VPN reachability alone isn't a fine-grained
+enough boundary — see that issue), not the app itself.
+
+An earlier version of this feature did parse `!pause`/`!resume`/`!unblock`/
+`!status` out of the self-chat and reply there; it was removed for the
+reason above, not because the routines themselves were wrong:
+
+- **Pausing skips the pipeline entirely** rather than routing through
+  shadow mode: no classification, no audit-log entry, nothing pushed to the
+  buffer. `status` still works while paused since it reads the strike/block
+  stores directly, not the buffer.
+- **Pause state is in-memory only**, reset on restart. A restart already
+  means someone is actively working on the host, so there's no scenario
+  where losing the pause flag surprises anyone — persisting a flag whose
+  whole purpose is a temporary human override would be the actual surprise.
+- **`unblock` bypasses the jittered schedule but reuses its exact
+  unblock-then-mark-resolved ordering** (`src/pipeline/unblock-scheduler.js`'s
+  `runTick`): call `actions.unblock` first, only mark the local block record
+  resolved if that succeeds. A failed WhatsApp call must leave the block
+  record active for a later retry (manual or scheduled), not silently
+  "succeed" locally while the contact stays blocked on WhatsApp.
+
+Both of these still apply verbatim to whatever ends up calling
+`runCommand()`.
 
 ## `auth_info/` is a credential
 

@@ -34,6 +34,11 @@ taken down the whole process) and a case where a successful block with a
 failed local write would leave a contact blocked with no record to ever
 auto-unblock — see the PR #21 history for detail, not repeated here.
 
+**Manual override routines built (2026-09-26).** Issue #9: pause/status/
+unblock logic for the live pipeline exists (`src/override/
+manual-override.js`), but isn't driven by WhatsApp chat commands — see
+"Manual override channel" below for why, and what will actually call it.
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -64,7 +69,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test`
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines — `pause`/`resume`/`status`/`unblock`)
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -137,6 +142,32 @@ automatically after `BLOCK_DURATION_MS` (default **24h**) ± `BLOCK_JITTER_MS`
 (default **4h**), checked every `UNBLOCK_POLL_INTERVAL_MS` (default
 **2 min**). All four are overridable via environment variable. `SHADOW_MODE`
 skips blocking along with everything else it already skips.
+
+## Manual override channel
+
+Issue #9 originally proposed driving this via `!pause`/`!unblock`/`!status`
+commands sent from your own "Message yourself" chat. That's not how this
+ends up working — [see the issue's own follow-up
+comment](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9#issuecomment-5833459230):
+a WhatsApp chat command is too primitive a control surface (no room for
+things like rate limiting, no real visibility). The actual plan, tracked as
+[#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
+a small web app hosted by the same process, reachable only over the
+self-host's VPN — the main open question there is authentication, not the
+app itself.
+
+What does exist: the routines themselves
+(`src/override/manual-override.js`), already wired into the live pipeline
+so `isPaused()` gates it — see
+[`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9).
+Nothing calls `runCommand()` yet; that's for the eventual web app to do.
+
+- `pause` / `resume` — stop/resume classifying and actioning incoming
+  messages entirely (no audit-log entries either while paused). Resets on
+  restart.
+- `unblock` — unblock the moderated contact immediately, ahead of the
+  jittered schedule.
+- `status` — current pause state, strike count, and block status.
 
 ## Classifier
 

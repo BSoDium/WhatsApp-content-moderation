@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test src/buffer/message-buffer.test.js src/store/strikes.test.js src/store/blocks.test.js src/store/audit-log.test.js src/pipeline/incoming-message.test.js src/pipeline/unblock-scheduler.test.js src/pipeline/moderation-pipeline.test.js src/classifier/classifier.test.js",
+    "test": "node --test src/buffer/message-buffer.test.js src/store/strikes.test.js src/store/blocks.test.js src/store/audit-log.test.js src/pipeline/incoming-message.test.js src/pipeline/unblock-scheduler.test.js src/pipeline/moderation-pipeline.test.js src/classifier/classifier.test.js src/override/manual-override.test.js",
     "prototype:delete-for-me": "node src/prototype/test-delete-for-me.js",
     "prototype:block-unblock": "node src/prototype/test-block-unblock.js",
     "classifier:test": "node src/classifier/test-classifier.js",
