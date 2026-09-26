@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    image: ghcr.io/bsodium/whatsapp-content-moderation:latest
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # Reachable by service name on the compose network — overrides
+      # whatever OLLAMA_HOST is set to in .env, which defaults to
+      # 127.0.0.1 for the non-Docker "npm start" case.
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      # WhatsApp session keys — see docs/decisions.md "auth_info/ is a
+      # credential". Back this directory up; losing it means re-linking.
+      - ./auth_info:/app/auth_info
+      # SQLite audit log / strikes / block records.
+      - ./data:/app/data
+      # The real moderation policy — gitignored, not baked into the image.
+      # Create it first: cp config/policy.example.md config/policy.md
+      - ./config/policy.md:/app/config/policy.md:ro
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  ollama:

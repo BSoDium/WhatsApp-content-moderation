@@ -1,0 +1,15 @@
+node_modules
+auth_info
+auth_info*
+data
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+config/policy.md
+.env
+.git
+.github
+.claude
+docs
+README.md

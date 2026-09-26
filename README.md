@@ -254,3 +254,41 @@ Sources: [Celeron G3930T spec (Intel)](https://www.intel.com/content/www/us/en/p
 - **State**: SQLite — strike counts, block records with `unblockAt`, full audit log of messages + classifications (the only record once a message is deleted)
 - **Scheduler**: periodic check for expired blocks, jittered rather than fixed-interval
 - **Deployment**: self-hosted on the reference hardware above, Docker with `restart: always`, auth state on a persisted + backed-up volume
+
+## Container deployment
+
+Cloning this repo onto the reference hardware and running
+`docker compose up -d` brings up the whole stack — the bot and an `ollama`
+service — with `restart: always`, so it survives a reboot without a
+systemd unit of its own.
+
+```
+git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
+cd WhatsApp-content-moderation
+cp .env.example .env            # fill in TARGET_CONTACT_JID, etc. — see .env.example
+cp config/policy.example.md config/policy.md   # fill in the real policy
+docker compose up -d
+docker compose exec ollama ollama pull llama3.2:3b   # one-time, until the model volume has it
+```
+
+First run still needs the QR code scanned interactively (see "Running
+it"): `docker compose logs -f app` prints it the same way `npm start`
+does, and it's also written to `auth_info/login-qr.png` on the host, since
+that directory is bind-mounted. Every later restart reuses the linked
+session in `auth_info/` without a rescan.
+
+`auth_info/`, `data/`, and `config/policy.md` are bind-mounted from the
+host (see `docker-compose.yml`) rather than baked into the image or left
+as anonymous volumes — same reasoning as `docs/decisions.md`'s
+"`auth_info/` is a credential": back up `auth_info/` and `data/` like you
+would any other credential/state, not just the repo.
+
+The container runs as the image's non-root `node` user; if the bot fails
+to write to `auth_info/` or `data/` after a fresh `git clone`, `chown` those
+host directories to that user's uid (`1000` on the `node:24-alpine` base).
+
+Pulling `ghcr.io/bsodium/whatsapp-content-moderation:latest` instead of
+building locally works too — every tagged release publishes an image
+there (see `.github/workflows/container.yml`) — but `docker-compose.yml`
+builds from source by default so a local change is always what actually
+runs.
