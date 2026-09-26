@@ -395,6 +395,9 @@ chmod 700 auth_info data
 sudo chown -R 1000:1000 auth_info data config/policy.md
 ```
 
+The container runs as UID 1000. If your Debian login has a different UID,
+use `sudoedit config/policy.md` to edit the private, container-owned policy.
+
 Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
 `ALLOWED_TAILSCALE_LOGIN`, generate `CONTROL_SERVER_TOKEN` with
 `openssl rand -hex 24`. `SHADOW_MODE` defaults to `1`; leave it enabled
