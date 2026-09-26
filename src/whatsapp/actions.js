@@ -10,8 +10,12 @@ export function deleteForMe(sock, jid, key, timestamp) {
   return sock.chatModify({ deleteForMe: { deleteMedia: false, key, timestamp } }, jid);
 }
 
-export function sendWarning(sock, jid, text) {
+export function sendMessage(sock, jid, text) {
   return sock.sendMessage(jid, { text });
+}
+
+export function sendWarning(sock, jid, text) {
+  return sendMessage(sock, jid, text);
 }
 
 export function block(sock, jid) {
