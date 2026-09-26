@@ -150,9 +150,11 @@ commands sent from your own "Message yourself" chat. That's not how this
 ends up working — [see the issue's own follow-up
 comment](https://github.com/BSoDium/WhatsApp-content-moderation/issues/9#issuecomment-5833459230):
 a WhatsApp chat command is too primitive a control surface (no room for
-things like rate limiting, no real visibility). The actual plan is a small
-web app hosted by the same process, reachable only over the self-host's
-VPN — not yet scoped.
+things like rate limiting, no real visibility). The actual plan, tracked as
+[#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
+a small web app hosted by the same process, reachable only over the
+self-host's VPN — the main open question there is authentication, not the
+app itself.
 
 What does exist: the routines themselves
 (`src/override/manual-override.js`), already wired into the live pipeline

@@ -26,8 +26,9 @@ got `HANDOFF.md` retired in the first place.
    unblock — `src/override/manual-override.js`), but not the WhatsApp
    self-chat command surface originally proposed — see
    `docs/decisions.md`. Actually driving these needs a real control
-   surface (planned: a small VPN-accessible web app hosted by the same
-   process), which is separate, not-yet-scoped work.
+   surface, tracked separately as
+   [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29)
+   (VPN-accessible web app — auth approach still to be decided there).
 7. [#10](https://github.com/BSoDium/WhatsApp-content-moderation/issues/10) —
    Docker packaging for the reference-hardware deployment.
 

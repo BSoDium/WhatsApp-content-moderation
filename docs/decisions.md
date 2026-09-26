@@ -110,12 +110,15 @@ but **WhatsApp self-chat commands are not, and won't be, the way to drive
 them.** The issue's own follow-up comment called this out directly: a
 `!pause`-style chat command is too primitive a control surface — no room
 for things like rate limiting or a real view into what's happening, and it
-doesn't compose with an actual UI. The plan instead is a small web app,
-hosted by the same process, reachable only over the self-host's VPN — see
-`docs/roadmap.md`. That app is what will eventually call `runCommand()`;
+doesn't compose with an actual UI. The plan instead, tracked as
+[#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
+a small web app hosted by the same process, reachable only over the
+self-host's VPN. That app is what will eventually call `runCommand()`;
 until it exists, `manual-override.js`'s routines are wired into `index.js`
 (`isPaused()` already gates the live pipeline) but unreachable from
-anywhere, which is expected — see that file's own comment.
+anywhere, which is expected — see that file's own comment. #29's real open
+question is authentication (VPN reachability alone isn't a fine-grained
+enough boundary — see that issue), not the app itself.
 
 An earlier version of this feature did parse `!pause`/`!resume`/`!unblock`/
 `!status` out of the self-chat and reply there; it was removed for the
