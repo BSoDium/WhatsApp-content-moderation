@@ -25,16 +25,20 @@ test('!pause and !resume toggle isPaused', async () => {
   assert.equal(override.isPaused(), false);
 });
 
-test('status reports pause state, strikes, and block status', async () => {
+test('getStatus reports pause state, strikes, and the real block field shape', async () => {
   const contact = 'status-check@s.whatsapp.net';
   recordStrike(contact);
   recordStrike(contact);
+  const unblockAt = Date.now() + 60_000;
+  createBlock(contact, unblockAt);
   const override = createManualOverride({ targetContactId: contact, unblock: async () => {} });
 
-  const reply = await override.runCommand('status');
-  assert.match(reply, /Paused: false/);
-  assert.match(reply, /Strikes: 2/);
-  assert.match(reply, /not blocked/);
+  assert.deepEqual(override.getStatus(), { paused: false, strikeCount: 2, block: { unblockAt } });
+});
+
+test('getStatus reports block: null when there is no active block', () => {
+  const override = createManualOverride({ targetContactId: 'no-block@s.whatsapp.net', unblock: async () => {} });
+  assert.equal(override.getStatus().block, null);
 });
 
 test('unblock calls actions.unblock and clears the active block', async () => {
@@ -50,9 +54,7 @@ test('unblock calls actions.unblock and clears the active block', async () => {
 
   assert.deepEqual(unblocked, [contact]);
   assert.match(reply, /unblocked/i);
-
-  const status = await override.runCommand('status');
-  assert.match(status, /not blocked/);
+  assert.equal(override.getStatus().block, null);
 });
 
 test('unblock on a contact with no active block is a no-op', async () => {
@@ -73,9 +75,48 @@ test('unblock reports failure without clearing the block when actions.unblock th
 
   const reply = await override.runCommand('unblock');
   assert.match(reply, /Unblock failed/);
+  assert.ok(override.getStatus().block, 'block should still be active after a failed unblock call');
+});
 
-  const status = await override.runCommand('status');
-  assert.match(status, /blocked until/);
+test('unblock is a no-op (not a duplicate WhatsApp call) when already resolved by something else', async () => {
+  const contact = 'already-unblocked@s.whatsapp.net';
+  const blockId = createBlock(contact, Date.now() + 60_000);
+  const { markUnblocked } = await import('../store/blocks.js');
+  markUnblocked(blockId); // simulate a concurrent scheduler tick / second request having already resolved it
+
+  const unblockCalls = [];
+  const override = createManualOverride({ targetContactId: contact, unblock: async (jid) => unblockCalls.push(jid) });
+
+  // getActiveBlock no longer finds it once markUnblocked has resolved it, so this exercises the plain no-op path.
+  const reply = await override.runCommand('unblock');
+  assert.match(reply, /not currently blocked/);
+  assert.deepEqual(unblockCalls, []);
+});
+
+test('two concurrent unblock calls only invoke actions.unblock once', async () => {
+  const contact = 'concurrent-unblock@s.whatsapp.net';
+  createBlock(contact, Date.now() + 60_000);
+  let resolveUnblock;
+  const unblockCalls = [];
+  const override = createManualOverride({
+    targetContactId: contact,
+    unblock: async (jid) => {
+      unblockCalls.push(jid);
+      await new Promise((resolve) => (resolveUnblock = resolve));
+    },
+  });
+
+  const first = override.runCommand('unblock');
+  await new Promise((resolve) => setImmediate(resolve)); // let the first call reach the in-flight guard
+  const second = override.runCommand('unblock');
+
+  const secondReply = await second;
+  assert.match(secondReply, /already in progress/);
+
+  resolveUnblock();
+  await first;
+
+  assert.deepEqual(unblockCalls, [contact]);
 });
 
 test('an unrecognized command returns null', async () => {

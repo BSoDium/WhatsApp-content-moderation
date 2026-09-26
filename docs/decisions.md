@@ -113,12 +113,8 @@ for things like rate limiting or a real view into what's happening, and it
 doesn't compose with an actual UI. The plan instead, tracked as
 [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29), is
 a small web app hosted by the same process, reachable only over the
-self-host's VPN. That app is what will eventually call `runCommand()`;
-until it exists, `manual-override.js`'s routines are wired into `index.js`
-(`isPaused()` already gates the live pipeline) but unreachable from
-anywhere, which is expected — see that file's own comment. #29's real open
-question is authentication (VPN reachability alone isn't a fine-grained
-enough boundary — see that issue), not the app itself.
+self-host's VPN — see "Web control app: Tailscale identity headers (issue
+#29)" below for that app and what actually calls `runCommand()`.
 
 An earlier version of this feature did parse `!pause`/`!resume`/`!unblock`/
 `!status` out of the self-chat and reply there; it was removed for the
@@ -141,6 +137,128 @@ reason above, not because the routines themselves were wrong:
 
 Both of these still apply verbatim to whatever ends up calling
 `runCommand()`.
+
+## Web control app: Tailscale identity headers (issue #29)
+
+`src/web/control-server.js` is the control surface #9 needed: a static
+page plus a JSON API in front of `manual-override.js`'s
+pause/resume/status/unblock routines. The interesting decision is
+authentication, since "only reachable over the self-host's VPN" is not by
+itself a fine-grained enough boundary — anyone else who can reach that VPN
+(a guest, another device sharing it) shouldn't be able to pause moderation
+or unblock a contact.
+
+**Chosen: trust the `Tailscale-User-Login` header that `tailscale serve`
+sets when proxying a tailnet request to a local port.** Tailscale has
+already authenticated the connection (tailnet membership itself requires
+signing in via the tailnet's own identity provider) before the request
+ever reaches this app, so `src/web/tailscale-auth.js` only has to compare
+that header against one allow-listed login (`ALLOWED_TAILSCALE_LOGIN`) —
+no login page, no password, no session/cookie handling, and no custom
+credential storage to get wrong. Chosen over the two other options raised
+in #29:
+
+- **GitHub OAuth SSO** — sound, but strictly more code (OAuth callback
+  handling, state parameter, session cookie) for identity Tailscale is
+  already providing for free once you're actually using Tailscale day to
+  day, which is the case here. Left for later if this ever needs to run
+  without Tailscale in front of it — #29 stays open for that.
+- **Passkeys/WebAuthn directly** — ruled out for the reason already given
+  in #29: relying-party config, credential storage, and origin/HTTPS
+  requirements are real security-critical surface, disproportionate to a
+  single-user control panel.
+
+**The header alone is not enough, and a review of this feature caught why:**
+the loopback bind stops *remote* tailnet peers from reaching the port
+directly, but it does nothing about *local* ones — any other process or
+user account already on this host can `fetch()` `127.0.0.1:<port>` and set
+`Tailscale-User-Login` itself, with no `tailscale serve` and no tailnet
+involved at all. Binding to loopback narrows who can reach the port; it
+doesn't authenticate who's on the other end of a connection that already
+got there.
+
+**So there are two required factors, not one:** the header above, plus a
+`CONTROL_SERVER_TOKEN` shared secret (`src/web/control-token-auth.js`,
+constant-time compared) that has to travel with every request via an
+`X-Control-Token` header, or a `token` query parameter for the very first
+page load. Nothing about a locally-forged `Tailscale-User-Login` header
+reveals this token, so the local-forgery path above is closed — an
+attacker would need to already have read `CONTROL_SERVER_TOKEN` out of
+`.env`, at which point they have host access this app was never going to
+defend against anyway (see "`auth_info/` is a credential" below for the
+same threshold). The token is deliberately *not* derived from anything
+Tailscale sets, since the whole point is that it can't be reconstructed
+from the one thing a local forger can already fake.
+
+The bootstrap link (`https://<hostname>/?token=<CONTROL_SERVER_TOKEN>`)
+carries that token in cleartext until the page's own script moves it into
+`sessionStorage` and strips the query string — so it's a one-time credential,
+not something to paste into chat, a shared note, or persistent shell
+history. Regenerate `CONTROL_SERVER_TOKEN` if that link is ever exposed that
+way (see README "Web control app").
+
+`createControlServer(...).listen()` still hardcodes the loopback interface
+(`127.0.0.1`) rather than taking a host argument, and that's still
+load-bearing: it's what keeps this to a two-factor local check instead of
+an internet-facing one, and its documented behavior (`tailscale serve`
+overwrites, not merges, inbound `Tailscale-User-*` headers) is still what
+makes the first factor meaningful for *remote* tailnet peers. **Verify this
+behavior live before enabling on a real deployment** — see README "Web
+control app" for the manual check; nothing here has been confirmed against
+a running `tailscale serve` yet.
+
+**Docker note:** the bind-to-loopback guarantee only holds if the process's
+`127.0.0.1` is the same one `tailscale serve` is proxying from. Under
+`docker-compose.yml`'s default bridge network, the container's loopback is
+its own — `network_mode: host` (or an equivalent) is required to run this
+under Docker with Tailscale on the host. Not yet wired into
+`docker-compose.yml`; treat this feature as bare-metal (`npm start`) only
+until that's done.
+
+State-changing endpoints (`/api/pause`, `/api/resume`, `/api/unblock`)
+additionally require `Content-Type: application/json`. With
+`CONTROL_SERVER_TOKEN` in place, that token is the primary CSRF defense: a
+cross-origin page has no way to read `sessionStorage` or attach
+`X-Control-Token` itself, so it can't produce a request this server accepts
+no matter how it's triggered. The Content-Type check is a second,
+independent layer for the case the token is obtained some other way (e.g.
+leaked via the bootstrap URL, see above) — it forces a CORS preflight for
+any cross-origin request, and since this server never sends
+`Access-Control-Allow-Origin`, the browser refuses to send the real request
+even with a correct token attached. Neither layer depends on a session or a
+CSRF token of its own.
+
+## Control page styling: no framework, one self-contained file
+
+A code-review pass on the control page (`src/web/index.html`) asked for
+room to grow it into something nicer later — clean `<select>`s, switches,
+a responsive layout, light/dark theme — without committing to a specific
+look now. The options considered: vendor a classless CSS framework
+(Pico.css, water.css — a `<link>` stylesheet, no JS, semantic HTML
+styled automatically), split the current inline `<style>`/`<script>` into
+served `styles.css`/`app.js` files, or keep one file and just organize it
+better.
+
+**Chosen: one file, reorganized around CSS custom properties**, for two
+reasons specific to this app:
+
+- **Every request needs both auth factors** (see above), and a `<link>` or
+  `<script src>` tag can't attach the `X-Control-Token` header the way a
+  `fetch()` call can. Splitting into separately-served assets means either
+  exempting them from auth (asymmetric, more surface to reason about for a
+  page this small) or smuggling the token into asset URLs too (duplicates
+  the credential into more places for no benefit, since neither file
+  contains anything secret). One file sidesteps the question entirely.
+- **A single response is also the lighter, faster option** for a page
+  loaded over a tailnet behind a synchronous auth check on every request —
+  no extra round trips, no framework payload to fetch and parse.
+
+The CSS still gets a real design-token layer (`--color-bg`, `--color-fg`,
+etc., redefined under `@media (prefers-color-scheme: dark)`) plus generic
+`select`/checkbox-as-switch rules, so future controls can opt in by using
+the standard element/attribute rather than needing a new dependency or a
+build step. Revisit this if the page grows enough that inlining stops
+being the more maintainable option.
 
 ## `auth_info/` is a credential
 
