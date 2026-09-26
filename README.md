@@ -168,24 +168,26 @@ app below.
 Issue #29. A small web app hosted by the same process (`src/web/`),
 authenticated via Tailscale identity rather than any password/OAuth login
 — see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
-for the full reasoning. In short: the app trusts the `Tailscale-User-Login`
+for the full reasoning. Two factors, both required: the `Tailscale-User-Login`
 header `tailscale serve` sets when proxying a request from the tailnet,
-checked against a single allow-listed login — no password, no session,
-no OAuth flow to get wrong.
+checked against a single allow-listed login; and a `CONTROL_SERVER_TOKEN`
+shared secret, because the header alone isn't proof a request actually came
+through `tailscale serve` rather than some other local process on the same
+machine setting it directly.
 
 **Enabling it** (`.env` or environment):
 
 ```
 WEB_CONTROL_PORT=4756
 ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
+CONTROL_SERVER_TOKEN=                     # generate: node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
 ```
 
-The process refuses to start if `WEB_CONTROL_PORT` is set without
-`ALLOWED_TAILSCALE_LOGIN` — fail closed rather than run unauthenticated.
-The server binds to `127.0.0.1` only, on purpose: it must be reachable
-*only* through `tailscale serve`'s local proxy hop, never directly, or the
-identity header becomes attacker-controlled input instead of an actual
-identity.
+The process refuses to start if `WEB_CONTROL_PORT` is set without both of
+the other two — fail closed rather than run unauthenticated or with a
+mistyped port silently disabling the whole thing. The server binds to
+`127.0.0.1` only, on purpose: it must be reachable *only* through
+`tailscale serve`'s local proxy hop, never directly.
 
 **Running it**, on the same machine (bare-metal `npm start`, not yet
 supported under the default Docker Compose setup — see
@@ -195,8 +197,11 @@ supported under the default Docker Compose setup — see
 tailscale serve --bg 4756
 ```
 
-Then open the HTTPS URL `tailscale serve status` prints, from a device on
-your tailnet, signed in as the allow-listed login.
+Then open `https://<tailscale-hostname>/?token=<CONTROL_SERVER_TOKEN>` (the
+hostname is whatever `tailscale serve status` prints) from a device signed
+in as the allow-listed login. The page moves the token out of the URL and
+into `sessionStorage` on load, so it isn't left sitting in the address bar
+or browser history after that first open.
 
 **Not yet validated against a live `tailscale serve`.** Automated tests
 (`src/web/control-server.test.js`, `src/web/tailscale-auth.test.js`) cover

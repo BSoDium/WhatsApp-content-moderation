@@ -168,19 +168,37 @@ in #29:
   requirements are real security-critical surface, disproportionate to a
   single-user control panel.
 
-**This is only safe because the server is unreachable except through that
-proxy.** `createControlServer(...).listen()` hardcodes the loopback
-interface (`127.0.0.1`) rather than taking a host argument — if this
-process were reachable directly (bound to `0.0.0.0` or the tailnet
-interface IP), any tailnet peer could set `Tailscale-User-Login` on a
-request themselves and the header would stop meaning anything. The
-loopback bind is what makes `tailscale serve`'s local proxy hop the only
-path in, and its documented behavior is to overwrite (not merge)
-`Tailscale-User-*` headers on the way in — that documented sanitization,
-combined with this app never being reachable any other way, is the entire
-trust boundary. **Verify this behavior live before enabling on a real
-deployment** — see README "Web control app" for the manual check; nothing
-here has been confirmed against a running `tailscale serve` yet.
+**The header alone is not enough, and a review of this feature caught why:**
+the loopback bind stops *remote* tailnet peers from reaching the port
+directly, but it does nothing about *local* ones — any other process or
+user account already on this host can `fetch()` `127.0.0.1:<port>` and set
+`Tailscale-User-Login` itself, with no `tailscale serve` and no tailnet
+involved at all. Binding to loopback narrows who can reach the port; it
+doesn't authenticate who's on the other end of a connection that already
+got there.
+
+**So there are two required factors, not one:** the header above, plus a
+`CONTROL_SERVER_TOKEN` shared secret (`src/web/control-token-auth.js`,
+constant-time compared) that has to travel with every request via an
+`X-Control-Token` header, or a `token` query parameter for the very first
+page load. Nothing about a locally-forged `Tailscale-User-Login` header
+reveals this token, so the local-forgery path above is closed — an
+attacker would need to already have read `CONTROL_SERVER_TOKEN` out of
+`.env`, at which point they have host access this app was never going to
+defend against anyway (see "`auth_info/` is a credential" below for the
+same threshold). The token is deliberately *not* derived from anything
+Tailscale sets, since the whole point is that it can't be reconstructed
+from the one thing a local forger can already fake.
+
+`createControlServer(...).listen()` still hardcodes the loopback interface
+(`127.0.0.1`) rather than taking a host argument, and that's still
+load-bearing: it's what keeps this to a two-factor local check instead of
+an internet-facing one, and its documented behavior (`tailscale serve`
+overwrites, not merges, inbound `Tailscale-User-*` headers) is still what
+makes the first factor meaningful for *remote* tailnet peers. **Verify this
+behavior live before enabling on a real deployment** — see README "Web
+control app" for the manual check; nothing here has been confirmed against
+a running `tailscale serve` yet.
 
 **Docker note:** the bind-to-loopback guarantee only holds if the process's
 `127.0.0.1` is the same one `tailscale serve` is proxying from. Under
