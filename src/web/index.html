@@ -33,17 +33,42 @@
   <script>
     const statusEl = document.getElementById('status');
     const messageEl = document.getElementById('message');
+    const pausedEl = statusEl.querySelector('[data-field="paused"]');
+    const strikeCountEl = statusEl.querySelector('[data-field="strikeCount"]');
+    const blockEl = statusEl.querySelector('[data-field="block"]');
+
+    // The token only ever needs to travel in the URL once (the initial
+    // link) — persisted to sessionStorage from there, and stripped out of
+    // the visible URL/history so it doesn't linger where it could be seen
+    // or shared by accident.
+    const params = new URLSearchParams(location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      try {
+        sessionStorage.setItem('controlToken', urlToken);
+      } catch {}
+      history.replaceState(null, '', location.pathname);
+    }
+    const controlToken = urlToken ?? (() => {
+      try {
+        return sessionStorage.getItem('controlToken');
+      } catch {
+        return null;
+      }
+    })();
+
+    function authHeaders(extra = {}) {
+      return controlToken ? { 'X-Control-Token': controlToken, ...extra } : extra;
+    }
 
     function render(status) {
-      statusEl.querySelector('[data-field="paused"]').textContent = status.paused ? 'yes' : 'no';
-      statusEl.querySelector('[data-field="strikeCount"]').textContent = status.strikeCount;
-      statusEl.querySelector('[data-field="block"]').textContent = status.block
-        ? `until ${new Date(status.block.unblockAt).toLocaleString()}`
-        : 'not blocked';
+      pausedEl.textContent = status.paused ? 'yes' : 'no';
+      strikeCountEl.textContent = status.strikeCount;
+      blockEl.textContent = status.block ? `until ${new Date(status.block.unblockAt).toLocaleString()}` : 'not blocked';
     }
 
     async function refresh() {
-      const res = await fetch('/api/status');
+      const res = await fetch('/api/status', { headers: authHeaders() });
       if (res.ok) render(await res.json());
     }
 
@@ -53,7 +78,7 @@
         try {
           const res = await fetch(`/api/${button.dataset.command}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
             body: '{}',
           });
           const body = await res.json();
@@ -65,8 +90,12 @@
       });
     });
 
-    refresh();
-    setInterval(refresh, 5000);
+    if (!controlToken) {
+      messageEl.textContent = 'No control token — reload using the full link with ?token=... in the URL.';
+    } else {
+      refresh();
+      setInterval(refresh, 5000);
+    }
   </script>
 </body>
 </html>
