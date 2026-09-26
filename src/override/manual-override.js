@@ -12,72 +12,77 @@ const logger = pino({ name: 'manual-override' });
  * WhatsApp self-chat commands, but per the issue's own follow-up comment
  * that's the wrong control surface — too primitive for things like rate
  * limiting, and it doesn't compose with a real UI. These routines are kept
- * so a proper interface (planned: a VPN-accessible web app hosted by the
- * same process) has something to call into once it exists.
+ * so a proper interface (the VPN-accessible web app, issue #29) has
+ * something to call into.
  *
- * Pause state lives only in memory (reset on restart) — same trust model as
- * the rest of the runtime pipeline, and simpler than persisting a flag whose
- * whole purpose is a temporary human override.
+ * Every method takes a contactId explicitly — this registry serves every
+ * contact on the monitored-contacts roster (issue #32), not one fixed
+ * target — see docs/decisions.md "Multi-contact moderation roster".
  *
- * @param {{
- *   targetContactId: string,
- *   unblock: (contactId: string) => Promise<void>,
- * }} deps
+ * Pause state lives only in memory, per contact (reset on restart) — same
+ * trust model as the rest of the runtime pipeline, and simpler than
+ * persisting a flag whose whole purpose is a temporary human override.
+ *
+ * @param {{ unblock: (contactId: string) => Promise<void> }} deps
  * @returns {{
- *   isPaused: () => boolean,
- *   getStatus: () => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null },
- *   runCommand: (command: 'pause' | 'resume' | 'unblock') => Promise<string | null>,
+ *   isPaused: (contactId: string) => boolean,
+ *   getStatus: (contactId: string) => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null },
+ *   runCommand: (contactId: string, command: 'pause' | 'resume' | 'unblock') => Promise<string | null>,
  * }}
  */
-export function createManualOverride({ targetContactId, unblock }) {
-  let paused = false;
-  // contactIds with an unblock in flight, so concurrent 'unblock' calls can't both call the real unblock() action.
+export function createManualOverride({ unblock }) {
+  const paused = new Map();
+  // contactIds with an unblock in flight, so concurrent 'unblock' calls for the same contact can't both call the real unblock() action.
   const unblockInFlight = new Set();
 
-  // Structured form of "status" for a JSON caller (src/web/control-server.js).
-  function getStatus() {
-    const strikeCount = getStrikeCount(targetContactId);
-    const activeBlock = getActiveBlock(targetContactId);
-    return { paused, strikeCount, block: activeBlock ? { unblockAt: activeBlock.unblock_at } : null };
+  function isPaused(contactId) {
+    return paused.get(contactId) ?? false;
   }
 
-  async function runCommand(command) {
+  // Structured form of "status" for a JSON caller (src/web/control-server.js).
+  function getStatus(contactId) {
+    const strikeCount = getStrikeCount(contactId);
+    const activeBlock = getActiveBlock(contactId);
+    return { paused: isPaused(contactId), strikeCount, block: activeBlock ? { unblockAt: activeBlock.unblock_at } : null };
+  }
+
+  async function runCommand(contactId, command) {
     switch (command) {
       case 'pause':
-        paused = true;
-        logger.info('moderation paused via manual override');
+        paused.set(contactId, true);
+        logger.info({ contactId }, 'moderation paused via manual override');
         return 'Moderation paused — incoming messages will not be classified or actioned until resumed.';
 
       case 'resume':
-        paused = false;
-        logger.info('moderation resumed via manual override');
+        paused.set(contactId, false);
+        logger.info({ contactId }, 'moderation resumed via manual override');
         return 'Moderation resumed.';
 
       case 'unblock': {
-        if (unblockInFlight.has(targetContactId)) return 'Unblock already in progress.';
+        if (unblockInFlight.has(contactId)) return 'Unblock already in progress.';
 
-        const block = getActiveBlock(targetContactId);
+        const block = getActiveBlock(contactId);
         if (!block) return 'Contact is not currently blocked.';
 
-        unblockInFlight.add(targetContactId);
+        unblockInFlight.add(contactId);
         try {
           try {
-            await unblock(targetContactId);
+            await unblock(contactId);
           } catch (err) {
-            logger.error({ error: err?.message ?? String(err) }, 'manual unblock failed');
+            logger.error({ contactId, error: err?.message ?? String(err) }, 'manual unblock failed');
             return `Unblock failed: ${err?.message ?? String(err)}`;
           }
 
           // Matches src/pipeline/unblock-scheduler.js's runTick — don't report success for a block someone else already resolved.
           if (!markUnblocked(block.id)) {
-            logger.warn({ targetContactId, blockId: block.id }, 'block was already marked unblocked (overlapping request or scheduler tick)');
+            logger.warn({ contactId, blockId: block.id }, 'block was already marked unblocked (overlapping request or scheduler tick)');
             return 'Contact was already unblocked.';
           }
 
-          logger.info({ targetContactId, blockId: block.id }, 'contact manually unblocked via manual override');
+          logger.info({ contactId, blockId: block.id }, 'contact manually unblocked via manual override');
           return 'Contact unblocked.';
         } finally {
-          unblockInFlight.delete(targetContactId);
+          unblockInFlight.delete(contactId);
         }
       }
 
@@ -86,5 +91,5 @@ export function createManualOverride({ targetContactId, unblock }) {
     }
   }
 
-  return { isPaused: () => paused, getStatus, runCommand };
+  return { isPaused, getStatus, runCommand };
 }
