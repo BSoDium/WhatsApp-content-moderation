@@ -71,6 +71,26 @@ diff in this repo.
   directory glob that could accidentally swallow something that should be
   tracked).
 
+## Deployment invariants
+
+- `src/web/control-server.ts` binds to `127.0.0.1` so host Tailscale Serve
+  can proxy it without exposing the control API to the LAN. Keep the app on
+  `network_mode: host` in `docker-compose.yml`; bridge networking gives the
+  container a different loopback and breaks this boundary.
+- With host networking, the app reaches the Compose Ollama service through
+  `127.0.0.1:11434`. Publish Ollama on host loopback only; do not expose its
+  port to the LAN.
+- The app image needs the built `web/dist` bundle. Keep the frontend build
+  stage and copy in `Dockerfile` in sync with `src/web/control-server.ts`.
+- Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` out of the
+  image and persist them as Compose bind mounts. Update the Debian install
+  steps in `README.md` whenever these paths, ownership, networking, or the
+  source-build/update flow changes. The supported path clones this repo and
+  builds locally; GHCR images are published by tagged releases.
+- Keep first-run instructions in shadow mode. The 90-second classifier
+  timeout accommodates the documented CPU-only target; lower it only after
+  measuring inference on that hardware.
+
 ## Workflow
 
 - Concise responses. No celebration paragraphs, no end-of-turn "here's what
