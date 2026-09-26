@@ -167,6 +167,16 @@ to actually block on WhatsApp (the reason the toggle exists) still
 benefits from the rest of the moderation, and because an inconsistent
 strike count would make re-enabling escalation later behave surprisingly.
 
+`isEscalationEnabled` defaults to **false** (not true) for a contactId with
+no roster row at all — the only way `maybeBlockContact` reaches that case is
+a contact removed from the roster while a burst for them was already
+buffered or in flight (roster membership is checked before buffering, but
+`removeMonitored` doesn't cancel work already queued for a contact). Failing
+toward *not* blocking is the safe direction for that race: blocking someone
+who was already removed (or who had escalation off) is a real, hard-to-undo
+action, while skipping a block just leaves the existing strike/delete/warn
+path to handle it on the next message.
+
 **Removing a contact from the roster keeps its history.** `removeMonitored`
 only deletes the roster row — strikes, blocks, and audit-log rows for that
 `contact_id` are untouched, matching this project's existing principle that
