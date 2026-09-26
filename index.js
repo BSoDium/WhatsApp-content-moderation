@@ -1,11 +1,13 @@
 import pino from 'pino';
+import { jidNormalizedUser } from '@whiskeysockets/baileys';
 import { connectWhatsApp } from './src/whatsapp/connection.js';
 import { createMessageBuffer } from './src/buffer/message-buffer.js';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.js';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.js';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.js';
+import { createOverrideChannel, extractOverrideMessage, parseOverrideCommand } from './src/override/override-channel.js';
 import { closeDb } from './src/store/db.js';
-import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.js';
+import { deleteForMe, sendMessage, sendWarning, block, unblock } from './src/whatsapp/actions.js';
 
 const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
@@ -40,6 +42,11 @@ const buffer = createMessageBuffer(async (contactId, messages) => {
   }
 });
 
+const overrideChannel = createOverrideChannel({
+  targetContactId: TARGET_CONTACT_JID,
+  unblock: (jid) => unblock(sock, jid),
+});
+
 let unblockScheduler;
 
 async function start() {
@@ -49,7 +56,24 @@ async function start() {
     onSocket: (s) => {
       sock = s;
       s.ev.on('messages.upsert', ({ messages, type }) => {
+        // sock.user is only populated once auth completes, so a message
+        // arriving before then can't be an override — extractOverrideMessage
+        // handles that via its own falsy selfJid guard.
+        const selfJid = sock.user?.id && jidNormalizedUser(sock.user.id);
+
         for (const msg of messages) {
+          const overrideText = extractOverrideMessage(msg, selfJid, type);
+          const command = overrideText && parseOverrideCommand(overrideText);
+          if (command) {
+            overrideChannel
+              .runCommand(command)
+              .then((reply) => reply && sendMessage(sock, selfJid, reply))
+              .catch((err) => logger.error({ command, error: err?.message ?? String(err) }, 'override command failed'));
+            continue;
+          }
+
+          if (overrideChannel.isPaused()) continue;
+
           const incoming = extractIncomingMessage(msg, TARGET_CONTACT_JID, ALLOW_SELF, type);
           if (incoming) buffer.push(TARGET_CONTACT_JID, incoming);
         }
