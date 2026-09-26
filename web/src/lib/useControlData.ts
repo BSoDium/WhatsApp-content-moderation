@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, getToken } from './api';
+import { apiFetch } from './api';
 import type { Contact, ControlError, OverrideCommand, RosterEntry } from './types';
 
 const ROSTER_POLL_MS = 5000;
-const NO_TOKEN_ERROR: ControlError = { title: 'No control token', description: 'Reload using the full link with ?token=... in the URL.' };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -14,7 +13,7 @@ export function useControlData() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [error, setError] = useState<ControlError | null>(() => (getToken() ? null : NO_TOKEN_ERROR));
+  const [error, setError] = useState<ControlError | null>(null);
 
   // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
   const refreshContacts = useCallback(async function refreshContacts() {
@@ -34,7 +33,6 @@ export function useControlData() {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) return;
     refreshContacts();
     refreshRoster();
     const id = setInterval(() => {
