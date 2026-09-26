@@ -3,6 +3,7 @@ import { classifyMessage } from '../classifier/classifier.js';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.js';
 import { logMessage, getAuditLog } from '../store/audit-log.js';
 import { createBlock, getActiveBlock } from '../store/blocks.js';
+import { isEscalationEnabled } from '../store/monitored-contacts.js';
 
 const SHADOW_MODE = process.env.SHADOW_MODE === '1';
 const HISTORY_LIMIT = Number(process.env.CLASSIFIER_HISTORY_LIMIT ?? 10);
@@ -57,8 +58,10 @@ function serialize(contactId, run) {
  * on real traffic before trusting it to act — see docs/roadmap.md issue #7.
  *
  * A strike count reaching STRIKE_THRESHOLD triggers a block, unless the
- * contact already has one active — see docs/decisions.md "Trigger,
- * duration, and jitter (issue #8 design)". Unblocking is handled
+ * contact already has one active or has escalation disabled on the
+ * monitored-contacts roster (strikes/delete/warn/audit-log still happen
+ * either way — only the block step is gated) — see docs/decisions.md
+ * "Trigger, duration, and jitter (issue #8 design)". Unblocking is handled
  * separately by src/pipeline/unblock-scheduler.js, not here.
  *
  * Bursts for the same contactId are serialized (see `serialize` above), so
@@ -112,6 +115,11 @@ function jitter(ms) {
 async function maybeBlockContact(contactId, strikeCount, block) {
   if (strikeCount < STRIKE_THRESHOLD) return false;
   if (getActiveBlock(contactId)) return true;
+
+  if (!isEscalationEnabled(contactId)) {
+    logger.info({ contactId, strikeCount }, 'strike threshold crossed but escalation is disabled for this contact; skipping block');
+    return false;
+  }
 
   const unblockAt = Date.now() + Math.max(BLOCK_DURATION_MS + jitter(Math.min(BLOCK_JITTER_MS, BLOCK_DURATION_MS)), MIN_BLOCK_MS);
   let blockedOnWhatsApp = false;

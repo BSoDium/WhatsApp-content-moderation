@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS audit_log_contact_idx
   ON audit_log (contact_id, created_at);
+
+CREATE TABLE IF NOT EXISTS monitored_contacts (
+  contact_id TEXT PRIMARY KEY,
+  escalation_enabled INTEGER NOT NULL DEFAULT 1,
+  added_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  contact_id TEXT PRIMARY KEY,
+  name TEXT,
+  notify TEXT,
+  verified_name TEXT,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 let db;

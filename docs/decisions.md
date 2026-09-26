@@ -138,11 +138,89 @@ reason above, not because the routines themselves were wrong:
 Both of these still apply verbatim to whatever ends up calling
 `runCommand()`.
 
+## Multi-contact moderation roster (issue #32)
+
+Originally this ran against exactly one `TARGET_CONTACT_JID` env var. The
+pipeline, buffer, and all three SQLite stores were already parameterized by
+`contactId` throughout — only `index.js`'s wiring and
+`manual-override.js`'s constructor-bound target and global `paused` flag
+carried the single-contact assumption, so extending to many contacts was a
+wiring change, not a rearchitecture.
+
+**Roster is a new `monitored_contacts` table** (`contact_id`,
+`escalation_enabled`, `added_at`), managed entirely through the control
+app's picker — there is no env-var equivalent of `TARGET_CONTACT_JID`
+anymore, and no migration path from it: this is pre-release with no real
+users to migrate, so the env var was removed outright rather than kept as a
+deprecated fallback. A consequence worth being explicit about: without
+`WEB_CONTROL_PORT` configured, there is no way to add a contact to the
+roster, so the moderator does nothing at all — this is intentional, not an
+oversight, but it means the control app changed from optional to required
+for this build to be useful.
+
+**Escalation is per-contact and gates only the block step.** Disabling it
+(`escalation_enabled = 0`) still lets `moderation-pipeline.js` classify,
+delete-for-me, warn, record strikes, and audit-log every message exactly as
+before — `maybeBlockContact` just returns early instead of calling
+`block()`/`createBlock()`. This matters because a contact you can't afford
+to actually block on WhatsApp (the reason the toggle exists) still
+benefits from the rest of the moderation, and because an inconsistent
+strike count would make re-enabling escalation later behave surprisingly.
+
+`isEscalationEnabled` defaults to **false** (not true) for a contactId with
+no roster row at all — the only way `maybeBlockContact` reaches that case is
+a contact removed from the roster while a burst for them was already
+buffered or in flight (roster membership is checked before buffering, but
+`removeMonitored` doesn't cancel work already queued for a contact). Failing
+toward *not* blocking is the safe direction for that race: blocking someone
+who was already removed (or who had escalation off) is a real, hard-to-undo
+action, while skipping a block just leaves the existing strike/delete/warn
+path to handle it on the next message.
+
+**Removing a contact from the roster keeps its history.** `removeMonitored`
+only deletes the roster row — strikes, blocks, and audit-log rows for that
+`contact_id` are untouched, matching this project's existing principle that
+the audit log is the permanent record (see "State & audit log via SQLite"
+above). Re-adding the same contact later picks up wherever its strike count
+already was.
+
+**Known limitation, not yet solved:** `src/whatsapp/contact-directory.js`
+keys contacts by whatever id each Baileys event reports (the same id space
+`moderation-pipeline.js` already keys off `msg.key.remoteJid`), and does not
+cross-reference Baileys 7's split `@lid`/`@s.whatsapp.net` id spaces for the
+same underlying person — there's no documented stable mapping between them
+in this Baileys version. In practice this means the same real contact could
+theoretically appear as two different roster entries if WhatsApp ever
+routes their messages under both forms. Revisit if that's observed to
+actually happen.
+
+**The directory is persisted (`contacts` table), not in-memory.** Baileys
+only emits `messaging-history.set` (the phone's synced address book) on a
+contact's very first login — a reconnect that reuses an existing
+`auth_info/` session never re-fires it. An in-memory directory therefore
+started empty on every restart, and the picker only ever filled back in as
+people happened to message again, which is the wrong UX for "browse my
+whole contact list." Persisting means a contact learned once, however that
+happened, stays known across restarts, and the roster only grows over time
+instead of resetting.
+
+**`connectWhatsApp` sets `syncFullHistory: true`.** WhatsApp's multi-device
+protocol has no request/response "list all contacts" call — everything is
+event-driven, and the one bulk sync (`messaging-history.set`) only fires
+once, at the moment a device is freshly linked (QR scan). Without this
+flag that one-time sync is a recent/trimmed window; with it, it's the
+phone's complete history. It only matters at link time — a reconnect using
+an existing `auth_info/` session never re-requests history, full or not —
+so getting a complete initial contact list means deleting `auth_info/` and
+re-scanning the QR code at least once with this flag already in place.
+
 ## Web control app: Tailscale identity headers (issue #29)
 
 `src/web/control-server.js` is the control surface #9 needed: a static
-page plus a JSON API in front of `manual-override.js`'s
-pause/resume/status/unblock routines. The interesting decision is
+page plus a JSON API in front of `manual-override.js`'s per-contact
+pause/resume/unblock routines, `contact-directory.js`'s known-contacts
+list, and the monitored-contacts roster (see "Multi-contact moderation
+roster" above). The interesting decision here is
 authentication, since "only reachable over the self-host's VPN" is not by
 itself a fine-grained enough boundary — anyone else who can reach that VPN
 (a guest, another device sharing it) shouldn't be able to pause moderation
@@ -215,50 +293,58 @@ under Docker with Tailscale on the host. Not yet wired into
 `docker-compose.yml`; treat this feature as bare-metal (`npm start`) only
 until that's done.
 
-State-changing endpoints (`/api/pause`, `/api/resume`, `/api/unblock`)
-additionally require `Content-Type: application/json`. With
-`CONTROL_SERVER_TOKEN` in place, that token is the primary CSRF defense: a
-cross-origin page has no way to read `sessionStorage` or attach
-`X-Control-Token` itself, so it can't produce a request this server accepts
-no matter how it's triggered. The Content-Type check is a second,
-independent layer for the case the token is obtained some other way (e.g.
-leaked via the bootstrap URL, see above) — it forces a CORS preflight for
-any cross-origin request, and since this server never sends
-`Access-Control-Allow-Origin`, the browser refuses to send the real request
-even with a correct token attached. Neither layer depends on a session or a
-CSRF token of its own.
+State-changing `POST` endpoints (adding a roster contact, pause/resume/
+unblock, toggling escalation) additionally require `Content-Type:
+application/json`. With `CONTROL_SERVER_TOKEN` in place, that token is the
+primary CSRF defense: a cross-origin page has no way to read
+`sessionStorage` or attach `X-Control-Token` itself, so it can't produce a
+request this server accepts no matter how it's triggered. The Content-Type
+check is a second, independent layer for the case the token is obtained
+some other way (e.g. leaked via the bootstrap URL, see above) — it forces a
+CORS preflight for any cross-origin request, and since this server never
+sends `Access-Control-Allow-Origin`, the browser refuses to send the real
+request even with a correct token attached. `DELETE /api/roster/:contactId`
+doesn't need the same check: unlike `POST`, `DELETE` isn't a
+CORS-safelisted method, so a cross-origin request against it already forces
+a preflight regardless of Content-Type — adding the check there would just
+be validation for a scenario that can't happen. Neither layer depends on a
+session or a CSRF token of its own.
 
-## Control page styling: no framework, one self-contained file
+## Control page styling: three files, two of them unauthenticated
 
-A code-review pass on the control page (`src/web/index.html`) asked for
-room to grow it into something nicer later — clean `<select>`s, switches,
-a responsive layout, light/dark theme — without committing to a specific
-look now. The options considered: vendor a classless CSS framework
-(Pico.css, water.css — a `<link>` stylesheet, no JS, semantic HTML
-styled automatically), split the current inline `<style>`/`<script>` into
-served `styles.css`/`app.js` files, or keep one file and just organize it
-better.
+A first code-review pass on the control page kept it as one self-contained
+`index.html` (inline `<style>`/`<script>`), reasoned about at the time as
+the lighter option and a way to avoid an auth question — see this entry's
+prior text in git history. A second pass (issue #32)
+asked for real UI: a contact picker, per-contact tabs, a card component for
+errors, and a genuine headline font — enough new surface that inlining
+stopped being the more maintainable option, the exact trigger the original
+entry called out for revisiting this.
 
-**Chosen: one file, reorganized around CSS custom properties**, for two
-reasons specific to this app:
+**Chosen: split into `index.html` + `styles.css` + `app.js`, with the CSS
+and JS files deliberately unauthenticated.** `GET /` and every `/api/*`
+route still require both auth factors exactly as before — nothing about
+the two-factor model changes for state or secrets. Only the static bytes of
+`/styles.css` and `/app.js` move outside the gate, and that's safe for a
+reason specific to what those files are: a `<link rel="stylesheet">` or
+`<script src>` tag cannot attach the `X-Control-Token` header the way a
+`fetch()` call can, so gating them would only break the page rather than
+protect anything — neither file contains the control token or any other
+secret (the token exists only at runtime, in the browser's
+`sessionStorage`, populated by a small bootstrap script that stays inline
+in `index.html` specifically so it can run synchronously before either
+external file loads). `app.js` reads that token back out of
+`sessionStorage` itself at request time, which is fine even though the
+file's *source* is servable to anyone — an unauthenticated file only means
+its code is public, not that it can read another visitor's session state.
 
-- **Every request needs both auth factors** (see above), and a `<link>` or
-  `<script src>` tag can't attach the `X-Control-Token` header the way a
-  `fetch()` call can. Splitting into separately-served assets means either
-  exempting them from auth (asymmetric, more surface to reason about for a
-  page this small) or smuggling the token into asset URLs too (duplicates
-  the credential into more places for no benefit, since neither file
-  contains anything secret). One file sidesteps the question entirely.
-- **A single response is also the lighter, faster option** for a page
-  loaded over a tailnet behind a synchronous auth check on every request —
-  no extra round trips, no framework payload to fetch and parse.
-
-The CSS still gets a real design-token layer (`--color-bg`, `--color-fg`,
-etc., redefined under `@media (prefers-color-scheme: dark)`) plus generic
-`select`/checkbox-as-switch rules, so future controls can opt in by using
-the standard element/attribute rather than needing a new dependency or a
-build step. Revisit this if the page grows enough that inlining stops
-being the more maintainable option.
+The self-hosted headline font (Source Serif 4, SIL OFL, one static weight)
+is embedded as a base64 `data:` URI directly inside `styles.css`'s
+`@font-face` rule, rather than served as its own file — this keeps the
+exemption at exactly the two routes above instead of adding a third for a
+font, at the cost of the font re-downloading with the CSS on every visit
+instead of getting its own browser cache entry. Accepted for a low-traffic,
+single-operator page; revisit if that tradeoff stops being true.
 
 ## `auth_info/` is a credential
 

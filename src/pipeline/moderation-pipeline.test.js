@@ -10,6 +10,7 @@ process.env.STRIKE_THRESHOLD = '2';
 const { handleBurst } = await import('./moderation-pipeline.js');
 const { getAuditLog } = await import('../store/audit-log.js');
 const { createBlock, getActiveBlock } = await import('../store/blocks.js');
+const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.js');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -103,6 +104,7 @@ test('deleteForMe/sendWarning throwing logs action_failed and does not record a 
 
 test('crossing STRIKE_THRESHOLD triggers block()', async () => {
   const contact = 'erin@s.whatsapp.net';
+  addMonitored(contact); // escalation defaults to enabled once a contact is actually on the roster
   let blockedJid;
 
   // STRIKE_THRESHOLD=2 (set at the top of this file) — two flagged messages in one burst cross it.
@@ -134,6 +136,46 @@ test('a contact with an existing active block is not re-blocked', async () => {
   });
 
   assert.equal(blockCalled, false);
+});
+
+test('escalation disabled: strikes/delete/warn/audit-log still happen, but block() is never called', async () => {
+  const contact = 'heidi@s.whatsapp.net';
+  addMonitored(contact);
+  setEscalationEnabled(contact, false);
+  let blockCalled = false;
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+    deleteForMe: async () => {},
+    sendWarning: async () => {},
+    block: async () => {
+      blockCalled = true;
+    },
+    classify: okFlag,
+  });
+
+  assert.equal(strikeCount, 2);
+  assert.equal(blockCalled, false);
+  assert.equal(getActiveBlock(contact), undefined);
+  const log = getAuditLog(contact);
+  assert.ok(log.some((row) => row.action === 'delete+warn'));
+});
+
+test('a contact with no roster row at all (e.g. removed mid-burst) fails toward not blocking', async () => {
+  const contact = 'ivan@s.whatsapp.net';
+  let blockCalled = false;
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+    deleteForMe: async () => {},
+    sendWarning: async () => {},
+    block: async () => {
+      blockCalled = true;
+    },
+    classify: okFlag,
+  });
+
+  assert.equal(strikeCount, 2);
+  assert.equal(blockCalled, false);
+  assert.equal(getActiveBlock(contact), undefined);
 });
 
 test('bursts for the same contact are serialized: a slow classify does not let a second burst interleave', async () => {

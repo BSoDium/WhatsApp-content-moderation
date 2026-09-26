@@ -13,45 +13,40 @@ function baseMsg(overrides = {}) {
   };
 }
 
-test('accepts a plain text message from the target contact', () => {
-  const result = extractIncomingMessage(baseMsg(), TARGET);
+test('accepts a plain text message', () => {
+  const result = extractIncomingMessage(baseMsg());
   assert.deepEqual(result, { text: 'hello', key: baseMsg().key, timestamp: 1700000000 * 1000 });
 });
 
 test('extracts extendedTextMessage text when conversation is absent', () => {
   const msg = baseMsg({ message: { extendedTextMessage: { text: 'quoted reply' } } });
-  const result = extractIncomingMessage(msg, TARGET);
+  const result = extractIncomingMessage(msg);
   assert.equal(result.text, 'quoted reply');
 });
 
 test('rejects anything but type "notify" (own sync/append traffic)', () => {
-  assert.equal(extractIncomingMessage(baseMsg(), TARGET, false, 'append'), null);
-  assert.equal(extractIncomingMessage(baseMsg(), TARGET, true, 'append'), null);
+  assert.equal(extractIncomingMessage(baseMsg(), false, 'append'), null);
+  assert.equal(extractIncomingMessage(baseMsg(), true, 'append'), null);
 });
 
 test('rejects a message with no message payload', () => {
   const msg = baseMsg({ message: undefined });
-  assert.equal(extractIncomingMessage(msg, TARGET), null);
+  assert.equal(extractIncomingMessage(msg), null);
 });
 
 test('rejects our own message unless allowSelf is set', () => {
   const msg = baseMsg({ key: { remoteJid: TARGET, fromMe: true, id: 'X' } });
-  assert.equal(extractIncomingMessage(msg, TARGET, false), null);
-  assert.equal(extractIncomingMessage(msg, TARGET, true).text, 'hello');
-});
-
-test('rejects a message from a contact other than the target', () => {
-  const msg = baseMsg({ key: { remoteJid: 'someone-else@s.whatsapp.net', fromMe: false, id: 'X' } });
-  assert.equal(extractIncomingMessage(msg, TARGET), null);
+  assert.equal(extractIncomingMessage(msg, false), null);
+  assert.equal(extractIncomingMessage(msg, true).text, 'hello');
 });
 
 test('rejects a message with no extractable text (e.g. media only)', () => {
   const msg = baseMsg({ message: { imageMessage: {} } });
-  assert.equal(extractIncomingMessage(msg, TARGET), null);
+  assert.equal(extractIncomingMessage(msg), null);
 });
 
 test('defaults type to "notify" and allowSelf to false when omitted', () => {
-  assert.equal(extractIncomingMessage(baseMsg(), TARGET).text, 'hello');
+  assert.equal(extractIncomingMessage(baseMsg()).text, 'hello');
   const ownMsg = baseMsg({ key: { remoteJid: TARGET, fromMe: true, id: 'X' } });
-  assert.equal(extractIncomingMessage(ownMsg, TARGET), null);
+  assert.equal(extractIncomingMessage(ownMsg), null);
 });
