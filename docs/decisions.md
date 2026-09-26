@@ -204,6 +204,16 @@ whole contact list." Persisting means a contact learned once, however that
 happened, stays known across restarts, and the roster only grows over time
 instead of resetting.
 
+**`connectWhatsApp` sets `syncFullHistory: true`.** WhatsApp's multi-device
+protocol has no request/response "list all contacts" call — everything is
+event-driven, and the one bulk sync (`messaging-history.set`) only fires
+once, at the moment a device is freshly linked (QR scan). Without this
+flag that one-time sync is a recent/trimmed window; with it, it's the
+phone's complete history. It only matters at link time — a reconnect using
+an existing `auth_info/` session never re-requests history, full or not —
+so getting a complete initial contact list means deleting `auth_info/` and
+re-scanning the QR code at least once with this flag already in place.
+
 ## Web control app: Tailscale identity headers (issue #29)
 
 `src/web/control-server.js` is the control surface #9 needed: a static
