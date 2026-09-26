@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Moderation control</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.25rem; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; }
+  dt { font-weight: 600; }
+  dd { margin: 0; }
+  .actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; flex-wrap: wrap; }
+  button { font: inherit; padding: 0.5rem 1rem; border-radius: 0.375rem; border: 1px solid #8888; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #message { margin-top: 1rem; min-height: 1.5em; opacity: 0.8; }
+</style>
+</head>
+<body>
+  <h1>WhatsApp moderation control</h1>
+  <dl id="status">
+    <dt>Paused</dt><dd data-field="paused">…</dd>
+    <dt>Strikes</dt><dd data-field="strikeCount">…</dd>
+    <dt>Block</dt><dd data-field="block">…</dd>
+  </dl>
+  <div class="actions">
+    <button data-command="pause">Pause</button>
+    <button data-command="resume">Resume</button>
+    <button data-command="unblock">Unblock now</button>
+  </div>
+  <p id="message"></p>
+  <script>
+    const statusEl = document.getElementById('status');
+    const messageEl = document.getElementById('message');
+
+    function render(status) {
+      statusEl.querySelector('[data-field="paused"]').textContent = status.paused ? 'yes' : 'no';
+      statusEl.querySelector('[data-field="strikeCount"]').textContent = status.strikeCount;
+      statusEl.querySelector('[data-field="block"]').textContent = status.block
+        ? `until ${new Date(status.block.unblockAt).toLocaleString()}`
+        : 'not blocked';
+    }
+
+    async function refresh() {
+      const res = await fetch('/api/status');
+      if (res.ok) render(await res.json());
+    }
+
+    document.querySelectorAll('button[data-command]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const res = await fetch(`/api/${button.dataset.command}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          });
+          const body = await res.json();
+          messageEl.textContent = body.message ?? body.error ?? '';
+          if (body.paused !== undefined) render(body);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>
