@@ -181,9 +181,9 @@ serve` sets when proxying a request from the tailnet, checked against a
 single allow-listed login; and a `CONTROL_SERVER_TOKEN` shared secret,
 because the header alone isn't proof a request actually came through
 `tailscale serve` rather than some other local process on the same machine
-setting it directly. `GET /styles.css` and `GET /app.js` are the only two
-unauthenticated routes — neither contains a secret, and a stylesheet/script
-tag can't attach the token header anyway — see
+setting it directly. `GET /assets/*` (the built frontend's JS/CSS/font
+bundle) is the only unauthenticated route — none of it contains a secret,
+and a stylesheet/script tag can't attach the token header anyway — see
 [`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
 
 This is where contacts actually get moderated: a scrollable list shows
@@ -223,19 +223,26 @@ Then open `https://<tailscale-hostname>/?token=<CONTROL_SERVER_TOKEN>` (the
 hostname is whatever `tailscale serve status` prints) from a device signed
 in as the allow-listed login. The page moves the token out of the URL and
 into `localStorage` on load, so it isn't left sitting in the address bar or
-browser history after that first open — and unlike `sessionStorage`, it
-survives new tabs and reloads, so you won't need that link again on the
-same device/browser (see `docs/decisions.md`'s "Control page styling" for
-the tradeoff this accepts).
+browser history after that first open, and a `controlToken` cookie is also
+set on that same response so a later plain reload (no `?token=...` in the
+URL) still authenticates — see `docs/decisions.md`'s "Web control app:
+Tailscale identity headers" for why only `GET /` accepts that cookie.
 
-**Developing the frontend** (`src/web/`): `npm run dev` runs the server
-under `node --watch` (restarts on any `src/` or `index.js` change) and
-Tailwind's CSS watcher (`src/web/tailwind.src.css` → `src/web/styles.css`)
-side by side, so editing either the backend or the page's styles picks up
-on a plain browser reload without a manual restart. `npm run build:css`
-alone does a one-off production build (minified) — run it before
-committing a styles change, since the compiled `styles.css` is what's
-actually served and checked in.
+**Developing the frontend**: the page is a Vite + React app in
+[`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) components
+on Tailwind CSS v4 — add a component with `npx shadcn@latest add
+<component>` from inside `web/`. `npm run dev` (repo root) runs the backend
+under `nodemon` (scoped to `src/` only — see `docs/decisions.md`'s "`npm run
+dev`" note for why this is `nodemon` and not Node's own `--watch`) and `vite
+build --watch` side by side; `control-server.js` reads `web/dist/` fresh on
+every request rather than caching it at startup, so a frontend change just
+needs a plain browser reload — no server restart, and no risk of hitting
+the backend mid-rebuild (see `docs/decisions.md`'s "Control page styling"
+for why an earlier version restarted the server on every frontend change,
+and why that was a real bug, not a feature). `npm run build:web` alone does
+a one-off production build; `npm test` runs it automatically first
+(`pretest`), since `control-server.test.js` serves real files out of
+`web/dist/`.
 
 That link carries the token in cleartext until the page's own script strips
 it, so treat it as a one-time credential: don't paste it into chat, a shared

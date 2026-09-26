@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.js';
 import { verifyControlToken, verifyControlCookie, CONTROL_TOKEN_COOKIE } from './control-token-auth.js';
@@ -10,7 +10,7 @@ import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.js';
 const logger = pino({ name: 'control-server' });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const INDEX_HTML = readFileSync(join(__dirname, 'index.html'), 'utf8');
+const DIST_DIR = resolve(__dirname, '../../web/dist');
 
 // Must stay loopback-only — see createControlServer's doc comment.
 const LOOPBACK_HOST = '127.0.0.1';
@@ -24,14 +24,29 @@ const COMMAND_ROUTES = new Set(['pause', 'resume', 'unblock']);
 // lifetimes.
 const CONTROL_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
-// The sole auth exemption — see createControlServer's doc comment below.
-const STATIC_ASSETS = {
-  '/styles.css': { file: join(__dirname, 'styles.css'), contentType: 'text/css; charset=utf-8' },
-  '/app.js': { file: join(__dirname, 'app.js'), contentType: 'text/javascript; charset=utf-8' },
+const ASSET_CONTENT_TYPES = {
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
 };
-const staticAssetBodies = Object.fromEntries(
-  Object.entries(STATIC_ASSETS).map(([pathname, { file, contentType }]) => [pathname, { body: readFileSync(file, 'utf8'), contentType }]),
-);
+
+// Read per-request rather than cached at startup: `web/dist` is rebuilt by
+// a live `vite build --watch` while this server keeps running (unlike the
+// old two-fixed-file setup, a frontend change no longer needs a backend
+// restart at all — see docs/decisions.md's "Control page styling" for why
+// that coupling used to exist and why it was actively harmful once Vite's
+// rebuild could race a restart). `resolve` + a prefix check stops a
+// `/assets/../../..` escaping `DIST_DIR`.
+function serveDistFile(res, pathname) {
+  const filePath = resolve(DIST_DIR, `.${pathname}`);
+  if (!filePath.startsWith(DIST_DIR + '/') && filePath !== DIST_DIR) return false;
+  if (!existsSync(filePath)) return false;
+  res.writeHead(200, { 'Content-Type': ASSET_CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream' });
+  res.end(readFileSync(filePath));
+  return true;
+}
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -188,10 +203,7 @@ async function handleRequest(req, res, deps) {
   const { allowedLogin, controlToken } = deps;
   const { pathname, searchParams } = new URL(req.url, `http://${LOOPBACK_HOST}`);
 
-  if (req.method === 'GET' && staticAssetBodies[pathname]) {
-    const { body, contentType } = staticAssetBodies[pathname];
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(body);
+  if (req.method === 'GET' && (pathname === '/favicon.svg' || pathname.startsWith('/assets/')) && serveDistFile(res, pathname)) {
     return;
   }
 
@@ -219,7 +231,7 @@ async function handleRequest(req, res, deps) {
     // way localStorage never expires on its own.
     const cookie = `${CONTROL_TOKEN_COOKIE}=${encodeURIComponent(controlToken)}; Path=/; Max-Age=${CONTROL_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': cookie });
-    res.end(INDEX_HTML);
+    res.end(readFileSync(resolve(DIST_DIR, 'index.html'), 'utf8'));
     return;
   }
 
@@ -256,12 +268,12 @@ async function handleRequest(req, res, deps) {
  *    The token isn't derivable from anything Tailscale sets, so it closes
  *    that gap.
  *
- * `GET /styles.css` and `GET /app.js` are the sole exception, checked before
- * either factor: neither file contains a secret (the control token only
- * ever lives in the browser's `localStorage`, never in served source),
- * and a `<link>`/`<script src>` tag can't attach `X-Control-Token` the way
- * `fetch()` can anyway — see docs/decisions.md "Control page styling" for
- * the full reasoning.
+ * `GET /assets/*` (the Vite-built frontend's JS/CSS/font bundle) is the sole
+ * exception, checked before either factor: none of these files contain a
+ * secret (the control token only ever lives in the browser's
+ * `localStorage`, never in served source), and a `<link>`/`<script src>`
+ * tag can't attach `X-Control-Token` the way `fetch()` can anyway — see
+ * docs/decisions.md "Control page styling" for the full reasoning.
  *
  * State-changing POSTs additionally require `Content-Type: application/json`
  * (a CSRF defense — see the inline comments at each check). `DELETE` doesn't

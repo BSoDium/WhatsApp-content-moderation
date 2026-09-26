@@ -522,25 +522,164 @@ moderates. Superseded once the ask sharpened to a specific reference
 the switch's checked state and interactive emphasis generally, rather than
 a colored accent.
 
-**`npm run dev` uses Node's built-in `--watch`, not `nodemon`.** Node 20+
+**`npm run dev` originally used Node's built-in `--watch`, not `nodemon` —
+superseded by `nodemon` after `--watch-path` turned out not to scope
+anything on this project's Node build.** The original reasoning: Node 20+
 ships file-watching restart natively (`--watch`), so there's no reason to
-add a dependency that exists purely to re-implement it. `--watch-path=./src`
-scopes what's watched explicitly, rather than watching the whole project
-(the default when no `--watch-path` is given is just the entry point's own
-module graph, which wouldn't cover the static `src/web/*.html`/`.js`/`.css`
-files served via `readFileSync` — they're never `import`ed, so they're
-outside that graph without an explicit path). Scoped to `src/` alone, *not*
-the project root and *not* `./index.js` as its own extra `--watch-path`
-entry — passing the entry file itself as a `--watch-path` value doesn't
-narrow anything: in testing it caused `auth_info/creds.json` (a project-
-root sibling, rewritten on every `creds.update`) to be watched too, restart-
-looping the WhatsApp connection on essentially every reconnect. `--watch`
-already tracks the entry point on its own regardless of `--watch-path`, so
-`./index.js` was both redundant and the cause of that leak — dropped
-outright rather than worked around. `concurrently` runs this alongside
-Tailwind's own `--watch` build for `styles.css`, and forwards Ctrl+C to
-both — the alternative (a bare `&`-backgrounded shell job) doesn't reliably
-kill the backgrounded process on interrupt.
+add a dependency that exists purely to re-implement it, and `--watch-path`
+should scope what's watched explicitly rather than the whole project. A
+first bug under that design — passing `./index.js` as its own extra
+`--watch-path` entry broadened scope enough to pick up
+`auth_info/creds.json` (rewritten on every WhatsApp reconnect),
+restart-looping the connection — was fixed by dropping that redundant
+entry, keeping only `--watch-path=./src`. That fix looked complete at the
+time (`npm test` and manual use were both fine) and shipped for a while.
+
+**It wasn't actually complete.** While chasing a live 502-under-normal-use
+bug (see "Control page styling" below), later testing found `--watch-path`
+doesn't reliably exclude anything at all on this Node build, regardless of
+scope: with the value made absolute (`--watch-path="$(pwd)/src"`), the
+server *still* restarted on a touched `web/dist/index.html`. Pushed
+further — pointing `--watch-path` at a throwaway empty directory
+completely unrelated to the project, with `auth_info/creds.json` still
+being rewritten by a live WhatsApp reconnect in the background — the
+server restarted on that creds.json write anyway, proving `--watch-path`
+wasn't excluding *anything*; whatever Node was actually watching, it wasn't
+scoped by this flag at all. Since a live connection rewrites
+`auth_info/creds.json` on every reconnect, and a restart itself forces a
+reconnect, this is a self-sustaining restart storm baked into the dev
+server's normal idle state — not something that needs a file edit to
+trigger — which lines up with a user report of "a lot of 502 failures...
+when you update the status of an item... or hard reload" (a request that
+lands mid-restart gets connection-refused from `tailscale serve`) and the
+page sometimes not loading at all (a request landing in the dead window
+between SIGTERM and the new process's `listen()` call). Whether this is a
+genuine bug in this Node version or some undocumented interaction wasn't
+investigated further, because it doesn't matter for the fix: **the
+underlying flag can't be trusted to exclude anything here**, at any path
+form.
+
+**Fixed by switching to `nodemon`, whose own `--watch <path>` was verified
+(same throwaway-directory-style test, plus a live reconnect running in the
+background) to correctly restart only on a genuine `src/` change** — the
+exact scoping the original decision wanted from `--watch-path` and didn't
+get. `dev:server` is now `nodemon --watch src --exec "node
+--env-file-if-exists=.env" index.js`. The dependency-avoidance reasoning
+from the original decision no longer applies: the built-in flag doesn't do
+the one job it needed to do, so there's nothing left to avoid re-implementing.
+
+`concurrently` runs `dev:server` alongside the frontend's own `--watch`
+build (see below), and forwards Ctrl+C to both — the alternative (a bare
+`&`-backgrounded shell job) doesn't reliably kill the backgrounded process
+on interrupt.
+
+**Superseded: the hand-rolled-then-Tailwind-compiled vanilla CSS/JS above
+was replaced with a Vite + React frontend using real shadcn/ui
+components.** The user had pointed at shadcn as a *style reference* for
+several rounds (see "Palette" above); eventually the ask sharpened to
+literally stop hand-building components/CSS and use shadcn's own component
+library. shadcn/ui ships React components (Radix UI primitives underneath,
+via its CLI's `npx shadcn add <component>`) — there's no vanilla-JS
+distribution — so adopting it for real meant adding a frontend framework
+and build step, not just a new CSS file. Given that scope jump, the user
+was asked (and chose) a full React migration over a "shadcn look without
+React" alternative that would have hand-copied shadcn's CSS recipes into
+plain classes.
+
+**Chosen: a separate `web/` directory, its own `package.json`/`node_modules`,
+scaffolded via `npm create vite@latest` (React template) + `npx shadcn@latest
+init` (Nova preset, Radix base, neutral/zinc-equivalent OKLCH palette —
+achromatic black/white/gray, matching the palette decision above almost by
+coincidence since Nova's default *is* a neutral theme).** Kept as a second
+`package.json` rather than folding React/Vite/shadcn's deps into the root
+one: the root project is a Node ESM backend with its own dependency set
+(Baileys, pino, better-sqlite-equivalent, …) and its own test runner: mixing
+in a frontend toolchain's much larger, faster-moving dependency tree (React,
+Vite, Radix, Tailwind v4) would make both harder to reason about, and
+`npm create vite`/shadcn's CLI both assume they own the `package.json` in
+their working directory rather than merging into an existing one. Root
+`package.json` gained thin orchestration scripts instead
+(`build:web`/`watch:web` → `npm run --prefix web build`/`watch`).
+
+**Tailwind v4, not v3.** shadcn's current CLI scaffolds Tailwind v4 by
+default (`@tailwindcss/vite`, CSS-first config via `@theme`/`@import
+"tailwindcss"` — no more `tailwind.config.js` content globs), and fighting
+that default back down to v3 for consistency with the now-deleted
+`tailwind.src.css` would have meant manually maintaining compatibility
+shims shadcn's own components don't expect. `web/src/index.css`'s
+`@theme`/`:root`/`.dark` blocks (generated by `shadcn init`, not
+hand-written) are the direct replacement for the old hand-authored
+`--color-*` custom properties.
+
+**Vite build output is served, not Vite's own dev server.** The obvious
+"real" dev setup would run `vite`'s dev server (HMR) with `/api/*` proxied
+to the Node backend. Rejected: this app's entire auth model
+(`docs/decisions.md`'s "Web control app: Tailscale identity headers")
+depends on `tailscale serve` being the *only* path to the backend, and on
+every request — including `GET /` — carrying a `Tailscale-User-Login`
+header that only that proxy hop sets. A second, separate origin (Vite's own
+dev server) would either need its own `tailscale serve` mapping (doubling
+the trusted-proxy surface for zero production benefit) or bypass the proxy
+entirely during dev, testing an auth path that doesn't match production.
+Instead, `web/` is only ever *built* (`vite build`, optionally `--watch`)
+into `web/dist/`, and `control-server.js` serves that directory exactly
+like it served the old hand-written `index.html`/`styles.css`/`app.js` —
+one origin, one auth model, in dev and production alike. The cost is no
+HMR (a full rebuild + a plain browser reload per change instead — not a
+*server* restart; see the next entry for why it was briefly wired up to
+restart the server too, and why that turned out to be a bug rather than a
+feature), acceptable for a personal single-user tool.
+
+**`control-server.js` serves `web/dist/` per-request, not from a cache read
+once at startup — and the backend no longer restarts on a frontend
+rebuild at all.** The first version of this change kept the old two-file
+eager-`readFileSync`-at-startup pattern, generalized to `readdirSync` over
+`web/dist/assets/` (Vite content-hashes every output filename, so a fixed
+`STATIC_ASSETS` map doesn't work any more), and added `web/dist/` to
+`dev:server`'s `--watch-path` so a frontend rebuild would restart the
+server and pick up the new hashes. **This was a real bug, not a
+simplification**: `vite build --watch`'s incremental rebuild isn't atomic
+— it can briefly leave `web/dist/assets/` with the old files deleted and
+the new ones not yet written — and `node --watch` restarting mid-window
+hit that exact half-written state, crashing on the eager `readdirSync`
+inside the process's own module-load (uncaught, since it ran before the
+request handler's try/catch existed), which then sat crashed until the
+*next* file change nudged `--watch` into trying again (matching a user
+report of intermittent 502s on routine actions and the page sometimes
+"just not loading" until an unrelated edit). Restarting the whole backend
+— including the live WhatsApp/Baileys connection — over a frontend CSS
+tweak was also just needless churn even when it didn't race.
+
+**Fixed** by decoupling the two entirely: `web/dist/` was dropped from
+`--watch-path` (only `src/` changes restart the backend now), and
+`serveDistFile()` resolves and reads each requested file from disk on
+every request instead of caching anything at import time — a `GET /` or
+`GET /assets/*` always reflects whatever's currently on disk, so a frontend
+rebuild just takes effect on the next reload, no backend restart involved,
+and there's no startup-time crash mode left (a missing/mid-rewrite file
+just 404s or 500s that one request instead of taking down the process).
+The read-per-request cost is a handful of small local files on a
+loopback-only personal tool — not worth trading correctness for. Path
+traversal (`/assets/../../..`) is stopped by resolving the path and
+checking it still starts with `DIST_DIR`. `favicon.svg` (Vite's `public/`
+output, served from `web/dist/` directly rather than `web/dist/assets/`)
+goes through the same function for the same reason the JS/CSS bundle is
+unauthenticated: no secret, and a `<link rel="icon">` can't attach the
+token header either.
+
+**Body text now uses a self-hosted variable font
+(`@fontsource-variable/geist`, shadcn's Nova preset default) instead of the
+system sans stack; headlines still use a system monospace stack, not a
+webfont.** Only `--font-sans` was repointed at `'Geist Variable'` by
+`shadcn init` — `--font-mono` (what `<h1>` uses via `font-mono`) was left
+alone, so the "no webfont for the headline" decision above (originally
+about the dropped serif font) still holds for `<h1>` specifically. Geist
+itself is self-hosted, not a remote Google Fonts `<link>`, consistent with
+that same reasoning: a control page for a real WhatsApp account shouldn't
+make an unauthenticated third-party network request just to render text,
+and `@fontsource`'s package ships the `.woff2` files straight into the Vite
+build (see the previous paragraph), so there's no per-load dependency on
+Google's CDN either way.
 
 ## `auth_info/` is a credential
 

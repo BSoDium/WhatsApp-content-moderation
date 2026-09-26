@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { createControlServer } from './control-server.js';
+
+const DIST_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
 
 const ALLOWED = 'alice@github';
 const TOKEN = 'test-control-token';
@@ -71,13 +76,17 @@ function authHeaders(extra = {}) {
   return { 'Tailscale-User-Login': ALLOWED, 'X-Control-Token': TOKEN, ...extra };
 }
 
-test('GET /styles.css and GET /app.js are served with no auth headers at all', async () => {
+test('GET /assets/* (the built frontend bundle) is served with no auth headers at all', async () => {
+  const assetNames = readdirSync(DIST_ASSETS_DIR);
+  const jsFile = assetNames.find((name) => name.endsWith('.js'));
+  const cssFile = assetNames.find((name) => name.endsWith('.css'));
+
   await withServer({}, async (base) => {
-    const css = await fetch(`${base}/styles.css`);
+    const css = await fetch(`${base}/assets/${cssFile}`);
     assert.equal(css.status, 200);
     assert.match(css.headers.get('content-type'), /text\/css/);
 
-    const js = await fetch(`${base}/app.js`);
+    const js = await fetch(`${base}/assets/${jsFile}`);
     assert.equal(js.status, 200);
     assert.match(js.headers.get('content-type'), /javascript/);
   });
