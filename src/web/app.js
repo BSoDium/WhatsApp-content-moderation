@@ -13,11 +13,7 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-// The control token itself never lives in this file's source — it's read
-// from sessionStorage at runtime, populated by index.html's inline
-// bootstrap script. Safe even though this file is served unauthenticated:
-// an unauthenticated *file* only means anyone can read this code, not that
-// it can read another visitor's session state.
+// Read at runtime from sessionStorage (populated by index.html's inline bootstrap script) — safe to serve this file unauthenticated since its source never contains the token itself.
 function getToken() {
   try {
     return sessionStorage.getItem('controlToken');
@@ -155,7 +151,7 @@ async function stopMonitoring(contactId) {
   try {
     await apiFetch(`/api/roster/${encodeURIComponent(contactId)}`, { method: 'DELETE' });
     if (state.activeId === contactId) state.activeId = null;
-    await refreshRoster();
+    await Promise.all([refreshRoster(), refreshContacts()]);
   } catch (err) {
     showCard({ title: 'Could not stop monitoring', description: err.message, actionLabel: 'Retry', onAction: () => stopMonitoring(contactId) });
   }
@@ -172,6 +168,7 @@ async function runCommand(contactId, action) {
     const messageEl = panelsEl.querySelector('[data-role="message"]');
     if (messageEl) messageEl.textContent = result.message ?? '';
   } catch (err) {
+    renderPanel(); // revert a switch the browser already flipped optimistically before this request failed
     showCard({ title: 'Command failed', description: err.message, actionLabel: 'Retry', onAction: () => runCommand(contactId, action) });
   }
 }
@@ -185,6 +182,7 @@ async function setEscalation(contactId, enabled) {
     });
     await refreshRoster();
   } catch (err) {
+    renderPanel(); // revert a switch the browser already flipped optimistically before this request failed
     showCard({
       title: 'Could not update escalation',
       description: err.message,
@@ -212,20 +210,30 @@ tabsEl.addEventListener('click', (event) => {
   renderPanel();
 });
 
-panelsEl.addEventListener('click', (event) => {
+panelsEl.addEventListener('click', async (event) => {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const contactId = button.closest('[data-contact-id]').dataset.contactId;
-  if (button.dataset.action === 'unblock') runCommand(contactId, 'unblock');
-  if (button.dataset.action === 'stop-monitoring') stopMonitoring(contactId);
+  button.disabled = true;
+  try {
+    if (button.dataset.action === 'unblock') await runCommand(contactId, 'unblock');
+    if (button.dataset.action === 'stop-monitoring') await stopMonitoring(contactId);
+  } finally {
+    button.disabled = false;
+  }
 });
 
-panelsEl.addEventListener('change', (event) => {
+panelsEl.addEventListener('change', async (event) => {
   const input = event.target.closest('[data-action]');
   if (!input) return;
   const contactId = input.closest('[data-contact-id]').dataset.contactId;
-  if (input.dataset.action === 'pause-toggle') runCommand(contactId, input.checked ? 'pause' : 'resume');
-  if (input.dataset.action === 'escalation-toggle') setEscalation(contactId, input.checked);
+  input.disabled = true;
+  try {
+    if (input.dataset.action === 'pause-toggle') await runCommand(contactId, input.checked ? 'pause' : 'resume');
+    if (input.dataset.action === 'escalation-toggle') await setEscalation(contactId, input.checked);
+  } finally {
+    input.disabled = false;
+  }
 });
 
 if (!getToken()) {
