@@ -448,6 +448,104 @@ replay entirely on its own) and `Secure`/`SameSite=Strict`, with a 400-day
 so it doesn't meaningfully expire sooner than `localStorage` effectively
 does.
 
+## Web control app: replacing the header+token with LocalAPI WhoIs (issue #29 revisited)
+
+The header+token design above got its first live confirmation: an operator
+finishing the Debian install got a 403 whose log line
+(`rejected: missing or invalid control token`) showed the
+`Tailscale-User-Login` header matching correctly — the open question in the
+entry above, about whether `tailscale serve` actually sets that header the
+way this app relies on, is resolved for at least one real login. The 403
+itself wasn't a bug: `GET /` requires `?token=<CONTROL_SERVER_TOKEN>` on the
+very first visit specifically (only that visit sets the `controlToken`
+cookie subsequent plain reloads rely on), and the operator had opened the
+bare tailnet URL instead. Asked directly, they didn't want the bootstrap
+step made clearer — they wanted to know if a token was needed at all.
+
+**Chosen: drop the shared secret. Ask `tailscaled`'s own local API who owns
+the connection, per request, instead of trusting a header.** `tailscaled`
+exposes `GET /localapi/v0/whois?addr=<ip:port>` over a Unix-socket-only HTTP
+API — the same data `tailscale whois` prints. This works for an app sitting
+behind `tailscale serve`, not only for a `tsnet`-based node: when `tailscale
+serve --bg 4756` proxies a real tailnet request to `127.0.0.1:4756`,
+`tailscaled` itself opens that backend connection from an ephemeral local
+port it tracks internally, and `whois` on *that specific address* resolves
+the real tailnet peer — because `tailscaled`, not this app or the client, is
+the one who knows the mapping. `src/web/tailscale-whois-auth.ts` calls this
+with `req.socket.remoteAddress`/`remotePort` (the actual observed TCP peer
+of the connection carrying the request) on every `GET /` and `/api/*` call,
+replacing both `src/web/tailscale-auth.ts` (header trust) and
+`src/web/control-token-auth.ts` (the shared secret) — both deleted, not
+just unused.
+
+**This closes the same local-forgery gap the token did, without a secret to
+manage.** The token existed because the header alone wasn't proof a request
+came through `tailscale serve`'s proxy hop rather than some other local
+process on this host calling `fetch()` on `127.0.0.1:4756` directly and
+setting the header itself. A forged connection like that gets its own,
+distinct ephemeral port — one `tailscaled` has no record of proxying
+anywhere — so `whois` on it returns no result, and
+`verifyTailscaleWhoIs` fails closed. The forger can no longer just know a
+header name and value; they'd need `tailscaled` itself to already believe
+their specific connection is a live proxied one, which they can't produce
+by connecting fresh. **Fail-closed is the whole safety property here**: any
+`whois` error, timeout, non-200, malformed body, or absent profile must
+resolve to "not authenticated," same as a login mismatch — silently
+trusting an unreachable `tailscaled` would recreate the exact hole this
+change closes.
+
+**Everything the token/cookie system existed for goes away with it.** No
+`?token=` bootstrap link, no `controlToken` in `localStorage`, no
+`Set-Cookie` on `GET /`, no distinction between what `GET /` alone accepts
+and what `/api/*` requires — there's exactly one check now, and it runs on
+every request, not just the first one. The frontend's `web/index.html`
+bootstrap script and `web/src/lib/api.ts`'s `getToken()`/`X-Control-Token`
+attachment are deleted, not superseded-but-kept, since nothing consumes
+them any more.
+
+**Superseded — the CSRF paragraph above** ("With `CONTROL_SERVER_TOKEN` in
+place, that token is the primary CSRF defense"): re-examined, since removing
+it must not reopen that gap. The token's only actual CSRF-relevant role was
+being accepted as a **cookie**, and only on `GET /` — the one path a
+cross-origin page could get a browser to attach a credential to
+automatically. `GET /` has no side effects and its response isn't
+cross-origin-readable, so that exposure was already narrow before this
+change. Every state-changing route requires either `Content-Type:
+application/json` (POST; not CORS-safelisted, forces a preflight) or is a
+`DELETE` (also non-simple) — and this server has never sent
+`Access-Control-Allow-Origin`, so the forced preflight already blocks the
+real cross-origin request regardless of any token or cookie. Removing the
+token also removes its one cookie-shaped CSRF surface; the preflight
+mechanism that was actually doing the work for mutating routes is
+unchanged. `src/web/control-server.test.ts` asserts no response ever
+carries `Access-Control-Allow-Origin`, locking this in.
+
+**Real open risk, not yet resolved by anything above: `tailscaled`'s socket
+is normally root-owned, and this app's container runs as UID 1000** — a
+documented deployment invariant (see `AGENTS.md`'s "Deployment invariants"),
+not incidental. Bind-mounting the host socket into the container
+(`docker-compose.yml`) doesn't by itself prove UID 1000 can connect to it.
+Untested as of this writing whether `sudo tailscale set
+--operator=<host-user>` (mapping to a real host account with UID 1000)
+grants `whois` access specifically, rather than just CLI command rights. If
+UID 1000 genuinely cannot reach the socket, the fallback — running the
+control-server process as root, or as whatever UID the socket allows — is a
+real deviation from that invariant requiring an explicit decision, not a
+default to apply quietly. See README "Web control app" for the exact
+commands to check this on a real host before relying on any of the above.
+
+**Alternative considered and rejected: run the app as its own `tsnet` node**
+(a fully self-contained Tailscale node inside the process, using a
+userspace WireGuard stack), which is how Tailscale's own Go examples
+typically pair with `whois`. Rejected for this codebase specifically
+because `tsnet` has no maintained Node.js equivalent — porting would mean
+either shelling out to a Go helper binary or losing the guarantee entirely,
+neither of which is simpler than calling the existing `tailscaled`'s local
+API over its Unix socket, which requires no new process and no language
+boundary. It also would have meant giving up `tailscale serve`'s TLS
+termination and MagicDNS hostname, both of which this app gets for free
+today.
+
 ## Control page styling: three files, two of them unauthenticated
 
 A first code-review pass on the control page kept it as one self-contained
@@ -475,6 +573,12 @@ external file loads). `app.js` reads that token back out of
 `localStorage` itself at request time, which is fine even though the
 file's *source* is servable to anyone — an unauthenticated file only means
 its code is public, not that it can read another visitor's stored token.
+
+**Superseded**: there is no control token, bootstrap script, or
+`localStorage` credential any more — see "Web control app: replacing the
+header+token with LocalAPI WhoIs (issue #29 revisited)" above. The
+reasoning above still explains why splitting unauthenticated CSS/JS out was
+safe at the time; it just no longer describes what those files do today.
 
 **Superseded**: the page originally self-hosted a headline serif font
 (Source Serif 4, SIL OFL) embedded as a base64 `data:` URI directly inside
