@@ -380,6 +380,10 @@ Sources: [Celeron G3930T spec (Intel)](https://www.intel.com/content/www/us/en/p
 
 On a Debian x86-64 host with Docker Compose and Tailscale installed:
 
+This recipe clones and builds the source. Tagged GitHub releases also
+publish `ghcr.io/bsodium/whatsapp-content-moderation`, but this Compose
+setup does not pull that image.
+
 ```sh
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
