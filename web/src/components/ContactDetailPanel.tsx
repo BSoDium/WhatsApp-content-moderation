@@ -29,6 +29,7 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
+  const selfLocked = contact.isSelf && !contact.allowSelf;
 
   // Guards against a rapid double-click firing two overlapping requests for the same control (each key here is independent, so other controls stay usable).
   async function withPending(key: string, fn: () => Promise<unknown>): Promise<void> {
@@ -66,11 +67,17 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         <section className="rounded-xl border border-border bg-muted/40 px-4">
           <SettingRow
             title="Moderate this contact"
-            description={monitored ? undefined : 'Start tracking strikes and enable auto-blocking for this contact.'}
+            description={
+              selfLocked
+                ? "This is your own account — it can't be moderated. Set TEST_ALLOW_SELF=1 to test the pipeline against messages you send yourself."
+                : monitored
+                  ? undefined
+                  : 'Start tracking strikes and enable auto-blocking for this contact.'
+            }
             control={
               <Switch
                 checked={monitored}
-                disabled={pending.has('monitor')}
+                disabled={pending.has('monitor') || selfLocked}
                 onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
               />
             }

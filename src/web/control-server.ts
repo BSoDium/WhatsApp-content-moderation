@@ -32,6 +32,15 @@ interface ControlServerDependencies {
     countActive: () => number;
   };
   allowedLogin: string;
+  // The account's own contact_id (canonicalized the same way the directory
+  // is), and whether TEST_ALLOW_SELF is enabled — together these let the
+  // control app show the self contact as non-moderatable rather than a
+  // switch that silently does nothing (or, outside shadow mode, moderates
+  // the operator's own messages). A function, not a plain string: it's
+  // unknown until the WhatsApp socket connects, sometime after this server
+  // itself starts listening.
+  getSelfId: () => string | null;
+  allowSelf: boolean;
 }
 
 const logger = pino({ name: 'control-server' });
@@ -191,7 +200,8 @@ async function handleApi(
   const { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks } = deps;
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
-    const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id) }));
+    const selfId = deps.getSelfId();
+    const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id), isSelf: c.id === selfId, allowSelf: deps.allowSelf }));
     sendJson(res, 200, contacts);
     return true;
   }
@@ -250,6 +260,10 @@ async function handleApi(
     }
     if (!isIndividualJid(body.contactId)) {
       sendJson(res, 400, { error: 'contactId must be an individual contact, not a group or broadcast list' });
+      return true;
+    }
+    if (!deps.allowSelf && body.contactId === deps.getSelfId()) {
+      sendJson(res, 400, { error: 'Moderating your own account is disabled — set TEST_ALLOW_SELF=1 to enable it for testing' });
       return true;
     }
     monitoredContacts.add(body.contactId);

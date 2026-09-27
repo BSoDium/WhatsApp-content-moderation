@@ -2,6 +2,12 @@ export interface Contact {
   id: string;
   name: string;
   lastMessageAt: number | null;
+  // The account's own contact, and whether TEST_ALLOW_SELF is enabled —
+  // together these mean "moderating this contact would either do nothing or
+  // moderate the operator's own messages", so the UI disables it rather
+  // than exposing a switch that's silently a no-op.
+  isSelf: boolean;
+  allowSelf: boolean;
 }
 
 export interface RosterEntry {

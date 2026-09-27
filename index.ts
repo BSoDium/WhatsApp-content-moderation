@@ -5,7 +5,7 @@ import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.t
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
-import { createContactDirectory } from './src/whatsapp/contact-directory.ts';
+import { createContactDirectory, canonicalContactId } from './src/whatsapp/contact-directory.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
 import {
@@ -52,6 +52,13 @@ function currentSocket(): WASocket {
   return sock;
 }
 
+// Unknown until the socket connects, sometime after createControlServer()
+// itself starts listening — a closure over the outer `sock`, like
+// currentSocket() above, rather than a value resolved once at startup.
+function selfContactId(): string | null {
+  return sock?.user ? canonicalContactId(sock.user) : null;
+}
+
 const buffer = createMessageBuffer<IncomingMessage>(async (contactId, messages) => {
   try {
     const { strikeCount } = await handleBurst(
@@ -91,6 +98,8 @@ async function start() {
       auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
       blocks: { countActive: countActiveBlocks },
       allowedLogin: ALLOWED_TAILSCALE_LOGIN!,
+      getSelfId: selfContactId,
+      allowSelf: ALLOW_SELF,
     });
     await controlServer.listen(WEB_CONTROL_PORT);
   }

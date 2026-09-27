@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ban } from 'lucide-react';
+import { ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,8 @@ interface ContactRowProps {
 
 export function ContactRow({ contact, monitored, selected, onSelect, onToggle }: ContactRowProps) {
   const [pending, setPending] = useState(false);
-  const label = monitored ? 'Stop moderating this contact' : 'Moderate this contact';
+  const selfLocked = contact.isSelf && !contact.allowSelf;
+  const label = selfLocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
@@ -46,10 +47,10 @@ export function ContactRow({ contact, monitored, selected, onSelect, onToggle }:
             size="icon"
             aria-label={label}
             aria-pressed={monitored}
-            disabled={pending}
+            disabled={pending || selfLocked}
             onClick={handleToggle}
           >
-            <Ban />
+            {monitored ? <ShieldCheck /> : <ShieldOff />}
           </Button>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
