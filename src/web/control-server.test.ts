@@ -263,7 +263,7 @@ test('GET /api/audit-log forwards contactId/action/search filters and clamps an 
     await fetch(`${base}/api/audit-log?contactId=${encodeURIComponent('alice@s.whatsapp.net')}&action=delete%2Bwarn&search=crypto&limit=99999`, {
       headers: authHeaders(),
     });
-    assert.deepEqual(auditLog.calls, [{ contactId: 'alice@s.whatsapp.net', action: 'delete+warn', search: 'crypto', before: undefined, limit: 200 }]);
+    assert.deepEqual(auditLog.calls, [{ contactId: 'alice@s.whatsapp.net', action: 'delete+warn', search: 'crypto', before: undefined, limit: 201 }]);
   });
 });
 

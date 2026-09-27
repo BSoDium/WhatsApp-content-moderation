@@ -133,7 +133,7 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         </section>
       </div>
 
-      {message && <p className="mt-4 text-sm text-muted-foreground">{message}</p>}
+      <p className="mt-4 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }

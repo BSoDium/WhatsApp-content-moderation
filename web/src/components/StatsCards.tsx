@@ -9,9 +9,7 @@ interface StatCard {
   warn?: boolean;
 }
 
-// Short, single-line labels — a two-column mobile grid has little room, and only
-// classifier errors are flagged red: a block or a deletion is the system working
-// as intended, not a failure that needs an alarm color.
+// Short labels for the two-column mobile grid; only classifier errors are flagged red — a block/deletion is the system working as intended.
 function cardsFor(stats: Stats): StatCard[] {
   return [
     { label: 'Monitored', value: stats.monitoredCount },

@@ -10,8 +10,7 @@ export function colorFor(contactId: string): string {
 }
 
 export function initialsFor(name: string): string {
-  // Digits only, not name.slice(1, 3) — a short country code (e.g. "+1 555…")
-  // would otherwise slice in the space after it, leaving a single visible digit.
+  // Digits only, not name.slice(1, 3) — a short country code like "+1 555…" would otherwise slice into the space after it.
   if (name.startsWith('+')) return name.replace(/\D/g, '').slice(0, 2);
   const words = name.trim().split(/\s+/);
   const letters = words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2);

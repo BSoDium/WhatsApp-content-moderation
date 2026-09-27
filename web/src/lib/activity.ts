@@ -7,10 +7,7 @@ interface ActionMeta {
   badgeVariant: BadgeVariant;
 }
 
-// Red is reserved for the two states that mean something actually went wrong
-// (classifier_error, action_failed) — a deleted message is the system working
-// as intended, not a failure, so it gets the same visual weight a "default"
-// badge gives any other headline outcome, not an alarm color.
+// Red is reserved for classifier_error/action_failed; a delete is the system working as intended, not a failure needing an alarm color.
 export const ACTION_META: Record<AuditAction, ActionMeta> = {
   'delete+warn': { label: 'Deleted', badgeVariant: 'default' },
   warning_sent: { label: 'Warning sent', badgeVariant: 'secondary' },

@@ -21,11 +21,7 @@ interface UseActivityDataOptions {
   initialContactId: string | null;
 }
 
-// Fetches fresh whenever the sheet opens (mounted via a remount-on-open `key`
-// in App.tsx, mirroring ContactDetailPanel's own key-to-reset-state pattern)
-// and whenever a filter changes. `search` is debounced so fast typing doesn't
-// fire a request per keystroke; contactId/action (both Selects, not typed)
-// refetch immediately.
+// Fetches stats + the first page on open (remounted via a `key` in App.tsx); a filter change only reloads the page, since stats don't depend on filters.
 export function useActivityData({ open, initialContactId }: UseActivityDataOptions) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [contactId, setContactId] = useState(initialContactId ?? '');
@@ -37,11 +33,12 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by every fetch-initiating call (refresh or loadMore) and checked before
-  // applying a response — filter changes fire requests faster than they can be
+  // Bumped by every fetch-initiating call (refresh, loadPage, or loadMore) and checked
+  // before applying a response — filter changes fire requests faster than they can be
   // guaranteed to resolve in order, and an older response landing after a newer
   // one must never clobber it.
   const requestSeq = useRef(0);
+  const opened = useRef(false);
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -52,6 +49,23 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     (before?: number) => apiFetch<AuditLogPage>(`/api/audit-log?${buildQuery({ contactId, action, search, before })}`),
     [contactId, action, search],
   );
+
+  const loadPage = useCallback(async function loadPage() {
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    try {
+      const page = await fetchPage();
+      if (seq !== requestSeq.current) return;
+      setEntries(page.entries);
+      setNextBefore(page.nextBefore);
+      setError(null);
+    } catch (err: unknown) {
+      if (seq !== requestSeq.current) return;
+      setError(errorMessage(err));
+    } finally {
+      if (seq === requestSeq.current) setLoading(false);
+    }
+  }, [fetchPage]);
 
   const refresh = useCallback(async function refresh() {
     const seq = ++requestSeq.current;
@@ -90,8 +104,14 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
   }, [fetchPage, nextBefore]);
 
   useEffect(() => {
-    if (open) refresh();
-  }, [open, refresh]);
+    if (!open) return;
+    if (opened.current) {
+      loadPage();
+    } else {
+      opened.current = true;
+      refresh();
+    }
+  }, [open, loadPage, refresh]);
 
   return {
     stats,

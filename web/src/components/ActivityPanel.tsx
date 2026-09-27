@@ -12,16 +12,14 @@ interface ActivityPanelProps {
   contacts: Contact[];
 }
 
-// Remounted (via a `key` in App.tsx that changes every time it's opened) so
-// its filters and scroll position always start fresh — the same pattern
-// ContactDetailPanel already uses to reset its own local state on selection.
+// Remounted via a `key` in App.tsx (same pattern as ContactDetailPanel) so filters and scroll position always start fresh.
 export function ActivityPanel({ open, onOpenChange, initialContactId, contacts }: ActivityPanelProps) {
   const { stats, entries, nextBefore, loading, loadingMore, error, contactId, setContactId, action, setAction, searchInput, setSearchInput, refresh, loadMore } =
     useActivityData({ open, initialContactId });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full! gap-0 sm:max-w-2xl! md:max-w-3xl!" aria-describedby="activity-panel-description">
+      <SheetContent size="wide" className="gap-0" aria-describedby="activity-panel-description">
         <SheetHeader className="border-b border-border">
           <SheetTitle>Moderation activity</SheetTitle>
           <SheetDescription id="activity-panel-description">

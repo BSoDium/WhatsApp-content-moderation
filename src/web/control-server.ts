@@ -174,6 +174,13 @@ function clampAuditLogLimit(raw: string | null): number {
   return Math.min(parsed, MAX_AUDIT_LOG_LIMIT);
 }
 
+// Malformed/missing `before` is treated as "no cursor" instead of binding NaN into `id < ?`, which SQLite accepts but which always evaluates false.
+function parseAuditLogCursor(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) ? parsed : undefined;
+}
+
 async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
@@ -200,16 +207,28 @@ async function handleApi(
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'audit-log') {
     const limit = clampAuditLogLimit(searchParams.get('limit'));
-    const before = searchParams.get('before');
+    // Fetch one extra row so a page that exactly fills `limit` can be told apart from
+    // one that's actually the last page, instead of always assuming there's a next page.
     const rows = auditLog.getPage({
       contactId: searchParams.get('contactId') ?? undefined,
       action: searchParams.get('action') ?? undefined,
       search: searchParams.get('search') ?? undefined,
-      before: before ? Number(before) : undefined,
-      limit,
+      before: parseAuditLogCursor(searchParams.get('before')),
+      limit: limit + 1,
     });
-    const entries = rows.map((row) => auditLogEntry(row, contactDirectory.get(row.contact_id).name));
-    const nextBefore = rows.length === limit ? rows[rows.length - 1].id : null;
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const contactNames = new Map<string, string>();
+    const contactName = (contactId: string): string => {
+      let name = contactNames.get(contactId);
+      if (name === undefined) {
+        name = contactDirectory.get(contactId).name;
+        contactNames.set(contactId, name);
+      }
+      return name;
+    };
+    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id)));
+    const nextBefore = hasMore ? pageRows[pageRows.length - 1].id : null;
     sendJson(res, 200, { entries, nextBefore });
     return true;
   }

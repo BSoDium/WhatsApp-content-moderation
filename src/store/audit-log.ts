@@ -113,14 +113,22 @@ export function getAuditLogPage({ contactId, action, search, before, limit = DEF
  */
 export function getAuditLogStats(): AuditLogStats {
   const db = getDb();
-  const count = (sql: string, ...params: (string | number)[]): number =>
-    (db.prepare(sql).get(...params) as { n: number }).n;
+  const counts = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS totalLogged,
+         SUM(CASE WHEN action = 'delete+warn' THEN 1 ELSE 0 END) AS totalFlaggedDeleted,
+         SUM(CASE WHEN action = 'warning_sent' THEN 1 ELSE 0 END) AS totalWarningsSent,
+         SUM(CASE WHEN action = 'classifier_error' THEN 1 ELSE 0 END) AS totalClassifierErrors
+       FROM audit_log`,
+    )
+    .get() as { totalLogged: number; totalFlaggedDeleted: number | null; totalWarningsSent: number | null; totalClassifierErrors: number | null };
 
   return {
-    totalLogged: count('SELECT COUNT(*) AS n FROM audit_log'),
-    totalFlaggedDeleted: count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'delete+warn'"),
-    totalWarningsSent: count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'warning_sent'"),
-    totalClassifierErrors: count("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'classifier_error'"),
+    totalLogged: counts.totalLogged,
+    totalFlaggedDeleted: counts.totalFlaggedDeleted ?? 0,
+    totalWarningsSent: counts.totalWarningsSent ?? 0,
+    totalClassifierErrors: counts.totalClassifierErrors ?? 0,
     byCategory: db
       .prepare(
         "SELECT category, COUNT(*) AS count FROM audit_log WHERE action = 'delete+warn' AND category IS NOT NULL GROUP BY category ORDER BY count DESC",

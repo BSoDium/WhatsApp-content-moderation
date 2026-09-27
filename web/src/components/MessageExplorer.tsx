@@ -150,7 +150,7 @@ export function MessageExplorer({
       </div>
 
       {hasMore && (
-        <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore} className="self-center">
+        <Button variant="outline" size="sm" onClick={onLoadMore} disabled={loadingMore || loading} className="self-center">
           {loadingMore && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
           Load more
         </Button>
