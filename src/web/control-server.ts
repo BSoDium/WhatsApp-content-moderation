@@ -10,6 +10,8 @@ import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
+import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
+import type { AuditLogRecord } from '../types.ts';
 
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
@@ -22,6 +24,13 @@ interface ControlServerDependencies {
     remove: (contactId: string) => boolean;
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
   };
+  auditLog: {
+    getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
+    getStats: () => AuditLogStats;
+  };
+  blocks: {
+    countActive: () => number;
+  };
   allowedLogin: string;
 }
 
@@ -32,6 +41,9 @@ const DIST_DIR = resolve(__dirname, '../../web/dist');
 
 // Must stay loopback-only — see createControlServer's doc comment.
 const LOOPBACK_HOST = '127.0.0.1';
+
+const DEFAULT_AUDIT_LOG_LIMIT = 50;
+const MAX_AUDIT_LOG_LIMIT = 200;
 
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
 const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock']);
@@ -137,17 +149,87 @@ function rosterEntry(
   };
 }
 
+// snake_case DB row -> camelCase API shape, matching every other endpoint's convention.
+function auditLogEntry(row: AuditLogRecord, contactName: string) {
+  return {
+    id: row.id,
+    contactId: row.contact_id,
+    contactName,
+    direction: row.direction,
+    message: row.message,
+    classificationOk: Boolean(row.classification_ok),
+    flagged: row.flagged === null ? null : Boolean(row.flagged),
+    category: row.category,
+    reason: row.reason,
+    error: row.error,
+    action: row.action,
+    createdAt: row.created_at,
+  };
+}
+
+// Clamped so a malformed/huge ?limit= can't force an unbounded query.
+function clampAuditLogLimit(raw: string | null): number {
+  const parsed = Number(raw);
+  if (!raw || !Number.isInteger(parsed) || parsed <= 0) return DEFAULT_AUDIT_LOG_LIMIT;
+  return Math.min(parsed, MAX_AUDIT_LOG_LIMIT);
+}
+
+// Malformed/missing `before` is treated as "no cursor" instead of binding NaN into `id < ?`, which SQLite accepts but which always evaluates false.
+function parseAuditLogCursor(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) ? parsed : undefined;
+}
+
 async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   segments: string[],
+  searchParams: URLSearchParams,
   deps: ControlServerDependencies,
 ): Promise<boolean> {
-  const { manualOverride, contactDirectory, monitoredContacts } = deps;
+  const { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks } = deps;
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
     const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id) }));
     sendJson(res, 200, contacts);
+    return true;
+  }
+
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'stats') {
+    sendJson(res, 200, {
+      monitoredCount: monitoredContacts.list().length,
+      activeBlocks: blocks.countActive(),
+      ...auditLog.getStats(),
+    });
+    return true;
+  }
+
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'audit-log') {
+    const limit = clampAuditLogLimit(searchParams.get('limit'));
+    // Fetch one extra row so a page that exactly fills `limit` can be told apart from
+    // one that's actually the last page, instead of always assuming there's a next page.
+    const rows = auditLog.getPage({
+      contactId: searchParams.get('contactId') ?? undefined,
+      action: searchParams.get('action') ?? undefined,
+      search: searchParams.get('search') ?? undefined,
+      before: parseAuditLogCursor(searchParams.get('before')),
+      limit: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const contactNames = new Map<string, string>();
+    const contactName = (contactId: string): string => {
+      let name = contactNames.get(contactId);
+      if (name === undefined) {
+        name = contactDirectory.get(contactId).name;
+        contactNames.set(contactId, name);
+      }
+      return name;
+    };
+    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id)));
+    const nextBefore = hasMore ? pageRows[pageRows.length - 1].id : null;
+    sendJson(res, 200, { entries, nextBefore });
     return true;
   }
 
@@ -228,7 +310,7 @@ async function handleApi(
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: ControlServerDependencies): Promise<void> {
   const { allowedLogin } = deps;
-  const { pathname } = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
+  const { pathname, searchParams } = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
 
   if (req.method === 'GET' && (pathname === '/favicon.svg' || pathname.startsWith('/assets/')) && serveDistFile(res, pathname)) {
     return;
@@ -260,7 +342,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
     sendJson(res, 400, { error: 'malformed path' });
     return;
   }
-  if (segments && (await handleApi(req, res, segments, deps))) return;
+  if (segments && (await handleApi(req, res, segments, searchParams, deps))) return;
 
   sendJson(res, 404, { error: 'not found' });
 }
@@ -316,6 +398,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     remove: (contactId: string) => boolean,
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
  *   },
+ *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
+ *   blocks: { countActive: () => number },
  *   allowedLogin: string,
  * }} deps
  * @returns {{ listen: (port: number) => Promise<number>, close: () => Promise<void> }}

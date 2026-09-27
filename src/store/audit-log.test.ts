@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-audit-log.test.sqlite';
 
-const { logMessage, getAuditLog } = await import('./audit-log.ts');
+const { logMessage, getAuditLog, getAuditLogPage, getAuditLogStats } = await import('./audit-log.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -91,4 +91,47 @@ test('logMessage supports direction: me for the bot\'s own replies', () => {
   const [row] = getAuditLog(contact);
   assert.equal(row.direction, 'me');
   assert.equal(row.action, 'warning_sent');
+});
+
+test('getAuditLogPage with no filter returns newest-first across every contact', () => {
+  const rows = getAuditLogPage();
+  assert.ok(rows.length > 0);
+  for (let i = 1; i < rows.length; i++) assert.ok(rows[i - 1].id > rows[i].id);
+});
+
+test('getAuditLogPage filters by contactId, action, and search', () => {
+  const contact = 'erin@s.whatsapp.net';
+  logMessage({ contactId: contact, direction: 'them', message: 'buy my crypto course now', classification: { ok: true, flagged: true, category: 'spam', reason: 'unsolicited promotion' }, action: 'delete+warn' });
+  logMessage({ contactId: contact, direction: 'them', message: 'hows it going', classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
+
+  assert.deepEqual(getAuditLogPage({ contactId: contact }).map((r) => r.message), ['hows it going', 'buy my crypto course now']);
+  assert.deepEqual(getAuditLogPage({ contactId: contact, action: 'delete+warn' }).map((r) => r.message), ['buy my crypto course now']);
+  assert.deepEqual(getAuditLogPage({ contactId: contact, search: 'CRYPTO' }).map((r) => r.message), ['buy my crypto course now']);
+  assert.deepEqual(getAuditLogPage({ contactId: contact, search: 'nonexistent' }), []);
+});
+
+test('getAuditLogPage paginates with a before cursor, oldest page has no gap or overlap', () => {
+  const contact = 'frank@s.whatsapp.net';
+  for (const message of ['a', 'b', 'c', 'd']) {
+    logMessage({ contactId: contact, direction: 'them', message, classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
+  }
+
+  const firstPage = getAuditLogPage({ contactId: contact, limit: 2 });
+  assert.deepEqual(firstPage.map((r) => r.message), ['d', 'c']);
+
+  const secondPage = getAuditLogPage({ contactId: contact, limit: 2, before: firstPage[firstPage.length - 1].id });
+  assert.deepEqual(secondPage.map((r) => r.message), ['b', 'a']);
+});
+
+test('getAuditLogStats counts by action, across every contact logged so far in this suite', () => {
+  // Exact totals aren't asserted — this file's tests share one DB and keep adding
+  // rows — only that the aggregate reflects rows earlier tests are known to have added:
+  // bob's classifier_error, dave's warning_sent, and erin's spam delete+warn.
+  const stats = getAuditLogStats();
+  assert.ok(stats.totalLogged >= 4);
+  assert.ok(stats.totalFlaggedDeleted >= 1);
+  assert.ok(stats.totalWarningsSent >= 1);
+  assert.ok(stats.totalClassifierErrors >= 1);
+  assert.ok(stats.byCategory.some((entry) => entry.category === 'spam' && entry.count >= 1));
+  assert.ok(stats.byCategory.every((entry) => entry.count > 0));
 });

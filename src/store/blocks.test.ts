@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-blocks.test.sqlite';
 
-const { createBlock, getActiveBlock, getExpiredBlocks, markUnblocked } = await import('./blocks.ts');
+const { createBlock, getActiveBlock, getExpiredBlocks, markUnblocked, countActiveBlocks } = await import('./blocks.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -48,4 +48,15 @@ test('markUnblocked on an already-resolved block is a safe no-op (returns false)
 
   assert.equal(markUnblocked(blockId), true);
   assert.equal(markUnblocked(blockId), false);
+});
+
+test('countActiveBlocks counts only unresolved blocks', () => {
+  const before = countActiveBlocks();
+  const contact = 'frank@s.whatsapp.net';
+  const blockId = createBlock(contact, Date.now() + 60_000);
+
+  assert.equal(countActiveBlocks(), before + 1);
+
+  markUnblocked(blockId);
+  assert.equal(countActiveBlocks(), before);
 });

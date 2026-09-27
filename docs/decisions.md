@@ -854,6 +854,183 @@ and `@fontsource`'s package ships the `.woff2` files straight into the Vite
 build (see the previous paragraph), so there's no per-load dependency on
 Google's CDN either way.
 
+## Activity panel: stats + a cross-contact message explorer
+
+The control app previously had no way to see moderation activity except by
+opening SQLite directly — no counts, no way to browse what had actually been
+flagged/deleted/warned-about, per-contact or across the whole roster. Added
+a "Moderation activity" sheet (`web/src/components/ActivityPanel.tsx`),
+reachable from a header button (global) or a contact's new "Message
+history" row (pre-filtered to that contact) — backed by two new read-only
+endpoints on `src/web/control-server.ts`: `GET /api/stats` and
+`GET /api/audit-log`.
+
+**`getAuditLogPage` (src/store/audit-log.ts) is a new, separate query from
+`getAuditLog`**, not a generalization of it: `getAuditLog(contactId, limit)`
+is the pipeline's own history-seeding read (always one contact, always
+newest-`created_at`-first, no filters) and stays exactly as it was: changing
+its contract to support the explorer's filters/cursor would touch a
+classifier-history code path for a feature that has nothing to do with it.
+`getAuditLogPage` cursors on `id`, not `created_at` — `id` is monotonic with
+insertion order and never ties the way two rows in the same millisecond
+can, which matters once "load more" is a real button a person clicks
+repeatedly rather than a one-shot fixed limit.
+
+**Stats are a single all-time, all-contact aggregate** (`getAuditLogStats`),
+not scoped by whatever contact the explorer happens to be filtered to —
+opening the panel for one contact still shows the whole roster's numbers at
+the top, with only the table below scoped to that contact. Splitting stats
+into "global" vs "per-contact" views was considered and dropped: the
+roster is small (one operator, a handful of monitored contacts), so a
+second stats mode would be more UI than the data justifies.
+
+**The API maps every snake_case DB column to camelCase**
+(`auditLogEntry()` in control-server.ts), matching every other endpoint's
+existing convention (`escalationEnabled`, `strikeCount`, etc.) — the
+frontend never sees `classification_ok` or `contact_id`.
+
+**`auditLog`/`blocks` are injected dependencies on `createControlServer`,
+not direct store imports**, matching how `monitoredContacts`/
+`contactDirectory`/`manualOverride` already work — `control-server.test.ts`
+exercises the new routes against in-memory fakes, never a real SQLite file,
+consistent with every other route in that suite.
+
+**The sheet is remounted on every open via a `key` that increments each
+time**, not just toggled open/closed — the same pattern
+`ContactDetailPanel` already uses (`key={selectedContact?.id}`) to reset
+local state on a new selection without a dedicated reset effect. This
+matters here specifically because opening the same contact's history twice
+in a row needs to reset scroll position and re-fetch, not just re-show
+stale state; a plain `open`/`initialContactId` prop pair without the key
+would need extra effects to detect "same contact, opened again" and those
+effects are exactly the kind of subtle state-sync bug the key trick avoids
+by construction.
+
+**A real bug caught by browser-testing the built app, not by unit tests:
+rapid filter changes could let an older request's response overwrite a
+newer one.** `useActivityData` fires a fetch on every `contactId`/`action`
+change (search is debounced, see below) — nothing stopped an in-flight
+request from an earlier filter combination from resolving after a later
+one and clobbering its result. Fixed with a monotonic request counter
+(`requestSeq` in `web/src/lib/useActivityData.ts`): every fetch-initiating
+call bumps it and captures its own value, and a response is only applied if
+that value still matches when it resolves. `search` itself is debounced
+(300ms) before it's applied to a fetch at all, purely so fast typing doesn't
+fire a request per keystroke — orthogonal to the ordering bug above, which
+the counter guards regardless of debouncing.
+
+**Another real bug, also only visible by actually rendering the built
+app at a real (short) viewport height, not by reading the JSX: a nested
+`flex-1 min-h-0 overflow-y-auto` region inside another `flex-1 min-h-0
+overflow-y-auto` region does not give the inner region its own scrollbar
+the way it looks like it should.** The original layout gave both the
+sheet's outer content wrapper and the message table's own container this
+pairing, intending "the table scrols internally when there's room, and the
+outer wrapper is a fallback scroll for very short viewports." In practice,
+`min-h-0` on the inner flex item just lets flexbox shrink it to satisfy the
+outer's height before ever triggering the outer's own overflow — on a
+mobile-height viewport this crushed the table down to a sliver (measured at
+79px tall) instead of either region ever scrolling correctly. Fixed by
+removing the inner region's `flex-1`/`min-h-0`/`overflow-y-auto` entirely:
+there is exactly one scroll region now (the sheet's outer content wrapper),
+holding stats, filters, and the full table together — the table's own
+horizontal scroll (from shadcn's `Table` component's built-in
+`overflow-x-auto` wrapper) is unaffected and still handles narrow
+viewports for the 4-column row content. A `sticky` table header was tried
+and dropped for the same reason: `Table`'s wrapper div sets
+`overflow-x-auto`, which per the CSS overflow spec also computes
+`overflow-y` to `auto` (a non-`visible` value on one axis forces the other
+off `visible` too) — that wrapper becomes the nearest containing block for
+`position: sticky`, and since that wrapper itself never scrolls (the real
+scrolling happens on its ancestor), the header would never actually stick.
+Kept simple rather than fighting the framework: no sticky header, one clear
+scroll region.
+
+**Category labels are formatted for display only** (`formatCategory` in
+`web/src/lib/activity.ts` swaps `_` for a space, e.g. `unwanted_contact` ->
+`unwanted contact`) — the classifier's raw snake_case category strings are
+never sent back to the API or altered in the database, only reformatted at
+render time in `StatsCards`/`MessageExplorer`.
+
+## Activity panel design pass, caught by an independent vision review
+
+After the panel above shipped, a second design review (an Opus-model agent
+given the built app in a browser, not the source) was run deliberately —
+the person asked for a vision-capable model on this because layout/contrast
+problems are exactly the kind of thing that reads fine in JSX but not on
+screen. It found several real problems, distinct from the two functional
+bugs recorded above:
+
+**Two more real bugs**, not just taste calls:
+- **The mobile Activity sheet was back to 75% width.** `SheetContent`'s
+  `data-[side=right]:w-3/4` beat a plain `w-full` on specificity, the same
+  class of bug the `sm:max-w-2xl!` fix above already worked around for the
+  max-width — missed here because `w-full` looked unrelated to that fix.
+  Fixed by making it `w-full!` too.
+- **The sheet title went stale.** It read the contact name from the
+  `initialContactId` prop (fixed at mount, by the remount-key design), so
+  switching the contact *filter* to "All contacts" left the title still
+  saying "Activity — Bob Chen". Fixed by dropping the per-contact title
+  entirely — the filter row already shows what's selected, and the stats
+  above it are explicitly whole-roster regardless of the table's filter
+  (see the "single all-time, all-contact aggregate" note above), so a
+  per-contact title was implying a scope the panel never actually had.
+
+**Color was carrying the wrong meaning.** Red (`destructive`) had been used
+for "Currently blocked", "Flagged & deleted", and the category bars — all
+three are the system working exactly as designed, not failures. Meanwhile
+"Classifier error" (an actual failure) rendered as a neutral outline badge.
+Re-scoped red to the two states that are genuinely something going wrong
+(`classifier_error`, `action_failed`); "Deleted" is now the `default`
+(solid, high-emphasis but not alarm-colored) badge variant, since it's
+often the single most important row and deserves visual weight without
+implying an error; category bars use `bg-foreground/60`, not destructive.
+
+**A table-auto-layout gotcha, only visible once mobile actually had only
+two columns to show.** Hiding `When`/`Contact` below `sm` (to fix the
+sheet-width bug above from also fixing the *content*) didn't fix the
+underlying squeeze: the browser's default table layout sizes columns by
+content's preferred width, and a `max-w-xs` on a cell is only a hint that
+loses to a long unwrapped badge label (`"Classifier error"`) — the table's
+`scrollWidth` still exceeded its container, so the fix for the crushed
+mobile table upstream had just been replaced by a *different* mobile table
+that still needed horizontal scroll to read a message. Fixed with
+`table-fixed` plus an explicit width on every column but `Message`, which
+makes the header row (not content) the sole source of truth for column
+widths — confirmed by checking the table container's `scrollWidth` equals
+its `clientWidth` after the fix, not just eyeballing a screenshot.
+
+**Direction icons were redundant, not just unlabeled.** The "From" column
+paired a contact name with an arrow icon to show whether a row was received
+from the contact or sent by the system — but `direction` is fully
+determined by `action` already (only `warning_sent` is ever `'me'`;
+everything else is `'them'`), and the `ActionBadge` column already carries
+that distinction. Dropped the icons and the column rename to "Contact"
+removes the redundant signal rather than just relabeling it.
+
+**Not changed, despite being flagged:** hiding the Paused/Escalation card
+for an unmonitored contact, and replacing the roster row's Ban-icon toggle
+with a `Switch`. Both would reverse an explicit, previously-litigated
+decision (see "Control panel: full contact list + slide-in detail panel"
+above: "Panel controls are always rendered, never hidden... An empty-
+looking panel read as broken") rather than fix a regression this round of
+work introduced — revisit deliberately if it comes up again, not as a
+side effect of an unrelated review.
+
+## Auto dark mode, no in-app toggle
+
+`shadcn init` had already generated a full `.dark` OKLCH palette in
+`web/src/index.css` (Nova preset default), but nothing ever added the
+`dark` class anything reads — dark mode was unreachable dead CSS. Fixed
+with `web/src/lib/theme.ts`'s `initSystemTheme()`, called once from
+`main.tsx` before the first render: reads
+`matchMedia('(prefers-color-scheme: dark)')` once at startup and again on
+every change, toggling the `dark` class on `<html>`. No settings toggle in
+the UI — this is a personal, single-operator tool, and following the
+OS/browser preference (live, if it changes mid-session) covers the actual
+need without adding a persisted preference or a settings surface to hold
+one.
+
 ## `auth_info/` is a credential
 
 The `auth_info/` folder holds Signal protocol session keys equivalent to
