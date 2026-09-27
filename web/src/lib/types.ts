@@ -20,3 +20,36 @@ export interface ControlError {
 }
 
 export type OverrideCommand = 'pause' | 'resume' | 'unblock';
+
+export interface Stats {
+  monitoredCount: number;
+  activeBlocks: number;
+  totalLogged: number;
+  totalFlaggedDeleted: number;
+  totalWarningsSent: number;
+  totalClassifierErrors: number;
+  byCategory: { category: string; count: number }[];
+}
+
+// Matches every action moderation-pipeline.ts's logMessage() can record.
+export type AuditAction = 'none' | 'delete+warn' | 'warning_sent' | 'classifier_error' | 'action_failed' | 'shadow';
+
+export interface AuditLogEntry {
+  id: number;
+  contactId: string;
+  contactName: string;
+  direction: 'me' | 'them';
+  message: string;
+  classificationOk: boolean;
+  flagged: boolean | null;
+  category: string | null;
+  reason: string | null;
+  error: string | null;
+  action: AuditAction;
+  createdAt: number;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  nextBefore: number | null;
+}

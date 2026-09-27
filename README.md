@@ -48,7 +48,11 @@ Copy `.env.example` to `.env` (or set these directly in the environment — see 
 | `UNBLOCK_POLL_INTERVAL_MS` | `120000` (2min) | How often the scheduler checks for expired blocks. |
 | `BUFFER_WINDOW_MS` | `7000` (7s) | Debounce window before classification. |
 | `DB_PATH` | `data/moderation.sqlite` | SQLite database path. |
-| `WARNING_MESSAGE` | `That message was removed for violating this chat's policy.` | Sent to a contact after a flagged message. |
+| `WARNING_MODEL` | `OLLAMA_MODEL` | Model used to generate a per-violation warning message — see [Warning messages](#warning-messages). |
+| `WARNING_TIMEOUT_MS` | `90000` | Warning-generation request timeout. |
+| `WARNING_TEMPERATURE` | `0.4` | 0 = deterministic, higher = more varied phrasing. |
+| `WARNING_MAX_LENGTH` | `320` | Hard cap on the generated message's length, in characters. |
+| `WARNING_MESSAGE` | `That message was removed for violating this chat's policy.` | Fallback text sent only if generating a warning message fails — see [Warning messages](#warning-messages). |
 
 `TARGET_CONTACT_JID` and `BLOCK_TEST_JID` are not application configuration — they're arguments to the standalone test scripts below (`whatsapp:test-actions`, `prototype:block-unblock`). The live pipeline has no single-contact equivalent; contacts are managed entirely through the [web control app](#web-control-app)'s roster.
 
@@ -76,6 +80,10 @@ Try it without a WhatsApp connection: `npm run classifier:test`.
 - The response schema orders fields as `category`, `reason`, then `flagged` on purpose — this makes the model commit to its reasoning before the boolean verdict, instead of guessing `flagged` cold.
 - **Fails open**: any Ollama error, timeout, or malformed response returns `{ ok: false }` rather than a guessed verdict. Callers must never delete/block on `ok: false`.
 
+### Warning messages
+
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it names the actual category/reason the message was flagged for and tells the contact plainly that an automated moderation system is watching the chat and will block them if it continues — this project deliberately doesn't hide that a system, not the account owner, is responding. Same fail-open contract as the classifier: any Ollama error, timeout, or empty response returns `{ ok: false }`, and `moderation-pipeline.ts` falls back to the static `WARNING_MESSAGE` so a warning is still sent either way. Configurable independently of the classifier's model/host — see [Configuration](#configuration).
+
 ### Moderation pipeline and block/unblock scheduler
 
 Incoming messages from monitored contacts are debounced (`BUFFER_WINDOW_MS`), classified, and — if flagged — deleted locally, answered with a warning, and recorded as a strike. A contact is blocked the first time their strike count reaches `STRIKE_THRESHOLD`, then automatically unblocked after `BLOCK_DURATION_MS` ± `BLOCK_JITTER_MS`, checked every `UNBLOCK_POLL_INTERVAL_MS` by `src/pipeline/unblock-scheduler.ts`. Disabling a contact's **escalation** toggle (in the control app) skips only the block/unblock step — classification, delete-for-me, warnings, strikes, and the audit log all still run. `SHADOW_MODE` skips all of the above and only logs. See [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for the full design, including why the block/unblock cycle is itself a ban-detection risk and how jitter mitigates it.
@@ -92,7 +100,9 @@ Every monitored contact can be paused, resumed, or unblocked ahead of schedule, 
 
 A small web app hosted by the same process (`src/web/`), authenticated via Tailscale identity rather than a password, OAuth login, or shared secret. On the page (`GET /`) and every `/api/*` route, the server checks the `Tailscale-User-Login` header that `tailscale serve` sets when proxying a request from the tailnet, against the single allow-listed `ALLOWED_TAILSCALE_LOGIN`. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine: the loopback bind stops remote access, but any *local* process on the same host could still set that header directly. See [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for the full reasoning, including two rejected alternatives, and what to do if that single-operator assumption doesn't hold for your setup (e.g. a shared or multi-user server). `GET /assets/*` (the built frontend's JS/CSS/font bundle) is the only unauthenticated route — none of it contains anything secret.
 
-This is where contacts actually get moderated: a scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), and an unblock button. Turning a contact's switch off only stops future moderation; its strike/block/audit history is kept.
+This is where contacts actually get moderated: a scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, and a "Message history" link into the activity panel below. Turning a contact's switch off only stops future moderation; its strike/block/audit history is kept. The page follows the OS/browser's light/dark preference automatically — there's no in-app toggle.
+
+**Activity panel**: the "Activity" button in the header (or a contact's "Message history" row) opens a panel with roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message — including anything already deleted, since the audit log is the only remaining record of it. Filter by contact, by action (deleted/warned/passed/classifier error/action failed/shadow), or by message text; "Load more" pages further back via `GET /api/audit-log`'s cursor, `GET /api/stats` backs the numbers at the top.
 
 **Enabling and running it:**
 
