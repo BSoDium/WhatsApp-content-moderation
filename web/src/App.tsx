@@ -4,23 +4,19 @@ import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { readUrlState, writeUrlState } from '@/lib/urlState';
+import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
-import { ContactDetailPanel } from '@/components/ContactDetailPanel';
+import { ContactDetailPanel, type ContactDetailPanelHandle } from '@/components/ContactDetailPanel';
 import { OverviewStats } from '@/components/OverviewStats';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ResizeHandle } from '@/components/ResizeHandle';
 import { useResizableWidth } from '@/lib/useResizableWidth';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
-
-interface ActivityRequest {
-  seq: number;
-  contactId: string | null;
-}
 
 // Matches Tailwind's `lg:` breakpoint — the width at which the list/detail
 // panes split side by side instead of the detail becoming a full-screen
@@ -93,16 +89,61 @@ function App() {
   // URL (the effect below), not the other way around.
   const initialUrlState = useMemo(() => readUrlState(), []);
   const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext } = useControlData(initialUrlState.contactId);
-  const [activityOpen, setActivityOpen] = useState(initialUrlState.activityOpen);
-  const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: initialUrlState.activityContactId });
-  const [policyOpen, setPolicyOpen] = useState(false);
-  const [policySeq, setPolicySeq] = useState(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsSeq, setSettingsSeq] = useState(0);
+  const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
+  const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
+  // Bumped every time a panel opens (not just on the boolean flipping to
+  // true) so each of the three Sheets below remounts via its `key` — a
+  // discarded draft never carries over to the next time it's opened.
+  const [panelSeq, setPanelSeq] = useState({ activity: 0, policy: 0, settings: 0 });
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
   const selectedEntry = selectedContact ? roster.find((entry) => entry.id === selectedContact.id) : undefined;
   const panelOpen = Boolean(selectedContact);
+
+  // Guards every path that would discard the open contact-detail panel
+  // (its own Back button, picking a different contact from the list) so an
+  // unsaved moderation-context draft is never silently lost to a remount —
+  // see ContactDetailPanel's `key={selectedContact?.id}` below.
+  const detailPanelRef = useRef<ContactDetailPanelHandle>(null);
+  // `undefined` = no confirmation pending; `null`/a contact id = the
+  // selection change waiting on the user's save/discard/stay choice.
+  const [pendingSelection, setPendingSelection] = useState<string | null | undefined>(undefined);
+  const [confirmSaving, setConfirmSaving] = useState(false);
+
+  function requestSelectContact(nextId: string | null) {
+    if (detailPanelRef.current?.hasUnsavedChanges()) {
+      setPendingSelection(nextId);
+      return;
+    }
+    setSelectedId(nextId);
+  }
+
+  async function confirmSaveAndContinue() {
+    setConfirmSaving(true);
+    const ok = await detailPanelRef.current?.save();
+    setConfirmSaving(false);
+    if (ok) {
+      setSelectedId(pendingSelection ?? null);
+      setPendingSelection(undefined);
+    }
+  }
+
+  function confirmDiscardAndContinue() {
+    detailPanelRef.current?.discard();
+    setSelectedId(pendingSelection ?? null);
+    setPendingSelection(undefined);
+  }
+
+  // Covers the same "don't silently lose it" requirement for a tab close
+  // or reload, not just in-app navigation — browsers ignore the custom
+  // message and show their own generic prompt, so no string is needed.
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (detailPanelRef.current?.hasUnsavedChanges()) event.preventDefault();
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reduceMotion = useReducedMotion();
@@ -127,30 +168,22 @@ function App() {
     });
   }, [panelOpen, isDesktop, reduceMotion]);
 
-  function openActivity(contactId: string | null = null) {
-    setActivityRequest((prev) => ({ seq: prev.seq + 1, contactId }));
-    setActivityOpen(true);
+  function showPanel(panel: PanelName, contactId: string | null = null) {
+    setPanelSeq((prev) => ({ ...prev, [panel]: prev[panel] + 1 }));
+    if (panel === 'activity') setActivityContactId(contactId);
+    setOpenPanel(panel);
   }
 
-  // Bumping the seq (not just setting *Open true) remounts the panel below,
-  // same reasoning as ActivityPanel — a discarded draft never carries over
-  // to the next time it's opened.
-  function openPolicy() {
-    setPolicySeq((prev) => prev + 1);
-    setPolicyOpen(true);
-  }
-
-  function openSettings() {
-    setSettingsSeq((prev) => prev + 1);
-    setSettingsOpen(true);
+  function closePanel() {
+    setOpenPanel(null);
   }
 
   // Keeps the URL in sync with what's on screen so a reload (or a shared
   // link) reopens the same contact/panel instead of landing back on the
   // bare list — see lib/urlState.ts.
   useEffect(() => {
-    writeUrlState({ contactId: selectedId, activityOpen, activityContactId: activityRequest.contactId });
-  }, [selectedId, activityOpen, activityRequest.contactId]);
+    writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
+  }, [selectedId, openPanel, activityContactId]);
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
@@ -197,15 +230,15 @@ function App() {
                 <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
               </div>
               <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end @lg:mt-1 @lg:self-auto">
-                <Button variant="outline" size="sm" onClick={openSettings}>
+                <Button variant="outline" size="sm" onClick={() => showPanel('settings')}>
                   <Settings data-icon="inline-start" />
                   Settings
                 </Button>
-                <Button variant="outline" size="sm" onClick={openPolicy}>
+                <Button variant="outline" size="sm" onClick={() => showPanel('policy')}>
                   <FileText data-icon="inline-start" />
                   Policy
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => openActivity(null)}>
+                <Button variant="outline" size="sm" onClick={() => showPanel('activity')}>
                   <Activity data-icon="inline-start" />
                   Activity
                 </Button>
@@ -217,7 +250,7 @@ function App() {
             <OverviewStats />
           </div>
           <div className="min-h-0 flex-1 px-4 lg:px-8">
-            <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={setSelectedId} onToggle={setMonitored} />
+            <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={requestSelectContact} onToggle={setMonitored} />
           </div>
         </motion.section>
 
@@ -243,21 +276,48 @@ function App() {
             <ResizeHandle {...detailWidth.handleProps} className="absolute inset-y-0 left-0 hidden lg:flex" />
           )}
           <ContactDetailPanel
+            ref={detailPanelRef}
             key={selectedContact?.id}
             contact={selectedContact}
             entry={selectedEntry}
-            onClose={() => setSelectedId(null)}
+            onClose={() => requestSelectContact(null)}
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}
             onSetEscalation={setEscalation}
             onSetContext={setContext}
-            onViewHistory={(contactId) => openActivity(contactId)}
+            onViewHistory={(contactId) => showPanel('activity', contactId)}
           />
         </motion.section>
 
-        <ActivityPanel key={activityRequest.seq} open={activityOpen} onOpenChange={setActivityOpen} initialContactId={activityRequest.contactId} contacts={contacts} />
-        <PolicyEditor key={policySeq} open={policyOpen} onOpenChange={setPolicyOpen} />
-        <SettingsPanel key={settingsSeq} open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <ActivityPanel
+          key={panelSeq.activity}
+          open={openPanel === 'activity'}
+          onOpenChange={(next) => (next ? showPanel('activity', activityContactId) : closePanel())}
+          initialContactId={activityContactId}
+          contacts={contacts}
+        />
+        <PolicyEditor key={panelSeq.policy} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} />
+        <SettingsPanel key={panelSeq.settings} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} />
+
+        <AlertDialog open={pendingSelection !== undefined} onOpenChange={(open) => { if (!open) setPendingSelection(undefined); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Unsaved moderation context</AlertDialogTitle>
+              <AlertDialogDescription>
+                {selectedContact?.name ?? 'This contact'} has an unsaved moderation-context edit. Save it, discard it, or stay and keep editing.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Stay</AlertDialogCancel>
+              <Button variant="outline" onClick={confirmDiscardAndContinue}>
+                Discard
+              </Button>
+              <Button onClick={confirmSaveAndContinue} disabled={confirmSaving} aria-busy={confirmSaving}>
+                {confirmSaving ? 'Saving…' : 'Save & continue'}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );
