@@ -124,9 +124,19 @@ owner `BSoDium`) — shared across all of this author's repos, not something
 scoped to this project alone. It tracks issues/PRs from every repo owned by
 `BSoDium`, this one included.
 
-- **Every new issue must be added to the board** immediately after
-  creation: `gh project item-add 5 --owner BSoDium --url <issue-url>`. Then
-  set four fields via `gh api graphql`:
+**This requires `gh` CLI (or direct GitHub GraphQL API) access — check
+before assuming it's there.** Projects v2 board membership and its fields
+are not something the standard GitHub MCP server tool set can read or
+write at all (no "add item to project", no "set project field"), so an
+agent restricted to those tools — including Claude Code's cloud/remote
+sessions — cannot do this even in principle, no matter how carefully these
+steps are followed. Don't silently skip it if that's the situation you're
+in: use the fallback below instead, so the gap is visible rather than
+quietly compounding.
+
+- **If you have `gh`/GraphQL access**: every new issue must be added to the
+  board immediately after creation: `gh project item-add 5 --owner BSoDium
+  --url <issue-url>`. Then set four fields via `gh api graphql`:
   - **Status** — `Backlog` for new work
   - **Priority** — `P0`–`P4`, relative to existing issues on the board
   - **Size** — `XS`/`S`/`M`/`L`/`XL`, by effort
@@ -137,10 +147,19 @@ scoped to this project alone. It tracks issues/PRs from every repo owned by
   (`gh project field-list 5 --owner BSoDium`) — don't hardcode them, they
   can change. Also apply relevant GitHub labels (e.g. `bug`, `enhancement`)
   at creation time.
-- **Only orphan PRs go on the board.** If a PR closes an issue via a
+
+  **Only orphan PRs go on the board.** If a PR closes an issue via a
   closing keyword and that issue is already on the board, do **not** also
   add the PR — the issue already tracks it, and adding both creates
   duplicate noise. Only PRs with no closing keyword (nothing they close) go
   on the board themselves, with the same Status/Priority/Size/Category
   fields set. Apply relevant GitHub labels to every PR regardless of
   whether it ends up on the board.
+
+- **If you don't have that access**: still apply the relevant GitHub
+  labels, then leave a one-line note on the issue, or on the PR itself if
+  it's an orphan (nothing it closes) — e.g. "Needs board triage:
+  Status=Backlog, Priority=?, Size=?, Category=?" — instead of skipping it
+  silently. That note is what lets board membership be batched later,
+  rather than the board just falling behind with no record of what's
+  missing from it.
