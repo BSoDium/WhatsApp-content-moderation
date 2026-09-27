@@ -18,13 +18,6 @@ services:
       # The real moderation policy — gitignored, not baked into the image.
       # Create it first: cp config/policy.example.md config/policy.md
       - ./config/policy.md:/app/config/policy.md:ro
-      # tailscaled's local API socket — required only when WEB_CONTROL_PORT
-      # is set. The control app calls this instead of trusting a proxy
-      # header; see docs/decisions.md "Web control app: replacing the
-      # header+token with LocalAPI WhoIs (issue #29 revisited)". Host-side
-      # permissions on this socket must allow UID 1000 to connect — verify
-      # this before relying on it (see README "Web control app").
-      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock
     depends_on:
       - ollama
 
