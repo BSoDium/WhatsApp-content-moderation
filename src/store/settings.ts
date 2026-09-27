@@ -23,9 +23,8 @@ export interface SettingDef {
   required?: boolean;
 }
 
-// Same defaults this project used to document in .env.example. Hardcoded
-// here, not read from process.env — moderation tuning moved into the web
-// control app entirely, see docs/decisions.md.
+// Hardcoded here, not read from process.env — moderation tuning lives
+// entirely in the web control app, see docs/decisions.md.
 export const SETTINGS: readonly SettingDef[] = [
   {
     key: 'SHADOW_MODE',
