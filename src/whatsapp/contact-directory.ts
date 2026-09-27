@@ -84,6 +84,21 @@ export function canonicalContactId({ id, lid, phoneNumber }: { id: string; lid?:
   return reconcileJid(normalizedId, resolveAltId(normalizedId, phoneNumber || lid || undefined)).canonicalId;
 }
 
+// Same reconciliation, for a live message's key — used by index.ts's
+// messages.upsert handler so isMonitored()/strikes/audit-log routing agrees
+// with whatever id a contact was actually added to the roster under (the
+// canonicalized form contactDirectory.list() returns), rather than
+// whichever raw JID form this particular message happened to be addressed
+// by. Without this, a contact added under their phone-number JID never
+// matches a message that arrives addressed via @lid (or vice versa) — the
+// roster lookup silently misses and the message is dropped before
+// classification ever runs.
+export function canonicalMessageContactId(key: { remoteJid?: string | null; remoteJidAlt?: string | null }): string | null {
+  if (!key.remoteJid) return null;
+  const id = normalizeJid(key.remoteJid);
+  return reconcileJid(id, resolveAltId(id, key.remoteJidAlt || undefined)).canonicalId;
+}
+
 // COALESCE against the existing name/notify/verifiedName/lid columns, not a
 // full overwrite, so a later partial (e.g. {id, notify} on every incoming
 // message) never erases a fuller name an earlier event already found.

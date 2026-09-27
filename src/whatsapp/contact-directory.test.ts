@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-contact-directory.test.sqlite';
 
-const { createContactDirectory, canonicalContactId } = await import('./contact-directory.ts');
+const { createContactDirectory, canonicalContactId, canonicalMessageContactId } = await import('./contact-directory.ts');
 const { getDb } = await import('../store/db.ts');
 
 beforeEach(() => {
@@ -277,6 +277,30 @@ test("a self contact (device-suffixed sock.user.id) matches the directory's norm
 
   const selfId = canonicalContactId({ id: '15551234567:31@s.whatsapp.net' });
   assert.deepEqual(directory.list().map((c) => c.id), [selfId]);
+});
+
+test('canonicalMessageContactId matches a contact added to the roster under the phone-number JID, for a message key carrying remoteJidAlt', () => {
+  // The exact failure mode: a contact gets added to the roster (via the
+  // control app, which shows the directory's canonicalized id) under their
+  // phone-number JID, but a live message for that same conversation arrives
+  // addressed via @lid — index.ts's isMonitored() lookup must still match.
+  const rosterId = canonicalContactId({ id: '15551234567@s.whatsapp.net' });
+  const messageId = canonicalMessageContactId({ remoteJid: '777@lid', remoteJidAlt: '15551234567@s.whatsapp.net' });
+  assert.equal(messageId, rosterId);
+});
+
+test('canonicalMessageContactId resolves a bare-lid message key via a mapping the directory already learned', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('contacts.upsert', [{ id: '888@lid', phoneNumber: '15551234567@s.whatsapp.net' }]);
+
+  // A later message with no remoteJidAlt of its own still resolves correctly.
+  assert.equal(canonicalMessageContactId({ remoteJid: '888@lid' }), '15551234567@s.whatsapp.net');
+});
+
+test('canonicalMessageContactId returns null for a message with no remoteJid', () => {
+  assert.equal(canonicalMessageContactId({}), null);
 });
 
 test('contacts persist across separate createContactDirectory() instances (i.e. across restarts)', () => {

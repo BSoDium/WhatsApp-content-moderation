@@ -5,7 +5,7 @@ import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.t
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
-import { createContactDirectory, canonicalContactId } from './src/whatsapp/contact-directory.ts';
+import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
 import {
@@ -112,7 +112,11 @@ async function start() {
       contactDirectory.attach(s);
       s.ev.on('messages.upsert', ({ messages, type }) => {
         for (const msg of messages) {
-          const contactId = msg.key.remoteJid;
+          // Reconciled the same way the directory is (@lid vs. phone-number
+          // JID) — otherwise a contact added to the roster under one form
+          // never matches a message addressed by the other, and gets
+          // silently dropped here before classification ever runs.
+          const contactId = canonicalMessageContactId(msg.key);
           if (!contactId || !isMonitored(contactId) || manualOverride.isPaused(contactId)) continue;
 
           const incoming = extractIncomingMessage(msg, ALLOW_SELF, type);
