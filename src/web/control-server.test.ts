@@ -61,11 +61,40 @@ function makeMonitoredContacts(initial = []) {
   };
 }
 
-async function withServer({ manualOverride = makeOverride(), contactDirectory = makeContactDirectory(), monitoredContacts = makeMonitoredContacts() } = {}, run) {
-  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, allowedLogin: ALLOWED });
+function makeAuditLog(rows = []) {
+  return {
+    calls: [],
+    getPage(filter) {
+      this.calls.push(filter);
+      let filtered = rows;
+      if (filter.contactId) filtered = filtered.filter((r) => r.contact_id === filter.contactId);
+      if (filter.action) filtered = filtered.filter((r) => r.action === filter.action);
+      if (filter.search) filtered = filtered.filter((r) => r.message.toLowerCase().includes(filter.search.toLowerCase()));
+      if (filter.before !== undefined) filtered = filtered.filter((r) => r.id < filter.before);
+      return filtered.slice(0, filter.limit ?? 50);
+    },
+    getStats: () => ({ totalLogged: rows.length, totalFlaggedDeleted: 0, totalWarningsSent: 0, totalClassifierErrors: 0, byCategory: [] }),
+  };
+}
+
+function makeBlocks(activeCount = 0) {
+  return { countActive: () => activeCount };
+}
+
+async function withServer(
+  {
+    manualOverride = makeOverride(),
+    contactDirectory = makeContactDirectory(),
+    monitoredContacts = makeMonitoredContacts(),
+    auditLog = makeAuditLog(),
+    blocks = makeBlocks(),
+  } = {},
+  run,
+) {
+  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: ALLOWED });
   const port = await server.listen(0);
   try {
-    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts });
+    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks });
   } finally {
     await server.close();
   }
@@ -173,6 +202,68 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
     assert.deepEqual(await res.json(), [
       { id: 'alice@s.whatsapp.net', name: 'Alice', escalationEnabled: false, paused: false, strikeCount: 2, block: null },
     ]);
+  });
+});
+
+test('GET /api/stats combines audit-log stats with the roster count and active block count', async () => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  const auditLog = makeAuditLog([{ id: 1, contact_id: 'alice@s.whatsapp.net', action: 'delete+warn', message: 'bad' }]);
+  const blocks = makeBlocks(2);
+
+  await withServer({ monitoredContacts, auditLog, blocks }, async (base) => {
+    const res = await fetch(`${base}/api/stats`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), {
+      monitoredCount: 1,
+      activeBlocks: 2,
+      totalLogged: 1,
+      totalFlaggedDeleted: 0,
+      totalWarningsSent: 0,
+      totalClassifierErrors: 0,
+      byCategory: [],
+    });
+  });
+});
+
+test('GET /api/audit-log returns entries with the contact name resolved and a nextBefore cursor', async () => {
+  const contactDirectory = makeContactDirectory([{ id: 'alice@s.whatsapp.net', name: 'Alice' }]);
+  const auditLog = makeAuditLog([
+    { id: 2, contact_id: 'alice@s.whatsapp.net', direction: 'them', message: 'bad message', classification_ok: 1, flagged: 1, category: 'harassment', reason: 'threat', error: null, action: 'delete+warn', created_at: 200 },
+    { id: 1, contact_id: 'alice@s.whatsapp.net', direction: 'them', message: 'hey', classification_ok: 1, flagged: 0, category: 'none', reason: '', error: null, action: 'none', created_at: 100 },
+  ]);
+
+  await withServer({ contactDirectory, auditLog }, async (base) => {
+    const res = await fetch(`${base}/api/audit-log?limit=1`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.entries, [
+      {
+        id: 2,
+        contactId: 'alice@s.whatsapp.net',
+        contactName: 'Alice',
+        direction: 'them',
+        message: 'bad message',
+        classificationOk: true,
+        flagged: true,
+        category: 'harassment',
+        reason: 'threat',
+        error: null,
+        action: 'delete+warn',
+        createdAt: 200,
+      },
+    ]);
+    assert.equal(body.nextBefore, 2);
+  });
+});
+
+test('GET /api/audit-log forwards contactId/action/search filters and clamps an out-of-range limit', async () => {
+  const auditLog = makeAuditLog([]);
+
+  await withServer({ auditLog }, async (base) => {
+    await fetch(`${base}/api/audit-log?contactId=${encodeURIComponent('alice@s.whatsapp.net')}&action=delete%2Bwarn&search=crypto&limit=99999`, {
+      headers: authHeaders(),
+    });
+    assert.deepEqual(auditLog.calls, [{ contactId: 'alice@s.whatsapp.net', action: 'delete+warn', search: 'crypto', before: undefined, limit: 200 }]);
   });
 });
 
@@ -366,6 +457,8 @@ test('close() resolves promptly even with a request in flight', async () => {
     manualOverride,
     contactDirectory: makeContactDirectory(),
     monitoredContacts: makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]),
+    auditLog: makeAuditLog(),
+    blocks: makeBlocks(),
     allowedLogin: ALLOWED,
   });
   const port = await server.listen(0);

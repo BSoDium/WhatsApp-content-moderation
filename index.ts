@@ -16,6 +16,8 @@ import {
   removeMonitored,
   setEscalationEnabled,
 } from './src/store/monitored-contacts.ts';
+import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
+import { countActiveBlocks } from './src/store/blocks.ts';
 import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from './src/types.ts';
@@ -86,6 +88,8 @@ async function start() {
       manualOverride,
       contactDirectory,
       monitoredContacts,
+      auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
+      blocks: { countActive: countActiveBlocks },
       allowedLogin: ALLOWED_TAILSCALE_LOGIN!,
     });
     await controlServer.listen(WEB_CONTROL_PORT);
