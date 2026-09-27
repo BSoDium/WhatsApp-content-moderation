@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { Input } from '@/components/ui/input';
 import { matchesQuery } from '@/lib/contact';
+import { fadeAndSlide } from '@/lib/listReorderAnimation';
 import { ContactRow } from './ContactRow';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -31,7 +32,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle }
   const [query, setQuery] = useState('');
   const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
   const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase(), monitoredIds), [contacts, query, monitoredIds]);
-  const [listRef] = useAutoAnimate();
+  const [listRef] = useAutoAnimate(fadeAndSlide);
 
   return (
     <div className="flex h-full flex-col">
