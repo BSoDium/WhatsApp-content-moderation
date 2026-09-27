@@ -6,6 +6,16 @@ export interface MonitoredContact {
   contactId: string;
   escalationEnabled: boolean;
   addedAt: number;
+  context: string | null;
+}
+
+function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
+  return {
+    contactId: row.contact_id,
+    escalationEnabled: Boolean(row.escalation_enabled),
+    addedAt: row.added_at,
+    context: row.context,
+  };
 }
 
 /**
@@ -13,13 +23,9 @@ export interface MonitoredContact {
  */
 export function listMonitored(): MonitoredContact[] {
   return (getDb()
-    .prepare('SELECT contact_id, escalation_enabled, added_at FROM monitored_contacts ORDER BY added_at ASC, rowid ASC')
+    .prepare('SELECT contact_id, escalation_enabled, added_at, context FROM monitored_contacts ORDER BY added_at ASC, rowid ASC')
     .all() as unknown as MonitoredContactRecord[])
-    .map((row) => ({
-      contactId: row.contact_id,
-      escalationEnabled: Boolean(row.escalation_enabled),
-      addedAt: row.added_at,
-    }));
+    .map(toMonitoredContact);
 }
 
 export function isMonitored(contactId: string): boolean {
@@ -27,13 +33,13 @@ export function isMonitored(contactId: string): boolean {
 }
 
 /**
- * @returns {{ contactId: string, escalationEnabled: boolean, addedAt: number } | undefined}
+ * @returns {{ contactId: string, escalationEnabled: boolean, addedAt: number, context: string | null } | undefined}
  */
 export function getMonitored(contactId: string): MonitoredContact | undefined {
   const row = getDb()
-    .prepare('SELECT contact_id, escalation_enabled, added_at FROM monitored_contacts WHERE contact_id = ?')
+    .prepare('SELECT contact_id, escalation_enabled, added_at, context FROM monitored_contacts WHERE contact_id = ?')
     .get(contactId) as MonitoredContactRecord | undefined;
-  return row ? { contactId: row.contact_id, escalationEnabled: Boolean(row.escalation_enabled), addedAt: row.added_at } : undefined;
+  return row ? toMonitoredContact(row) : undefined;
 }
 
 /**
@@ -71,6 +77,24 @@ export function setEscalationEnabled(contactId: string, enabled: boolean): boole
   const { changes } = getDb()
     .prepare('UPDATE monitored_contacts SET escalation_enabled = ? WHERE contact_id = ?')
     .run(enabled ? 1 : 0, contactId);
+  if (changes > 0) emitControlEvent('roster');
+  return changes > 0;
+}
+
+/**
+ * Sets or clears a contact's moderation context — free-text guidance folded
+ * into the classifier prompt alongside the global policy (see
+ * classifier.ts's buildSystemPrompt). An empty string is normalized to null:
+ * "no context" and "empty context" are the same state. Deleted along with
+ * the roster row on removeMonitored, same lifecycle as escalation_enabled.
+ *
+ * @returns {boolean} whether contactId was on the roster to update
+ */
+export function setContext(contactId: string, context: string | null): boolean {
+  const normalized = context?.trim() ? context.trim() : null;
+  const { changes } = getDb()
+    .prepare('UPDATE monitored_contacts SET context = ? WHERE contact_id = ?')
+    .run(normalized, contactId);
   if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }

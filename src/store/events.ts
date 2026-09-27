@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-export type ControlEventTopic = 'contacts' | 'roster' | 'audit-log';
+export type ControlEventTopic = 'contacts' | 'roster' | 'audit-log' | 'settings' | 'policy';
 
 const emitter = new EventEmitter();
 // One control server can hold many concurrent SSE connections (browser tabs) — all

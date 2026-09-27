@@ -45,8 +45,15 @@ export interface MonitoredContactRecord {
   contact_id: string;
   escalation_enabled: number;
   added_at: number;
+  context: string | null;
 }
 
 export interface StrikeRecord {
   count: number;
+}
+
+export interface SettingRecord {
+  key: string;
+  value: string;
+  updated_at: number;
 }

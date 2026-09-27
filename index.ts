@@ -8,6 +8,7 @@ import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
+import { ensureDefaultsSeeded } from './src/store/settings.ts';
 import {
   listMonitored,
   isMonitored,
@@ -91,6 +92,10 @@ let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;
 let controlServer: ReturnType<typeof createControlServer> | undefined;
 
 async function start() {
+  // Must run before anything else touches a moderation-tuning setting, so
+  // every read downstream sees a real value instead of racing an empty table.
+  ensureDefaultsSeeded();
+
   if (WEB_CONTROL_PORT) {
     controlServer = createControlServer({
       manualOverride,
