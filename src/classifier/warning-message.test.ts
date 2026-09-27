@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 // Set before the dynamic import below, so warning-message.ts's module-level
-// `const MAX_LENGTH = Number(process.env.WARNING_MAX_LENGTH ?? 320)` picks this up.
+// `const MAX_LENGTH = Number(process.env.WARNING_MAX_LENGTH ?? 180)` picks this up.
 process.env.WARNING_MAX_LENGTH = '20';
 
 const { generateWarningMessage } = await import('./warning-message.ts');
