@@ -1,4 +1,5 @@
-import { Ollama } from 'ollama';
+import type { Ollama } from 'ollama';
+import { createOllamaClient } from './ollama-client.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -15,7 +16,6 @@ interface WarningMessageDependencies {
 
 type WarningMessageResult = { ok: true; text: string } | { ok: false; error: string };
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 // Falls back to the classifier's own model — same local Ollama install, no extra pull required —
 // but overridable independently since generation and classification are different tasks.
 const MODEL = process.env.WARNING_MODEL ?? process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
@@ -101,10 +101,7 @@ export async function generateWarningMessage(
   { client }: WarningMessageDependencies = {},
 ): Promise<WarningMessageResult> {
   const { model = MODEL } = input;
-  const ollama = client ?? new Ollama({
-    host: OLLAMA_HOST,
-    fetch: (fetchInput, init) => fetch(fetchInput, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }),
-  });
+  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
 
   try {
     const response = await ollama.chat({

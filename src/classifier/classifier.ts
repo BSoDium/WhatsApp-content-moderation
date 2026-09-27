@@ -1,5 +1,6 @@
-import { Ollama } from 'ollama';
+import type { Ollama } from 'ollama';
 import { loadPolicy } from './policy.ts';
+import { createOllamaClient } from './ollama-client.ts';
 import type { Classification } from '../types.ts';
 
 interface ConversationMessage {
@@ -18,7 +19,6 @@ interface ClassifierDependencies {
   policy?: string;
 }
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 // See README "Classifier" for why 3b, not the cheaper 1b, is the default.
 const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
 const DEFAULT_TIMEOUT_MS = 90_000;
@@ -77,10 +77,7 @@ export async function classifyMessage(
   { message, history = [], model = MODEL }: ClassifierInput,
   { client, policy }: ClassifierDependencies = {},
 ): Promise<Classification> {
-  const ollama = client ?? new Ollama({
-    host: OLLAMA_HOST,
-    fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }),
-  });
+  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
 
   try {
     const response = await ollama.chat({
