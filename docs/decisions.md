@@ -1092,3 +1092,84 @@ The `auth_info/` folder holds Signal protocol session keys equivalent to
 full account access on the linked WhatsApp account. Treat it exactly like a
 credential: gitignored (never commit it, even by accident), and encrypt at
 rest on the host if practical.
+
+## Contact-panel choreography, resizable panels, and the overview KPI row
+
+**Motion, not more hand-written CSS transitions.** The contact-detail
+panel's open/close sequence needed two strictly ordered stages (move+resize
+the list pane, *then* fade the detail panel in at a fixed position — and
+the reverse on close), which the previous hand-tuned CSS
+`transition:`-with-a-guessed-delay (see "Control panel: full contact list +
+slide-in detail panel" above) could only approximate: the delay was a
+fixed guess at how long the width transition would take, not a real
+"wait until it's actually done." Replaced with
+[Motion](https://motion.dev) (`motion/react`), whose `animate` +
+`onAnimationComplete` let the fade-in stage start only once the move stage
+has *actually* finished, via a small `'closed' | 'opening' | 'open' |
+'closing'` state machine in `App.tsx`. `@formkit/auto-animate` stays for
+the contact list's reorder animation (`ContactList.tsx`) — different
+problem (list diffing vs. orchestrated multi-stage layout), no reason to
+replace it.
+
+**The list pane now actually resizes, not just re-centers.** Previously,
+opening a contact only changed the list pane's `margin-left` (25% → 0%);
+its width stayed a constant 50% the whole time, so "browsing" was really
+"the same 50%-wide pane, shifted to look centered" — no `width` ever
+changed. The spec's two-stage choreography calls for the pane to move
+*and* resize at once, so browsing width is now 60% (with a 20% margin
+either side, keeping it visually centered) and narrows to 50% flush-left
+once a contact opens — a genuine, if modest, resize alongside the move,
+not just a relabeling of the old margin trick.
+
+**`prefers-reduced-motion` bypasses the staged phases entirely**, not just
+zeroes the transition duration — `App.tsx`'s phase-sync effect jumps
+straight to the final `'open'`/`'closed'` state when
+`useReducedMotion()` is true, so there's no dependency on an
+`onAnimationComplete` firing (or not) for a zero-duration animation to
+know when it's "done." The mid-transition panel (partially resized,
+still invisible) is also `inert` + `aria-hidden` until the phase is fully
+`'open'` — previously neither the CSS-transition version nor its
+`lg:opacity-0`/`lg:w-0` closed state ever excluded the panel from the tab
+order, so a keyboard user could already tab into off-screen/invisible
+detail content; worth fixing now that "partially open but invisible" is a
+real, longer-lived intermediate state rather than an instant CSS jump.
+
+**Resizable panels are pixel widths in `sessionStorage`, not a
+split-pane library.** Considered `react-resizable-panels`, but every
+"panel" here is a single overlay with one resizable edge (a `Sheet` or the
+fixed-position contact-detail pane), not a multi-pane split layout — a
+generic split-pane library would bring a whole layout model this app
+doesn't have. Built `useResizableWidth` (`web/src/lib/`) instead: a
+small hook exposing a controlled pixel width, an ARIA `role="separator"`
+handle (pointer drag + arrow-key/Home/End keyboard resize + double-click
+reset), and `sessionStorage` persistence keyed per panel id, clamped to
+the current viewport on load and on resize. `ResizeHandle`
+(`web/src/components/`) is the shared visual/`aria-*` wrapper; each of the
+four panels (contact-detail, Activity, Policy, Settings) gets its own
+storage key so resizing one never affects another. Below `sm` (640px),
+sheets skip resizing entirely and stay the existing full-width mobile
+overlay — there's no slack to resize into at that width.
+
+The contact-detail panel is a special case: during the open/close
+choreography its width is Motion-driven (a percentage, synced with the
+list pane); the resize handle only takes over once the panel is fully
+`'open'`, switching the animated `width` to the hook's controlled pixel
+value. The hook's `defaultWidth` is seeded from half the *current*
+viewport width at mount (clamped to its min/max) specifically so that
+handoff from "50%-of-viewport" to "a fixed pixel width" doesn't visibly
+jump.
+
+## A compact overview KPI row on the main contact view
+
+Added `OverviewStats` (`web/src/components/`, backed by a standalone
+`useOverviewStats` hook in `web/src/lib/useStats.ts`), showing Monitored /
+Blocked / Deleted / Errors between the header and the contact search
+field. Deliberately a separate hook from `useActivityData`'s stats
+fetch rather than a shared one: this row needs to fetch and live-update
+(via the same `/api/events` `audit-log` SSE trigger) whether or not the
+Activity panel is even mounted, and `useActivityData` is remounted via a
+`key` every time the Activity panel opens (by design, so filters reset) —
+tying the always-visible overview row to that lifecycle would mean
+refetching stats it already has every time the operator opens Activity.
+The small duplication (both hooks fetch `/api/stats` the same way) is
+cheaper than the coupling.
