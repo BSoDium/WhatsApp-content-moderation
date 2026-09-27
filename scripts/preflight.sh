@@ -23,10 +23,18 @@ if [ ! -f .env ]; then
 fi
 PORT="$(read_env_var WEB_CONTROL_PORT)"
 PORT="${PORT:-$CONTROL_PORT_DEFAULT}"
-# The classifier model is a live control-app setting now, not an .env value —
-# this can only check the default, so it may false-negative after the model
-# is changed via the Settings panel. See lib.sh's DEFAULT_OLLAMA_MODEL.
+# The classifier model is a live control-app setting now, not an .env value,
+# so read it straight out of the SQLite file the container also reads (same
+# bind-mounted path, safe to read concurrently in WAL mode) rather than
+# guessing — falls back to the manifest default only if sqlite3 isn't
+# installed or the row doesn't exist yet (a fresh, unstarted install).
+DB_PATH="$(read_env_var DB_PATH)"
+DB_PATH="${DB_PATH:-data/moderation.sqlite}"
 MODEL="$DEFAULT_OLLAMA_MODEL"
+if command -v sqlite3 >/dev/null 2>&1 && [ -f "$DB_PATH" ]; then
+  CONFIGURED_MODEL="$(sqlite3 "$DB_PATH" "SELECT value FROM settings WHERE key = 'OLLAMA_MODEL';" 2>/dev/null || true)"
+  [ -n "$CONFIGURED_MODEL" ] && MODEL="$CONFIGURED_MODEL"
+fi
 ALLOWED_TAILSCALE_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
 log "Docker"

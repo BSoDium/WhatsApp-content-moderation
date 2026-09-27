@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -31,9 +31,16 @@ interface SettingFieldProps {
 // a request, and each row's own pending state never disables another row.
 function SettingField({ setting, pending, onSave }: SettingFieldProps) {
   const [draft, setDraft] = useState(setting.value);
+  // The last server value this draft was synced from — lets the effect
+  // below tell "no local edit since the last sync" apart from "an unsaved
+  // edit is in progress," instead of unconditionally overwriting the input.
+  const lastSyncedValue = useRef(setting.value);
 
+  // Applies a live update (e.g. another tab editing the same setting) only
+  // when there's no unsaved local edit in this field.
   useEffect(() => {
-    setDraft(setting.value);
+    if (draft === lastSyncedValue.current) setDraft(setting.value);
+    lastSyncedValue.current = setting.value;
   }, [setting.value]);
 
   return (
@@ -44,8 +51,15 @@ function SettingField({ setting, pending, onSave }: SettingFieldProps) {
       disabled={pending}
       className="w-40"
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        if (draft !== setting.value) onSave(setting.key, draft);
+      onBlur={async () => {
+        if (draft === setting.value) return;
+        const ok = await onSave(setting.key, draft);
+        // A value the server rejected was never actually applied — revert
+        // so the field doesn't keep showing invalid, unsaved text with no
+        // other indication that the edit didn't take.
+        const synced = ok ? draft : setting.value;
+        lastSyncedValue.current = synced;
+        setDraft(synced);
       }}
     />
   );
@@ -66,7 +80,7 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {error && <ErrorBanner error={{ title: 'Could not load settings', description: error, retry: refresh }} onDismiss={() => {}} />}
+          {error && <ErrorBanner error={{ ...error, retry: refresh }} onDismiss={() => {}} />}
           {!loading &&
             SECTION_ORDER.map((section) => {
               const sectionSettings = settings.filter((s) => s.section === section);

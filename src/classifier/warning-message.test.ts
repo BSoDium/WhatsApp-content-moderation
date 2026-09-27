@@ -66,3 +66,15 @@ test('fails open when the response is empty after sanitizing', async () => {
   assert.equal(result.ok, false);
   assert.match(result.error, /empty warning message/);
 });
+
+test('truncates sanely at the smallest allowed WARNING_MAX_LENGTH (1), instead of returning almost the full message', async () => {
+  setSetting('WARNING_MAX_LENGTH', '1');
+  const client = fakeClient('This message is definitely longer than one character.');
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.text, '…');
+
+  setSetting('WARNING_MAX_LENGTH', '20'); // restore for any test appended after this one
+});

@@ -1,6 +1,9 @@
+import pino from 'pino';
 import { getDb } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import type { SettingRecord } from '../types.ts';
+
+const logger = pino({ name: 'settings' });
 
 export type SettingSection = 'classifier' | 'warning' | 'strikes';
 export type SettingType = 'string' | 'int' | 'float';
@@ -12,6 +15,12 @@ export interface SettingDef {
   description: string;
   type: SettingType;
   default: string;
+  // Inclusive lower bound for 'int'/'float' types — most of these are
+  // durations/counts that are meaningless at zero or negative.
+  min?: number;
+  // 'string' types only: rejects blank, for the rare setting (a fail-open
+  // fallback message) where an empty value would defeat its own purpose.
+  required?: boolean;
 }
 
 // Same defaults this project used to document in .env.example. Hardcoded
@@ -41,6 +50,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'How long to wait for a classification before failing open.',
     type: 'int',
     default: '90000',
+    min: 1,
   },
   {
     key: 'CLASSIFIER_HISTORY_LIMIT',
@@ -49,6 +59,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Number of prior messages included as conversation context.',
     type: 'int',
     default: '10',
+    min: 0,
   },
   {
     key: 'WARNING_MODEL',
@@ -65,6 +76,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'How long to wait for a generated warning before falling back to the static message below.',
     type: 'int',
     default: '90000',
+    min: 1,
   },
   {
     key: 'WARNING_TEMPERATURE',
@@ -73,6 +85,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: '0 = deterministic, higher = more varied phrasing.',
     type: 'float',
     default: '0.4',
+    min: 0,
   },
   {
     key: 'WARNING_MAX_LENGTH',
@@ -81,6 +94,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: "Hard cap on the generated warning's length, in characters — a warning read on a phone screen needs to be a text, not a paragraph.",
     type: 'int',
     default: '180',
+    min: 1,
   },
   {
     key: 'WARNING_MESSAGE',
@@ -89,6 +103,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Sent to a contact only if the generated warning fails open (Ollama unreachable, timeout, empty response).',
     type: 'string',
     default: "That message was removed for violating this chat's policy.",
+    required: true,
   },
   {
     key: 'STRIKE_THRESHOLD',
@@ -97,6 +112,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Strikes before a block is triggered.',
     type: 'int',
     default: '3',
+    min: 1,
   },
   {
     key: 'BLOCK_DURATION_MS',
@@ -105,6 +121,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Block length before auto-unblock is scheduled. Default: 24h.',
     type: 'int',
     default: String(24 * 60 * 60 * 1000),
+    min: 1,
   },
   {
     key: 'BLOCK_JITTER_MS',
@@ -113,6 +130,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: '+/- randomization applied to the block duration. Default: 4h.',
     type: 'int',
     default: String(4 * 60 * 60 * 1000),
+    min: 0,
   },
   {
     key: 'UNBLOCK_POLL_INTERVAL_MS',
@@ -121,6 +139,7 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'How often the unblock scheduler checks for expired blocks.',
     type: 'int',
     default: String(2 * 60 * 1000),
+    min: 1,
   },
   {
     key: 'BUFFER_WINDOW_MS',
@@ -129,20 +148,36 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Debounce window messages are buffered for before classification.',
     type: 'int',
     default: '7000',
+    min: 0,
   },
 ];
 
 const SETTINGS_BY_KEY = new Map(SETTINGS.map((def) => [def.key, def]));
 
 function validateValue(def: SettingDef, raw: string): string | undefined {
-  if (def.type === 'string') return undefined;
-  if (raw.trim() === '' || Number.isNaN(Number(raw))) return `${def.label} must be a number`;
-  if (def.type === 'int' && !Number.isInteger(Number(raw))) return `${def.label} must be an integer`;
+  if (def.type === 'string') {
+    if (def.required && raw.trim() === '') return `${def.label} must not be empty`;
+    return undefined;
+  }
+  const num = Number(raw);
+  if (raw.trim() === '' || Number.isNaN(num) || !Number.isFinite(num)) return `${def.label} must be a number`;
+  if (def.type === 'int' && !Number.isInteger(num)) return `${def.label} must be an integer`;
+  if (def.min !== undefined && num < def.min) return `${def.label} must be at least ${def.min}`;
   return undefined;
 }
 
+// Falls back to "no row" (letting callers use the manifest default) rather
+// than throwing, on the rare chance the DB read itself fails (locked file,
+// corruption) — this sits under classifyMessage/generateWarningMessage's
+// documented fail-open contract, so a config-read hiccup must not become an
+// uncaught exception that aborts the rest of a burst mid-processing.
 function readRow(key: string): SettingRecord | undefined {
-  return getDb().prepare('SELECT key, value, updated_at FROM settings WHERE key = ?').get(key) as SettingRecord | undefined;
+  try {
+    return getDb().prepare('SELECT key, value, updated_at FROM settings WHERE key = ?').get(key) as SettingRecord | undefined;
+  } catch (err) {
+    logger.error({ key, error: err instanceof Error ? err.message : String(err) }, 'settings read failed; falling back to default');
+    return undefined;
+  }
 }
 
 /**
@@ -190,13 +225,15 @@ export interface SettingView {
 }
 
 export function listSettings(): SettingView[] {
+  const rows = getDb().prepare('SELECT key, value FROM settings').all() as Pick<SettingRecord, 'key' | 'value'>[];
+  const values = new Map(rows.map((row) => [row.key, row.value]));
   return SETTINGS.map((def) => ({
     key: def.key,
     section: def.section,
     label: def.label,
     description: def.description,
     type: def.type,
-    value: getRawSetting(def.key),
+    value: values.get(def.key) ?? def.default,
     default: def.default,
   }));
 }

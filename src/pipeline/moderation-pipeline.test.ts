@@ -195,6 +195,37 @@ test('crossing STRIKE_THRESHOLD triggers block()', async () => {
   assert.ok(getActiveBlock(contact));
 });
 
+test('STRIKE_THRESHOLD is captured once per burst, so a mid-burst change does not affect this burst\'s block decision', async () => {
+  const contact = 'mallory@s.whatsapp.net';
+  addMonitored(contact);
+  let blockCalled = false;
+
+  // Simulates an operator raising STRIKE_THRESHOLD in the Settings panel
+  // while this burst is still being processed — the second flagged message
+  // still crosses the threshold captured at the start of the burst (2),
+  // even though the setting has since changed to something no longer
+  // crossed by strikeCount=2.
+  const generateWarning = async (input) => {
+    setSetting('STRIKE_THRESHOLD', '100');
+    return okWarning(input);
+  };
+
+  await handleBurst(burst(contact, ['bad one', 'bad two']), {
+    deleteForMe: async () => {},
+    sendWarning: async () => {},
+    block: async () => {
+      blockCalled = true;
+    },
+    classify: okFlag,
+    generateWarning,
+  });
+
+  assert.equal(blockCalled, true);
+  assert.ok(getActiveBlock(contact));
+
+  setSetting('STRIKE_THRESHOLD', '2'); // restore for every test after this one
+});
+
 test('a contact with an existing active block is not re-blocked', async () => {
   const contact = 'frank@s.whatsapp.net';
   createBlock(contact, Date.now() + 60_000);
