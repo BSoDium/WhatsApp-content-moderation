@@ -1,5 +1,6 @@
 import { jidNormalizedUser } from '@whiskeysockets/baileys';
 import { getDb } from '../store/db.ts';
+import { emitControlEvent } from '../store/events.ts';
 import type { Chat, Contact, WAMessage, WASocket } from '@whiskeysockets/baileys';
 import type { ContactRecord } from '../types.ts';
 
@@ -135,6 +136,7 @@ function upsert(entry: ContactEntry): void {
       lastMessageAt: entry.lastMessageAt ?? null,
       updatedAt: Date.now(),
     });
+  emitControlEvent('contacts');
 }
 
 // Folds a stale row — kept under a JID form now known to be the same person

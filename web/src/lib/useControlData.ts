@@ -2,17 +2,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from './api';
 import type { Contact, ControlError, OverrideCommand, RosterEntry } from './types';
 
-const ROSTER_POLL_MS = 5000;
+// Belt-and-suspenders fallback for whatever the SSE connection below misses
+// (a dropped connection between EventSource's own reconnect attempts) — the
+// stream is the primary path, so this can be far slower than a real poll.
+const FALLBACK_POLL_MS = 30_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 // Controlled Switch/inputs read straight from contacts/roster state, so a failed mutation never applies the optimistic change React already rendered.
-export function useControlData() {
+// `initialSelectedId` seeds the selection from the URL (App.tsx) so a page
+// refresh reopens the same contact instead of landing back on the bare list.
+export function useControlData(initialSelectedId: string | null = null) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [error, setError] = useState<ControlError | null>(null);
 
   // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
@@ -35,11 +40,24 @@ export function useControlData() {
   useEffect(() => {
     refreshContacts();
     refreshRoster();
+
+    // Server push (src/web/control-server.ts's GET /api/events) so a change
+    // made from another tab, or a live incoming message, shows up without
+    // waiting on a poll — EventSource reconnects on its own on drop.
+    const events = new EventSource('/api/events');
+    events.onmessage = (event) => {
+      if (event.data === 'contacts') refreshContacts();
+      else if (event.data === 'roster') refreshRoster();
+    };
+
     const id = setInterval(() => {
       refreshContacts();
       refreshRoster();
-    }, ROSTER_POLL_MS);
-    return () => clearInterval(id);
+    }, FALLBACK_POLL_MS);
+    return () => {
+      events.close();
+      clearInterval(id);
+    };
   }, [refreshContacts, refreshRoster]);
 
   const setMonitored = useCallback(

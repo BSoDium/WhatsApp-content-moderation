@@ -113,6 +113,18 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     }
   }, [open, loadPage, refresh]);
 
+  // Live audit-log entries while the panel is open (src/web/control-server.ts's
+  // GET /api/events) — a page already displaying old entries otherwise looks
+  // stale until the operator manually reopens it.
+  useEffect(() => {
+    if (!open) return;
+    const events = new EventSource('/api/events');
+    events.onmessage = (event) => {
+      if (event.data === 'audit-log') refresh();
+    };
+    return () => events.close();
+  }, [open, refresh]);
+
   return {
     stats,
     entries,

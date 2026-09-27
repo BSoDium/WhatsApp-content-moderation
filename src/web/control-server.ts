@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
+import { onControlEvent } from '../store/events.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
@@ -53,6 +54,10 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
+// Keeps an SSE connection from being silently killed by an idle-connection
+// timeout on the Tailscale Serve proxy in front of this server, well under
+// any reasonable such timeout.
+const SSE_HEARTBEAT_MS = 25_000;
 
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
 const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock']);
@@ -198,6 +203,30 @@ async function handleApi(
   deps: ControlServerDependencies,
 ): Promise<boolean> {
   const { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks } = deps;
+
+  // Server-Sent Events: pushes a `data: <topic>` line whenever contacts,
+  // the roster, or the audit log changes (see src/store/events.ts), so the
+  // control app can refetch immediately instead of waiting for its
+  // fallback poll. One-way and text-only, so plain SSE over this server's
+  // existing http.Server needs no extra dependency or protocol upgrade —
+  // unlike a WebSocket, it also reconnects on its own via the browser's
+  // built-in EventSource.
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'events') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write(':ok\n\n');
+    const unsubscribe = onControlEvent((topic) => res.write(`data: ${topic}\n\n`));
+    const heartbeat = setInterval(() => res.write(':hb\n\n'), SSE_HEARTBEAT_MS);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+    return true;
+  }
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
     const selfId = deps.getSelfId();

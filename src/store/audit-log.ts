@@ -1,4 +1,5 @@
 import { getDb } from './db.ts';
+import { emitControlEvent } from './events.ts';
 import type { AuditLogRecord, Classification } from '../types.ts';
 
 interface AuditLogInput {
@@ -61,6 +62,7 @@ export function logMessage({ contactId, direction, message, classification, acti
       action,
       Date.now(),
     );
+  emitControlEvent('audit-log');
 }
 
 /**

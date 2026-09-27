@@ -1,6 +1,7 @@
 import pino from 'pino';
 import { getStrikeCount } from '../store/strikes.ts';
 import { getActiveBlock, markUnblocked } from '../store/blocks.ts';
+import { emitControlEvent } from '../store/events.ts';
 
 type OverrideCommand = 'pause' | 'resume' | 'unblock';
 
@@ -53,11 +54,13 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
       case 'pause':
         paused.set(contactId, true);
         logger.info({ contactId }, 'moderation paused via manual override');
+        emitControlEvent('roster');
         return 'Moderation paused — incoming messages will not be classified or actioned until resumed.';
 
       case 'resume':
         paused.set(contactId, false);
         logger.info({ contactId }, 'moderation resumed via manual override');
+        emitControlEvent('roster');
         return 'Moderation resumed.';
 
       case 'unblock': {
@@ -83,6 +86,7 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
           }
 
           logger.info({ contactId, blockId: block.id }, 'contact manually unblocked via manual override');
+          emitControlEvent('roster');
           return 'Contact unblocked.';
         } finally {
           unblockInFlight.delete(contactId);
