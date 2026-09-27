@@ -1242,3 +1242,74 @@ re-served from this authenticated origin) and at most 1 MiB, and it goes
 out with `nosniff` and `Cache-Control: private, max-age=3600`. It only looks
 up individual JIDs already in the contact directory, so it can't be used
 to probe photos for arbitrary numbers.
+
+## Moving off hand-written SQL: Drizzle ORM over the `sqlite-proxy` driver
+
+**Options compared**, against this project's actual constraints — Node 24
+ESM, the built-in synchronous `node:sqlite` connection (`src/store/db.ts`),
+the Alpine-based Docker image, and the existing `node:test` suite:
+
+- **Prisma** — needs its own generated client and a Rust query-engine
+  binary (or the newer "driver adapters" mode, which still wants a
+  supported driver — `node:sqlite` isn't one). Heaviest option, and the
+  query-engine binary is exactly the kind of "unplanned... fragile"
+  addition to the Docker image this comparison was told to avoid. Ruled
+  out.
+- **TypeORM** — decorator-based, assumes `experimentalDecorators`/
+  `reflect-metadata`, and its SQLite driver support centers on
+  `better-sqlite3`/`sqlite3`, not `node:sqlite`. Heavier runtime footprint
+  and a worse fit for this codebase's plain-function, no-class style (see
+  every `src/store/*.ts` module). Ruled out.
+- **Kysely** — a typed SQL query *builder*, not a schema/migration system;
+  it would satisfy "reads and writes through the ORM" but not "schema
+  declarations... and migrations," which the spec asked for explicitly.
+  Would still need the same custom `node:sqlite` adapter work as Drizzle
+  below, for less of the ask. Ruled out in favor of Drizzle, which covers
+  strictly more of the requirement for comparable adapter effort.
+- **Drizzle ORM** — schema-first, generates plain SQL (auditable,
+  `EXPLAIN`-able, nothing hidden behind a query-engine process), a
+  migration generator (`drizzle-kit`) that produces plain `.sql` files
+  rather than an opaque binary format, and its query builder already
+  matches this codebase's existing style of writing close-to-SQL,
+  explicit queries rather than hiding joins/relations behind magic.
+  Chosen.
+
+**The `node:sqlite` gap, and how it's closed.** As of the version pinned
+here (`drizzle-orm@0.45.3`, `drizzle-kit@0.31.11` — the latest *stable*
+releases; a `node-sqlite`-tagged 1.0 beta/rc line exists upstream with a
+native driver in progress, but depending on a pre-1.0 release for this
+project's database layer isn't a call to make before it's stable), Drizzle
+ships no dedicated `node:sqlite` driver. It does ship
+`drizzle-orm/sqlite-proxy`: a driver mode built for exactly this situation
+(any SQLite-compatible backend Drizzle doesn't have a first-party
+adapter for) — you hand it one async callback that executes a SQL string
+against your own connection and returns the rows; the query
+builder/schema/migrator all sit on top of it unchanged. `src/store/db.ts`
+implements that callback as a thin, synchronous wrapper around
+`DatabaseSync.prepare(sql).run/all(...params)` — no new runtime dependency
+(`node:sqlite` stays the only thing that ever touches the file), no native
+build step, verified working end to end (insert/select/update through the
+query builder, `drizzle-kit generate` producing plain SQL DDL) before
+committing to it.
+
+**Adopting migrations on top of an already-deployed schema.** This
+project's stance has been "no migrations, pre-release" with one narrow,
+explicit exception for contact/roster data (see "State & audit log via
+SQLite" above and `migrateContactsTable`/`migrateMonitoredContactsTable`)
+— real user data, only regainable by re-linking WhatsApp. Adopting
+`drizzle-kit`'s migration journal can't assume every database it meets is
+fresh: an existing deployment already has every column the runtime
+migrations added. The baseline migration (`drizzle/0000_*.sql`,
+generated once from a schema that already includes `last_message_at`,
+`lid`, `context`, `photo_url`, and `photo_fetched_at` as first-class
+columns, not runtime-added ones) is never blindly executed on startup.
+`src/store/db.ts` checks whether Drizzle's own bookkeeping table
+(`__drizzle_migrations`) exists yet; if it doesn't *and* `settings` (or
+any pre-existing table) already does, this is an existing deployment —
+the baseline is recorded as already-applied (its hash inserted into
+`__drizzle_migrations` without running its SQL) before the normal
+migrator runs, so it only executes migrations added *after* the baseline.
+A genuinely fresh database has no tables at all, so the baseline runs
+normally and creates everything. Both paths converge on the same migrator
+call — there's no separate "first run" code path to keep in sync, just
+one row seeded conditionally beforehand.
