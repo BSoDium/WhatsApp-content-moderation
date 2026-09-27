@@ -285,6 +285,8 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 
 Compose auto-merges `docker-compose.override.yml` whenever it's present next to `docker-compose.yml` — no `-f` flag needed. From then on, `docker compose up -d --build` (or `./scripts/update.sh --build`) builds and runs your local source under a distinct `whatsapp-content-moderation:dev` tag, instead of pulling the published image. Delete `docker-compose.override.yml` (it's gitignored, not tracked) to go back to the published image.
 
+If you've already run `./scripts/setup.sh` (which `chown`s `auth_info/`, `data/`, and `config/policy.md` to UID 1000 — see above), building from source as your own login can fail while Docker reads the build context, since those directories are no longer readable by your own user: `permission denied` reading `auth_info` or `data`. Run the build as root instead: `sudo docker compose up -d --build`.
+
 </details>
 
 ## Further reading
