@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity } from 'lucide-react';
+import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { readUrlState, writeUrlState } from '@/lib/urlState';
@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
 import { ContactDetailPanel } from '@/components/ContactDetailPanel';
 import { ActivityPanel } from '@/components/ActivityPanel';
+import { PolicyEditor } from '@/components/PolicyEditor';
+import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
 
 interface ActivityRequest {
@@ -20,13 +22,30 @@ function App() {
   // source of truth for a fresh load/refresh, afterwards state drives the
   // URL (the effect below), not the other way around.
   const initialUrlState = useMemo(() => readUrlState(), []);
-  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation } = useControlData(initialUrlState.contactId);
+  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext } = useControlData(initialUrlState.contactId);
   const [activityOpen, setActivityOpen] = useState(initialUrlState.activityOpen);
   const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: initialUrlState.activityContactId });
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [policySeq, setPolicySeq] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSeq, setSettingsSeq] = useState(0);
 
   function openActivity(contactId: string | null = null) {
     setActivityRequest((prev) => ({ seq: prev.seq + 1, contactId }));
     setActivityOpen(true);
+  }
+
+  // Bumping the seq (not just setting *Open true) remounts the panel below,
+  // same reasoning as ActivityPanel — a discarded draft never carries over
+  // to the next time it's opened.
+  function openPolicy() {
+    setPolicySeq((prev) => prev + 1);
+    setPolicyOpen(true);
+  }
+
+  function openSettings() {
+    setSettingsSeq((prev) => prev + 1);
+    setSettingsOpen(true);
   }
 
   // Keeps the URL in sync with what's on screen so a reload (or a shared
@@ -57,10 +76,20 @@ function App() {
                 <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
                 <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => openActivity(null)} className="mt-1 shrink-0">
-                <Activity data-icon="inline-start" />
-                Activity
-              </Button>
+              <div className="mt-1 flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" onClick={openSettings}>
+                  <Settings data-icon="inline-start" />
+                  Settings
+                </Button>
+                <Button variant="outline" size="sm" onClick={openPolicy}>
+                  <FileText data-icon="inline-start" />
+                  Policy
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => openActivity(null)}>
+                  <Activity data-icon="inline-start" />
+                  Activity
+                </Button>
+              </div>
             </div>
             {error && <ErrorBanner error={error} onDismiss={dismissError} />}
           </div>
@@ -87,11 +116,14 @@ function App() {
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}
             onSetEscalation={setEscalation}
+            onSetContext={setContext}
             onViewHistory={(contactId) => openActivity(contactId)}
           />
         </section>
 
         <ActivityPanel key={activityRequest.seq} open={activityOpen} onOpenChange={setActivityOpen} initialContactId={activityRequest.contactId} contacts={contacts} />
+        <PolicyEditor key={policySeq} open={policyOpen} onOpenChange={setPolicyOpen} />
+        <SettingsPanel key={settingsSeq} open={settingsOpen} onOpenChange={setSettingsOpen} />
       </div>
     </TooltipProvider>
   );

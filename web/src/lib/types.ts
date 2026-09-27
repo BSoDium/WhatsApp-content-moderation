@@ -14,9 +14,21 @@ export interface RosterEntry {
   id: string;
   name: string;
   escalationEnabled: boolean;
+  context: string | null;
   paused: boolean;
   strikeCount: number;
   block: { unblockAt: number } | null;
+}
+
+// Matches src/store/settings.ts's SettingDef/SettingView shape.
+export interface Setting {
+  key: string;
+  section: 'classifier' | 'warning' | 'strikes';
+  label: string;
+  description: string;
+  type: 'string' | 'int' | 'float';
+  value: string;
+  default: string;
 }
 
 export interface ControlError {

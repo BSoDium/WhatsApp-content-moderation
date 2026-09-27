@@ -3,6 +3,7 @@ import { ArrowLeft, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { ContactAvatar } from './ContactAvatar';
 import { SettingRow } from './SettingRow';
 import { relativeTime } from '@/lib/contact';
@@ -16,14 +17,17 @@ interface ContactDetailPanelProps {
   onToggleMonitor: (contactId: string, monitored: boolean) => Promise<void>;
   onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
   onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
+  onSetContext: (contactId: string, context: string) => Promise<void>;
   onViewHistory: (contactId: string) => void;
 }
 
-// The caller mounts this with `key={contact.id}` so `message` resets by
-// remounting on a new selection, rather than needing an effect to reset it.
-export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onViewHistory }: ContactDetailPanelProps) {
+// The caller mounts this with `key={contact.id}` so `message`/`contextDraft`
+// reset by remounting on a new selection, rather than needing an effect to
+// reset them.
+export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onViewHistory }: ContactDetailPanelProps) {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(() => new Set());
+  const [contextDraft, setContextDraft] = useState(entry?.context ?? '');
 
   if (!contact) return null;
 
@@ -144,6 +148,26 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
             }
           />
         </section>
+
+        {monitored && (
+          <section className="rounded-xl border border-border bg-card px-4 py-3.5">
+            <p className="font-medium leading-6">Moderation context</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Extra guidance folded into the classifier prompt for this contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes."
+            </p>
+            <Textarea
+              className="mt-3"
+              rows={3}
+              placeholder="No extra context for this contact."
+              value={contextDraft}
+              disabled={pending.has('context')}
+              onChange={(e) => setContextDraft(e.target.value)}
+              onBlur={() => {
+                if (contextDraft !== (entry?.context ?? '')) withPending('context', () => onSetContext(contact.id, contextDraft));
+              }}
+            />
+          </section>
+        )}
       </div>
 
       <p className="mt-4 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>
