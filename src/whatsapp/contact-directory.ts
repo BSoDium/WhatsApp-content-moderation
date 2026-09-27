@@ -1,6 +1,7 @@
 import { jidNormalizedUser } from '@whiskeysockets/baileys';
 import { getDb } from '../store/db.ts';
 import { emitControlEvent } from '../store/events.ts';
+import { invalidatePhotoCache } from '../store/contact-photos.ts';
 import type { Chat, Contact, WAMessage, WASocket } from '@whiskeysockets/baileys';
 import type { ContactRecord } from '../types.ts';
 
@@ -153,8 +154,8 @@ function foldAlias(canonicalId: string, aliasId: string | null | undefined): voi
   getDb().prepare('DELETE FROM contacts WHERE contact_id = ?').run(aliasId);
 }
 
-function ingestOne(rawId: string, rawAltId: string | undefined, rest: Partial<Contact> & { lastMessageAt?: number | null }): void {
-  if (NON_INDIVIDUAL_JID_SUFFIXES.some((suffix) => rawId.endsWith(suffix))) return;
+function ingestOne(rawId: string, rawAltId: string | undefined, rest: Partial<Contact> & { lastMessageAt?: number | null }): string | null {
+  if (NON_INDIVIDUAL_JID_SUFFIXES.some((suffix) => rawId.endsWith(suffix))) return null;
 
   const id = normalizeJid(rawId);
   const { canonicalId, lid } = reconcileJid(id, resolveAltId(id, rawAltId));
@@ -164,12 +165,20 @@ function ingestOne(rawId: string, rawAltId: string | undefined, rest: Partial<Co
   if (id !== canonicalId) foldAlias(canonicalId, id);
 
   upsert({ ...rest, id: canonicalId, lid });
+  return canonicalId;
 }
+
+// Baileys turns WhatsApp's `picture` notification into a contacts.update
+// carrying one of these sentinel imgUrl values (a real URL string elsewhere
+// in the Contact type means something else), so a contact's new or removed
+// photo shows up without waiting out profile-photos.ts's refresh window.
+const PHOTO_CHANGE_MARKERS = new Set(['changed', 'removed']);
 
 function ingest(entries: Array<Partial<Contact> & { id?: string; lastMessageAt?: number | null }> = []): void {
   for (const entry of entries) {
     if (typeof entry.id !== 'string') continue;
-    ingestOne(entry.id, entry.phoneNumber || entry.lid || undefined, entry);
+    const contactId = ingestOne(entry.id, entry.phoneNumber || entry.lid || undefined, entry);
+    if (contactId && entry.imgUrl && PHOTO_CHANGE_MARKERS.has(entry.imgUrl)) invalidatePhotoCache(contactId);
   }
 }
 
@@ -221,6 +230,9 @@ function toContact(contactId: string, row: ContactRecord | undefined) {
  * Every ingest path also reconciles a contact's @lid identity against their
  * phone-number JID (reconcileJid()/foldAlias()) so the same person never
  * shows up twice just because different events named them differently.
+ *
+ * A contacts.update announcing a changed/removed profile photo invalidates
+ * that contact's cached photo lookup (see src/whatsapp/profile-photos.ts).
  *
  * A contact who's never messaged and isn't in the phone's address book will
  * only ever have a bare JID and a null lastMessageAt — list()/get() fall

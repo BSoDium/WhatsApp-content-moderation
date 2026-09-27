@@ -6,6 +6,7 @@ process.env.DB_PATH = 'data/test-contact-directory.test.sqlite';
 
 const { createContactDirectory, canonicalContactId, canonicalMessageContactId } = await import('./contact-directory.ts');
 const { getDb } = await import('../store/db.ts');
+const { getPhotoCache, setPhotoCache } = await import('../store/contact-photos.ts');
 
 beforeEach(() => {
   getDb().exec('DELETE FROM contacts');
@@ -311,4 +312,48 @@ test('contacts persist across separate createContactDirectory() instances (i.e. 
 
   const second = createContactDirectory();
   assert.equal(second.get('carol@s.whatsapp.net').name, 'Carol');
+});
+
+test("a contacts.update announcing a changed or removed profile photo invalidates that contact's cached lookup", () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('contacts.upsert', [
+    { id: '15551234567@s.whatsapp.net', name: 'Alice' },
+    { id: '15557654321@s.whatsapp.net', name: 'Bob' },
+  ]);
+  setPhotoCache('15551234567@s.whatsapp.net', 'https://pps.whatsapp.net/a.jpg', 1_700_000_000_000);
+  setPhotoCache('15557654321@s.whatsapp.net', null, 1_700_000_000_000);
+
+  sock.emit('contacts.update', [
+    { id: '15551234567@s.whatsapp.net', imgUrl: 'changed' },
+    { id: '15557654321@s.whatsapp.net', imgUrl: 'removed' },
+  ]);
+
+  assert.equal(getPhotoCache('15551234567@s.whatsapp.net').fetchedAt, null);
+  assert.equal(getPhotoCache('15557654321@s.whatsapp.net').fetchedAt, null);
+});
+
+test('a photo-change notification addressed by @lid invalidates the canonical phone-number row', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('contacts.upsert', [{ id: '111@lid', phoneNumber: '15551234567@s.whatsapp.net', name: 'Alice' }]);
+  setPhotoCache('15551234567@s.whatsapp.net', 'https://pps.whatsapp.net/a.jpg', 1_700_000_000_000);
+
+  sock.emit('contacts.update', [{ id: '111@lid', imgUrl: 'changed' }]);
+
+  assert.equal(getPhotoCache('15551234567@s.whatsapp.net').fetchedAt, null);
+});
+
+test('a contacts.update without a photo-change marker leaves the cached photo lookup alone', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('contacts.upsert', [{ id: '15551234567@s.whatsapp.net', name: 'Alice' }]);
+  setPhotoCache('15551234567@s.whatsapp.net', 'https://pps.whatsapp.net/a.jpg', 1_700_000_000_000);
+
+  sock.emit('contacts.update', [{ id: '15551234567@s.whatsapp.net', notify: 'Al' }]);
+
+  assert.deepEqual(getPhotoCache('15551234567@s.whatsapp.net'), { url: 'https://pps.whatsapp.net/a.jpg', fetchedAt: 1_700_000_000_000 });
 });
