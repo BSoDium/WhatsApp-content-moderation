@@ -952,6 +952,71 @@ scroll region.
 never sent back to the API or altered in the database, only reformatted at
 render time in `StatsCards`/`MessageExplorer`.
 
+## Activity panel design pass, caught by an independent vision review
+
+After the panel above shipped, a second design review (an Opus-model agent
+given the built app in a browser, not the source) was run deliberately —
+the person asked for a vision-capable model on this because layout/contrast
+problems are exactly the kind of thing that reads fine in JSX but not on
+screen. It found several real problems, distinct from the two functional
+bugs recorded above:
+
+**Two more real bugs**, not just taste calls:
+- **The mobile Activity sheet was back to 75% width.** `SheetContent`'s
+  `data-[side=right]:w-3/4` beat a plain `w-full` on specificity, the same
+  class of bug the `sm:max-w-2xl!` fix above already worked around for the
+  max-width — missed here because `w-full` looked unrelated to that fix.
+  Fixed by making it `w-full!` too.
+- **The sheet title went stale.** It read the contact name from the
+  `initialContactId` prop (fixed at mount, by the remount-key design), so
+  switching the contact *filter* to "All contacts" left the title still
+  saying "Activity — Bob Chen". Fixed by dropping the per-contact title
+  entirely — the filter row already shows what's selected, and the stats
+  above it are explicitly whole-roster regardless of the table's filter
+  (see the "single all-time, all-contact aggregate" note above), so a
+  per-contact title was implying a scope the panel never actually had.
+
+**Color was carrying the wrong meaning.** Red (`destructive`) had been used
+for "Currently blocked", "Flagged & deleted", and the category bars — all
+three are the system working exactly as designed, not failures. Meanwhile
+"Classifier error" (an actual failure) rendered as a neutral outline badge.
+Re-scoped red to the two states that are genuinely something going wrong
+(`classifier_error`, `action_failed`); "Deleted" is now the `default`
+(solid, high-emphasis but not alarm-colored) badge variant, since it's
+often the single most important row and deserves visual weight without
+implying an error; category bars use `bg-foreground/60`, not destructive.
+
+**A table-auto-layout gotcha, only visible once mobile actually had only
+two columns to show.** Hiding `When`/`Contact` below `sm` (to fix the
+sheet-width bug above from also fixing the *content*) didn't fix the
+underlying squeeze: the browser's default table layout sizes columns by
+content's preferred width, and a `max-w-xs` on a cell is only a hint that
+loses to a long unwrapped badge label (`"Classifier error"`) — the table's
+`scrollWidth` still exceeded its container, so the fix for the crushed
+mobile table upstream had just been replaced by a *different* mobile table
+that still needed horizontal scroll to read a message. Fixed with
+`table-fixed` plus an explicit width on every column but `Message`, which
+makes the header row (not content) the sole source of truth for column
+widths — confirmed by checking the table container's `scrollWidth` equals
+its `clientWidth` after the fix, not just eyeballing a screenshot.
+
+**Direction icons were redundant, not just unlabeled.** The "From" column
+paired a contact name with an arrow icon to show whether a row was received
+from the contact or sent by the system — but `direction` is fully
+determined by `action` already (only `warning_sent` is ever `'me'`;
+everything else is `'them'`), and the `ActionBadge` column already carries
+that distinction. Dropped the icons and the column rename to "Contact"
+removes the redundant signal rather than just relabeling it.
+
+**Not changed, despite being flagged:** hiding the Paused/Escalation card
+for an unmonitored contact, and replacing the roster row's Ban-icon toggle
+with a `Switch`. Both would reverse an explicit, previously-litigated
+decision (see "Control panel: full contact list + slide-in detail panel"
+above: "Panel controls are always rendered, never hidden... An empty-
+looking panel read as broken") rather than fix a regression this round of
+work introduced — revisit deliberately if it comes up again, not as a
+side effect of an unrelated review.
+
 ## Auto dark mode, no in-app toggle
 
 `shadcn init` had already generated a full `.dark` OKLCH palette in

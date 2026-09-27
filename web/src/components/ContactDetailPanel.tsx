@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { ContactAvatar } from './ContactAvatar';
 import { SettingRow } from './SettingRow';
 import { relativeTime } from '@/lib/contact';
+import { formatTimestamp } from '@/lib/activity';
 import type { Contact, OverrideCommand, RosterEntry } from '@/lib/types';
 
 interface ContactDetailPanelProps {
@@ -51,83 +52,88 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
   return (
     <div className="flex h-full w-full min-w-0 flex-col overflow-y-auto px-4 pt-4 pb-16 lg:min-w-[500px] lg:px-8 lg:pt-20">
       <div className="mb-6 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Back to contact list">
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Back to contact list" className="-ml-2">
           <ArrowLeft />
         </Button>
         <ContactAvatar contact={contact} size="lg" />
         <div className="min-w-0">
-          <p className="font-medium">{contact.name}</p>
+          <p className="text-lg font-semibold">{contact.name}</p>
           <p className="text-sm text-muted-foreground">{relativeTime(contact.lastMessageAt)}</p>
         </div>
       </div>
 
-      <div>
-        <SettingRow
-          title="Moderate this contact"
-          description={monitored ? undefined : 'Start tracking strikes and enable auto-blocking for this contact.'}
-          control={
-            <Switch
-              checked={monitored}
-              disabled={pending.has('monitor')}
-              onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
-            />
-          }
-        />
-        <Separator />
-        <SettingRow title="Strikes" control={<span>{entry?.strikeCount ?? 0}</span>} />
-        <Separator />
-        <SettingRow
-          title="Block"
-          control={<span>{entry?.block ? `until ${new Date(entry.block.unblockAt).toLocaleString()}` : 'Not blocked'}</span>}
-        />
-        <Separator />
-        <SettingRow
-          title="Message history"
-          description="Every message logged for this contact, including anything deleted."
-          control={
-            <Button variant="outline" size="sm" onClick={() => onViewHistory(contact.id)}>
-              <History data-icon="inline-start" />
-              View
-            </Button>
-          }
-        />
-        <Separator />
-        <SettingRow
-          title="Paused"
-          description="Temporarily stop moderating without losing strike history."
-          control={
-            <Switch
-              checked={Boolean(entry?.paused)}
-              disabled={!monitored || pending.has('pause')}
-              onCheckedChange={(checked) => withPending('pause', () => runAndReport(checked ? 'pause' : 'resume'))}
-            />
-          }
-        />
-        <Separator />
-        <SettingRow
-          title="Escalation"
-          description="Automatically block this contact after too many strikes."
-          control={
-            <Switch
-              checked={entry?.escalationEnabled ?? true}
-              disabled={!monitored || pending.has('escalation')}
-              onCheckedChange={(checked) => withPending('escalation', () => onSetEscalation(contact.id, checked))}
-            />
-          }
-        />
-        <Separator />
+      <div className="space-y-4">
+        <section className="rounded-xl border border-border bg-muted/40 px-4">
+          <SettingRow
+            title="Moderate this contact"
+            description={monitored ? undefined : 'Start tracking strikes and enable auto-blocking for this contact.'}
+            control={
+              <Switch
+                checked={monitored}
+                disabled={pending.has('monitor')}
+                onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
+              />
+            }
+          />
+        </section>
+
+        <section className="rounded-xl border border-border bg-card px-4">
+          <SettingRow title="Strikes" control={<span className="tabular-nums">{entry?.strikeCount ?? 0}</span>} />
+          <Separator />
+          <SettingRow
+            title="Block"
+            description={entry?.block ? `Until ${formatTimestamp(entry.block.unblockAt)}` : undefined}
+            control={
+              entry?.block ? (
+                <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
+                  Unblock
+                </Button>
+              ) : (
+                <span className="text-muted-foreground">Not blocked</span>
+              )
+            }
+          />
+          <Separator />
+          <SettingRow
+            title="Message history"
+            description="Includes anything already deleted."
+            control={
+              <Button variant="outline" size="sm" onClick={() => onViewHistory(contact.id)}>
+                <History data-icon="inline-start" />
+                View
+              </Button>
+            }
+          />
+        </section>
+
+        <section className="rounded-xl border border-border bg-card px-4">
+          <SettingRow
+            title="Paused"
+            description="Temporarily stop moderating without losing strike history."
+            control={
+              <Switch
+                checked={Boolean(entry?.paused)}
+                disabled={!monitored || pending.has('pause')}
+                onCheckedChange={(checked) => withPending('pause', () => runAndReport(checked ? 'pause' : 'resume'))}
+              />
+            }
+          />
+          <Separator />
+          <SettingRow
+            title="Escalation"
+            description="Automatically block this contact after too many strikes."
+            control={
+              <Switch
+                checked={entry?.escalationEnabled ?? true}
+                disabled={!monitored || pending.has('escalation')}
+                onCheckedChange={(checked) => withPending('escalation', () => onSetEscalation(contact.id, checked))}
+              />
+            }
+          />
+        </section>
       </div>
 
-      <div className="mt-6">
-        <Button
-          variant="destructive"
-          disabled={!monitored || pending.has('unblock')}
-          onClick={() => withPending('unblock', () => runAndReport('unblock'))}
-        >
-          Unblock now
-        </Button>
-        <p className="mt-3 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>
-      </div>
+      {message && <p className="mt-4 text-sm text-muted-foreground">{message}</p>}
     </div>
   );
 }

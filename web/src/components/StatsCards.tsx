@@ -9,14 +9,17 @@ interface StatCard {
   warn?: boolean;
 }
 
+// Short, single-line labels — a two-column mobile grid has little room, and only
+// classifier errors are flagged red: a block or a deletion is the system working
+// as intended, not a failure that needs an alarm color.
 function cardsFor(stats: Stats): StatCard[] {
   return [
-    { label: 'Monitored contacts', value: stats.monitoredCount },
-    { label: 'Currently blocked', value: stats.activeBlocks, warn: stats.activeBlocks > 0 },
-    { label: 'Flagged & deleted', value: stats.totalFlaggedDeleted, warn: stats.totalFlaggedDeleted > 0 },
-    { label: 'Warnings sent', value: stats.totalWarningsSent },
-    { label: 'Classifier errors', value: stats.totalClassifierErrors, warn: stats.totalClassifierErrors > 0 },
-    { label: 'Messages logged', value: stats.totalLogged },
+    { label: 'Monitored', value: stats.monitoredCount },
+    { label: 'Blocked', value: stats.activeBlocks },
+    { label: 'Deleted', value: stats.totalFlaggedDeleted },
+    { label: 'Warnings', value: stats.totalWarningsSent },
+    { label: 'Errors', value: stats.totalClassifierErrors, warn: stats.totalClassifierErrors > 0 },
+    { label: 'Logged', value: stats.totalLogged },
   ];
 }
 
@@ -40,8 +43,8 @@ export function StatsCards({ stats }: { stats: Stats | null }) {
     <div className="space-y-3">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {cardsFor(stats).map((card) => (
-          <div key={card.label} className="rounded-xl border border-border bg-card p-3">
-            <dt className="text-xs text-muted-foreground">{card.label}</dt>
+          <div key={card.label} className="flex flex-col justify-between rounded-xl border border-border bg-card p-3">
+            <dt className="text-xs whitespace-nowrap text-muted-foreground">{card.label}</dt>
             <dd className={cn('mt-1 text-2xl font-semibold tabular-nums', card.warn && 'text-destructive')}>{card.value}</dd>
           </div>
         ))}
@@ -53,9 +56,9 @@ export function StatsCards({ stats }: { stats: Stats | null }) {
           <ul className="mt-2 space-y-1.5">
             {topCategories.map((entry) => (
               <li key={entry.category} className="flex items-center gap-2 text-sm">
-                <span className="w-32 shrink-0 truncate capitalize">{formatCategory(entry.category)}</span>
+                <span className="w-32 shrink-0 truncate">{formatCategory(entry.category)}</span>
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <span className="block h-full rounded-full bg-destructive/70" style={{ width: `${maxCount ? (entry.count / maxCount) * 100 : 0}%` }} />
+                  <span className="block h-full rounded-full bg-foreground/60" style={{ width: `${maxCount ? (entry.count / maxCount) * 100 : 0}%` }} />
                 </span>
                 <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{entry.count}</span>
               </li>

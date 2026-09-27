@@ -19,15 +19,13 @@ export function ActivityPanel({ open, onOpenChange, initialContactId, contacts }
   const { stats, entries, nextBefore, loading, loadingMore, error, contactId, setContactId, action, setAction, searchInput, setSearchInput, refresh, loadMore } =
     useActivityData({ open, initialContactId });
 
-  const contactName = initialContactId ? contacts.find((c) => c.id === initialContactId)?.name : null;
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 sm:max-w-2xl! md:max-w-3xl!" aria-describedby="activity-panel-description">
+      <SheetContent className="w-full! gap-0 sm:max-w-2xl! md:max-w-3xl!" aria-describedby="activity-panel-description">
         <SheetHeader className="border-b border-border">
-          <SheetTitle>{contactName ? `Activity — ${contactName}` : 'Moderation activity'}</SheetTitle>
+          <SheetTitle>Moderation activity</SheetTitle>
           <SheetDescription id="activity-panel-description">
-            Stats and a full record of every message this system classified, warned about, or deleted.
+            Stats and a full record of every message this system classified, warned about, or deleted — filters below apply to the table only.
           </SheetDescription>
         </SheetHeader>
 

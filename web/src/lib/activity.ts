@@ -7,11 +7,15 @@ interface ActionMeta {
   badgeVariant: BadgeVariant;
 }
 
+// Red is reserved for the two states that mean something actually went wrong
+// (classifier_error, action_failed) — a deleted message is the system working
+// as intended, not a failure, so it gets the same visual weight a "default"
+// badge gives any other headline outcome, not an alarm color.
 export const ACTION_META: Record<AuditAction, ActionMeta> = {
-  'delete+warn': { label: 'Deleted', badgeVariant: 'destructive' },
+  'delete+warn': { label: 'Deleted', badgeVariant: 'default' },
   warning_sent: { label: 'Warning sent', badgeVariant: 'secondary' },
   none: { label: 'Passed', badgeVariant: 'outline' },
-  classifier_error: { label: 'Classifier error', badgeVariant: 'outline' },
+  classifier_error: { label: 'Classifier error', badgeVariant: 'destructive' },
   action_failed: { label: 'Action failed', badgeVariant: 'destructive' },
   shadow: { label: 'Shadow mode', badgeVariant: 'secondary' },
 };
@@ -29,7 +33,10 @@ export function formatTimestamp(ms: number): string {
   return DATE_TIME_FORMAT.format(new Date(ms));
 }
 
-// Categories come from the classifier as snake_case labels (e.g. "unwanted_contact") — display-only formatting, never sent back to the API.
+// Categories come from the classifier as snake_case labels (e.g. "unwanted_contact") — display-only
+// formatting, never sent back to the API. Sentence case (not CSS `capitalize`, which title-cases
+// every word) so this reads the same wherever it's used.
 export function formatCategory(category: string): string {
-  return category.replace(/_/g, ' ');
+  const spaced = category.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
