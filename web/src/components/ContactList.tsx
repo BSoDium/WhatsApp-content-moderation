@@ -29,6 +29,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle }
       <Input
         type="search"
         placeholder="Search by name or number…"
+        aria-label="Search by name or number"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         className="h-10 flex-none rounded-full px-4"

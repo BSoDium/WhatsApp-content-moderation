@@ -120,10 +120,11 @@ export function MessageExplorer({
                   <TableCell>
                     <span className="flex items-center gap-1.5">
                       {entry.direction === 'them' ? (
-                        <ArrowDownLeft className="size-3.5 shrink-0 text-muted-foreground" aria-label="Received from contact" />
+                        <ArrowDownLeft className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                       ) : (
-                        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" aria-label="Sent by this system" />
+                        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                       )}
+                      <span className="sr-only">{entry.direction === 'them' ? 'Received from' : 'Sent by this system to'}</span>
                       <span className="max-w-28 truncate">{entry.contactName}</span>
                     </span>
                   </TableCell>
