@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -15,11 +15,12 @@ interface ContactDetailPanelProps {
   onToggleMonitor: (contactId: string, monitored: boolean) => Promise<void>;
   onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
   onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
+  onViewHistory: (contactId: string) => void;
 }
 
 // The caller mounts this with `key={contact.id}` so `message` resets by
 // remounting on a new selection, rather than needing an effect to reset it.
-export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation }: ContactDetailPanelProps) {
+export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onViewHistory }: ContactDetailPanelProps) {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(() => new Set());
 
@@ -78,6 +79,17 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         <SettingRow
           title="Block"
           control={<span>{entry?.block ? `until ${new Date(entry.block.unblockAt).toLocaleString()}` : 'Not blocked'}</span>}
+        />
+        <Separator />
+        <SettingRow
+          title="Message history"
+          description="Every message logged for this contact, including anything deleted."
+          control={
+            <Button variant="outline" size="sm" onClick={() => onViewHistory(contact.id)}>
+              <History data-icon="inline-start" />
+              View
+            </Button>
+          }
         />
         <Separator />
         <SettingRow
