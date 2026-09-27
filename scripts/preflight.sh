@@ -106,9 +106,9 @@ if command -v tailscale >/dev/null 2>&1; then
       fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated (set it to '$DETECTED_LOGIN', if that's your own login and not the host's)"
     fi
   elif [ -z "${ALLOWED_TAILSCALE_LOGIN:-}" ]; then
-    fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated. Run 'tailscale status' on your own device and set it to the exact login it reports for your account."
+    fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated. $TAILSCALE_LOGIN_HELP"
   else
-    info "could not detect this host's Tailscale login (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — verify ALLOWED_TAILSCALE_LOGIN manually against 'tailscale status' run from your own device, not this host"
+    info "could not verify ALLOWED_TAILSCALE_LOGIN against this host (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — double check it's still correct: $TAILSCALE_LOGIN_HELP"
   fi
 else
   fail "tailscale not found on PATH"

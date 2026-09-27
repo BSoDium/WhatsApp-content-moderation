@@ -88,7 +88,7 @@ if ! grep -qE '^[[:space:]]*ALLOWED_TAILSCALE_LOGIN=.+' .env; then
     upsert_env_var ALLOWED_TAILSCALE_LOGIN "$DETECTED_LOGIN"
     ok "detected Tailscale login '$DETECTED_LOGIN' and set ALLOWED_TAILSCALE_LOGIN — double-check this is the account you'll open the control app from"
   else
-    warn "Could not auto-detect your Tailscale login (needs jq, and only applies to a personal, non-tagged node). Run 'tailscale status' and set ALLOWED_TAILSCALE_LOGIN in .env to the exact login it reports for your own account — not the host's, if this host is Tailscale-tagged (e.g. tag:server)."
+    warn "Could not auto-detect your Tailscale login — set ALLOWED_TAILSCALE_LOGIN in .env yourself. $TAILSCALE_LOGIN_HELP"
   fi
 else
   skip "ALLOWED_TAILSCALE_LOGIN already set"
@@ -108,12 +108,8 @@ log "Setup complete"
 # among the routine "Next steps".
 if [ -z "$CONFIGURED_LOGIN" ]; then
   warn "ALLOWED_TAILSCALE_LOGIN is still unset. The app WILL crash-loop under Docker's restart policy until you fix this — don't run 'docker compose up' yet."
-  cat <<EOF
-  Run 'tailscale status' and copy the exact login it reports for YOUR OWN
-  account (not the host's, if this host is Tailscale-tagged, e.g. tag:server)
-  into .env:
-    ALLOWED_TAILSCALE_LOGIN=you@example.com
-EOF
+  echo "  $TAILSCALE_LOGIN_HELP"
+  echo "  Then add it to .env: ALLOWED_TAILSCALE_LOGIN=you@example.com"
 fi
 
 printf '%sBefore starting:%s\n' "$C_YELLOW" "$C_RESET"
