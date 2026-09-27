@@ -15,6 +15,7 @@ RUN npm ci --omit=dev
 
 COPY index.ts ./
 COPY src ./src
+COPY drizzle ./drizzle
 COPY --from=web-build /web/dist ./web/dist
 COPY config/policy.example.md ./config/policy.example.md
 
