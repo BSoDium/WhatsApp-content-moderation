@@ -1,5 +1,6 @@
 import pino from 'pino';
-import { getExpiredBlocks, markUnblocked } from '../store/blocks.ts';
+import { getExpiredBlocks } from '../store/blocks.ts';
+import { resolveUnblock } from './unblock-resolution.ts';
 
 interface UnblockActions {
   unblock: (contactId: string) => Promise<void>;
@@ -21,24 +22,23 @@ const logger = pino({ name: 'unblock-scheduler' });
  */
 export async function runTick(actions: UnblockActions): Promise<void> {
   for (const record of getExpiredBlocks()) {
-    try {
-      await actions.unblock(record.contact_id);
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      logger.error(
-        { contactId: record.contact_id, blockId: record.id, error },
-        'unblock failed; will retry next tick',
-      );
-      continue;
-    }
-
-    if (markUnblocked(record.id)) {
-      logger.info({ contactId: record.contact_id, blockId: record.id }, 'contact unblocked');
-    } else {
-      logger.warn(
-        { contactId: record.contact_id, blockId: record.id },
-        'block was already marked unblocked (overlapping tick or manual override)',
-      );
+    const outcome = await resolveUnblock(record.contact_id, record.id, actions.unblock);
+    switch (outcome.status) {
+      case 'unblocked':
+        logger.info({ contactId: record.contact_id, blockId: record.id }, 'contact unblocked');
+        break;
+      case 'already-resolved':
+        logger.warn(
+          { contactId: record.contact_id, blockId: record.id },
+          'block was already marked unblocked (overlapping tick or manual override)',
+        );
+        break;
+      case 'failed':
+        logger.error(
+          { contactId: record.contact_id, blockId: record.id, error: outcome.error },
+          'unblock failed; will retry next tick',
+        );
+        break;
     }
   }
 }

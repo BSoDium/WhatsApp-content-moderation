@@ -1,6 +1,8 @@
 import pino from 'pino';
 import { getStrikeCount } from '../store/strikes.ts';
-import { getActiveBlock, markUnblocked } from '../store/blocks.ts';
+import { getActiveBlock } from '../store/blocks.ts';
+import { emitControlEvent } from '../store/events.ts';
+import { resolveUnblock } from '../pipeline/unblock-resolution.ts';
 
 type OverrideCommand = 'pause' | 'resume' | 'unblock';
 
@@ -53,11 +55,13 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
       case 'pause':
         paused.set(contactId, true);
         logger.info({ contactId }, 'moderation paused via manual override');
+        emitControlEvent('roster');
         return 'Moderation paused — incoming messages will not be classified or actioned until resumed.';
 
       case 'resume':
         paused.set(contactId, false);
         logger.info({ contactId }, 'moderation resumed via manual override');
+        emitControlEvent('roster');
         return 'Moderation resumed.';
 
       case 'unblock': {
@@ -68,20 +72,18 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
 
         unblockInFlight.add(contactId);
         try {
-          try {
-            await unblock(contactId);
-          } catch (err) {
-            const error = err instanceof Error ? err.message : String(err);
-            logger.error({ contactId, error }, 'manual unblock failed');
-            return `Unblock failed: ${error}`;
+          // Shared with src/pipeline/unblock-scheduler.ts's runTick — same
+          // call-unblock-then-mark-resolved sequence and the same "someone
+          // else already resolved it" race handling either way.
+          const outcome = await resolveUnblock(contactId, block.id, unblock);
+          if (outcome.status === 'failed') {
+            logger.error({ contactId, error: outcome.error }, 'manual unblock failed');
+            return `Unblock failed: ${outcome.error}`;
           }
-
-          // Matches src/pipeline/unblock-scheduler.ts's runTick — don't report success for a block someone else already resolved.
-          if (!markUnblocked(block.id)) {
+          if (outcome.status === 'already-resolved') {
             logger.warn({ contactId, blockId: block.id }, 'block was already marked unblocked (overlapping request or scheduler tick)');
             return 'Contact was already unblocked.';
           }
-
           logger.info({ contactId, blockId: block.id }, 'contact manually unblocked via manual override');
           return 'Contact unblocked.';
         } finally {

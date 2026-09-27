@@ -1,4 +1,5 @@
-import { Ollama } from 'ollama';
+import type { Ollama } from 'ollama';
+import { createOllamaClient } from './ollama-client.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -15,7 +16,6 @@ interface WarningMessageDependencies {
 
 type WarningMessageResult = { ok: true; text: string } | { ok: false; error: string };
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 // Falls back to the classifier's own model — same local Ollama install, no extra pull required —
 // but overridable independently since generation and classification are different tasks.
 const MODEL = process.env.WARNING_MODEL ?? process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
@@ -24,8 +24,9 @@ const TIMEOUT_MS = Number(process.env.WARNING_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 const DEFAULT_TEMPERATURE = 0.4;
 const TEMPERATURE = Number(process.env.WARNING_TEMPERATURE ?? DEFAULT_TEMPERATURE);
 // A hard ceiling, not a target length — small local models asked for "a short message" still
-// occasionally ramble, and this is what actually gets sent to a real person's phone.
-const DEFAULT_MAX_LENGTH = 320;
+// occasionally ramble, and this is what actually gets sent to a real person's phone. Lowered
+// from an earlier 320: a warning read on a phone screen needs to be a text, not a paragraph.
+const DEFAULT_MAX_LENGTH = 180;
 const MAX_LENGTH = Number(process.env.WARNING_MAX_LENGTH ?? DEFAULT_MAX_LENGTH);
 
 function buildSystemPrompt(): string {
@@ -37,34 +38,36 @@ function buildSystemPrompt(): string {
     'Every message you write MUST include all three of these, in your own words:',
     "1. A concrete, specific instruction to stop the exact behavior described below — never generic ('stop sending threatening messages', not 'please be respectful').",
     "2. An explicit statement that an automated system, not the account owner personally, is sending this and watching the conversation. A vague phrase like 'this conversation has been flagged' is NOT enough on its own — say outright that this is automated, not a person.",
-    '3. The consequence exactly as given below (imminent block, one strike left, or strikes remaining) — never soften or omit it.',
+    "3. The consequence exactly as given below, addressed to the contact as \"you\" — it is THEIR ability to message this number that is at stake, never phrase it as \"my account\" or \"the account\" being blocked, since that reads as the account owner's own account and makes no sense.",
     '',
     'Other requirements:',
     '- Describe the violation using the reason given below, in your own plain words — do not invent a different or more severe-sounding violation than what actually happened.',
-    '- 1-3 short sentences, like a real text message a person could plausibly send — no bullet points, no headers, no markdown, no surrounding quotation marks.',
+    '- Reply in the same language the message below is written in (e.g. write a French reply for a French message) — never translate to English unless the original message is already in English.',
+    '- Exactly ONE short sentence (two only if truly necessary) — as brief as a real text message, never a paragraph. No bullet points, no headers, no markdown, no surrounding quotation marks.',
     '- Firm and factual, never insulting, sarcastic, or threatening beyond stating the actual consequence.',
     "- Respond with only the message text itself — no preamble like 'Here's a message:'.",
   ].join('\n');
 }
 
-function buildUserPrompt({ category, reason, strikeCount, strikeThreshold }: WarningMessageInput): string {
+function buildUserPrompt({ message, category, reason, strikeCount, strikeThreshold }: WarningMessageInput): string {
   const strikesRemaining = strikeThreshold - strikeCount;
   const consequence =
     strikesRemaining <= 0
-      ? 'This contact has reached the strike threshold — this is their final warning before being blocked.'
+      ? "You've reached the strike threshold — this is your final warning before you are blocked."
       : strikesRemaining === 1
-        ? 'This is their last strike before being blocked — one more violation blocks them.'
-        : `${strikesRemaining} strikes remain before this contact is blocked.`;
+        ? 'This is your last strike before you are blocked — one more violation and you will be blocked.'
+        : `${strikesRemaining} strikes remain before you are blocked.`;
 
   return [
     '# What happened',
+    `Flagged message (for language/tone reference — do not quote it back verbatim): ${message}`,
     `Category: ${category}`,
     `Reason: ${reason}`,
     `Strikes so far: ${strikeCount} of ${strikeThreshold}.`,
-    `Consequence to state: ${consequence}`,
+    `Consequence to state, addressed to the contact as "you": ${consequence}`,
     '',
     '# Task',
-    'Write the reply to send back to them now.',
+    'Write the reply to send back to them now, in the same language as their flagged message above.',
   ].join('\n');
 }
 
@@ -98,10 +101,7 @@ export async function generateWarningMessage(
   { client }: WarningMessageDependencies = {},
 ): Promise<WarningMessageResult> {
   const { model = MODEL } = input;
-  const ollama = client ?? new Ollama({
-    host: OLLAMA_HOST,
-    fetch: (fetchInput, init) => fetch(fetchInput, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }),
-  });
+  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
 
   try {
     const response = await ollama.chat({

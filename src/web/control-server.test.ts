@@ -88,10 +88,12 @@ async function withServer(
     monitoredContacts = makeMonitoredContacts(),
     auditLog = makeAuditLog(),
     blocks = makeBlocks(),
+    getSelfId = () => null,
+    allowSelf = false,
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: ALLOWED });
+  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: ALLOWED, getSelfId, allowSelf });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks });
@@ -185,8 +187,27 @@ test('GET /api/contacts merges the directory with the monitored flag', async () 
     assert.deepEqual(
       body.sort((a, b) => a.id.localeCompare(b.id)),
       [
-        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true },
-        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false },
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true, isSelf: false, allowSelf: false },
+        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false, isSelf: false, allowSelf: false },
+      ],
+    );
+  });
+});
+
+test('GET /api/contacts marks the self contact via isSelf and reports the allowSelf policy', async () => {
+  const contactDirectory = makeContactDirectory([
+    { id: 'alice@s.whatsapp.net', name: 'Alice' },
+    { id: 'me@s.whatsapp.net', name: 'Me' },
+  ]);
+
+  await withServer({ contactDirectory, getSelfId: () => 'me@s.whatsapp.net', allowSelf: true }, async (base) => {
+    const res = await fetch(`${base}/api/contacts`, { headers: authHeaders() });
+    const body = await res.json();
+    assert.deepEqual(
+      body.sort((a, b) => a.id.localeCompare(b.id)),
+      [
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: false, isSelf: false, allowSelf: true },
+        { id: 'me@s.whatsapp.net', name: 'Me', monitored: false, isSelf: true, allowSelf: true },
       ],
     );
   });
@@ -297,6 +318,30 @@ test('POST /api/roster rejects a group JID', async () => {
     });
     assert.equal(res.status, 400);
     assert.equal(monitoredContacts.isMonitored('1203630xxxx@g.us'), false);
+  });
+});
+
+test('POST /api/roster rejects the self contact when TEST_ALLOW_SELF is not enabled', async () => {
+  await withServer({ getSelfId: () => 'me@s.whatsapp.net', allowSelf: false }, async (base, { monitoredContacts }) => {
+    const res = await fetch(`${base}/api/roster`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ contactId: 'me@s.whatsapp.net' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(monitoredContacts.isMonitored('me@s.whatsapp.net'), false);
+  });
+});
+
+test('POST /api/roster allows the self contact when TEST_ALLOW_SELF is enabled', async () => {
+  await withServer({ getSelfId: () => 'me@s.whatsapp.net', allowSelf: true }, async (base, { monitoredContacts }) => {
+    const res = await fetch(`${base}/api/roster`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ contactId: 'me@s.whatsapp.net' }),
+    });
+    assert.equal(res.status, 201);
+    assert.equal(monitoredContacts.isMonitored('me@s.whatsapp.net'), true);
   });
 });
 
@@ -460,6 +505,8 @@ test('close() resolves promptly even with a request in flight', async () => {
     auditLog: makeAuditLog(),
     blocks: makeBlocks(),
     allowedLogin: ALLOWED,
+    getSelfId: () => null,
+    allowSelf: false,
   });
   const port = await server.listen(0);
 

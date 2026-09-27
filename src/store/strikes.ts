@@ -1,4 +1,5 @@
 import { getDb } from './db.ts';
+import { emitControlEvent } from './events.ts';
 import type { StrikeRecord } from '../types.ts';
 
 /**
@@ -20,6 +21,7 @@ export function recordStrike(contactId: string): number {
     `INSERT INTO strikes (contact_id, count, updated_at) VALUES (?, 1, ?)
      ON CONFLICT (contact_id) DO UPDATE SET count = count + 1, updated_at = excluded.updated_at`,
   ).run(contactId, Date.now());
+  emitControlEvent('roster');
   return getStrikeCount(contactId);
 }
 
@@ -33,5 +35,6 @@ export function decayStrike(contactId: string): number {
     `INSERT INTO strikes (contact_id, count, updated_at) VALUES (?, 0, ?)
      ON CONFLICT (contact_id) DO UPDATE SET count = MAX(count - 1, 0), updated_at = excluded.updated_at`,
   ).run(contactId, Date.now());
+  emitControlEvent('roster');
   return getStrikeCount(contactId);
 }

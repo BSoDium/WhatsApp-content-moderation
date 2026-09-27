@@ -1,4 +1,5 @@
 import { getDb } from './db.ts';
+import { emitControlEvent } from './events.ts';
 import type { MonitoredContactRecord } from '../types.ts';
 
 export interface MonitoredContact {
@@ -47,6 +48,7 @@ export function addMonitored(contactId: string): void {
        ON CONFLICT (contact_id) DO NOTHING`,
     )
     .run(contactId, Date.now());
+  emitControlEvent('roster');
 }
 
 /**
@@ -58,6 +60,7 @@ export function addMonitored(contactId: string): void {
  */
 export function removeMonitored(contactId: string): boolean {
   const { changes } = getDb().prepare('DELETE FROM monitored_contacts WHERE contact_id = ?').run(contactId);
+  if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }
 
@@ -68,6 +71,7 @@ export function setEscalationEnabled(contactId: string, enabled: boolean): boole
   const { changes } = getDb()
     .prepare('UPDATE monitored_contacts SET escalation_enabled = ? WHERE contact_id = ?')
     .run(enabled ? 1 : 0, contactId);
+  if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }
 

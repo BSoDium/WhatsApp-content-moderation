@@ -20,7 +20,7 @@ export default tseslint.config(
         'error',
         {
           enforceConst: true,
-          ignore: [-1, 0, 1, 2, 3, 4, 10, 24, 60, 1000, 7000, 15000, 200, 201, 400, 403, 404, 415, 500, 503],
+          ignore: [-1, 0, 1, 2, 3, 4, 10, 24, 60, 1000, 7000, 15000, 200, 201, 400, 403, 404, 413, 415, 500, 503],
           ignoreArrayIndexes: true,
           ignoreDefaultValues: true,
           ignoreClassFieldInitialValues: true,

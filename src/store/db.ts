@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   name TEXT,
   notify TEXT,
   verified_name TEXT,
+  lid TEXT,
   updated_at INTEGER NOT NULL
 );
 `;
@@ -73,6 +74,14 @@ function migrateContactsTable(database: Database): void {
     .prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'last_message_at'")
     .get();
   if (!hasLastMessageAt) database.exec('ALTER TABLE contacts ADD COLUMN last_message_at INTEGER');
+
+  // Tracks a contact's @lid identity (WhatsApp's alternate-JID privacy
+  // migration) alongside their phone-number contact_id, so a lid-only event
+  // (e.g. a bare {id, notify} contacts.update, before the pn mapping is
+  // known) can still resolve to the same directory row instead of creating
+  // a second one — see contact-directory.ts's reconcileJid().
+  const hasLid = database.prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'lid'").get();
+  if (!hasLid) database.exec('ALTER TABLE contacts ADD COLUMN lid TEXT');
 }
 
 // Lazy-opened, like policy.js's loadPolicy, so importing this module never

@@ -27,13 +27,13 @@ const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
 ];
 
 export function relativeTime(ms: number | null): string {
-  if (!ms) return 'Never contacted';
+  if (!ms) return 'No interactions yet';
   const diff = Date.now() - ms;
   for (const [unit, unitMs] of RELATIVE_UNITS) {
     const count = Math.floor(diff / unitMs);
-    if (count >= 1) return `Last contacted ${RELATIVE_TIME_FORMAT.format(-count, unit)}`;
+    if (count >= 1) return `Last interaction ${RELATIVE_TIME_FORMAT.format(-count, unit)}`;
   }
-  return 'Last contacted just now';
+  return 'Last interaction just now';
 }
 
 function digitsOnly(value: string): string {

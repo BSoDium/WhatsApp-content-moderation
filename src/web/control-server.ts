@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
+import { onControlEvent } from '../store/events.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
@@ -32,6 +33,15 @@ interface ControlServerDependencies {
     countActive: () => number;
   };
   allowedLogin: string;
+  // The account's own contact_id (canonicalized the same way the directory
+  // is), and whether TEST_ALLOW_SELF is enabled — together these let the
+  // control app show the self contact as non-moderatable rather than a
+  // switch that silently does nothing (or, outside shadow mode, moderates
+  // the operator's own messages). A function, not a plain string: it's
+  // unknown until the WhatsApp socket connects, sometime after this server
+  // itself starts listening.
+  getSelfId: () => string | null;
+  allowSelf: boolean;
 }
 
 const logger = pino({ name: 'control-server' });
@@ -44,6 +54,10 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
+// Keeps an SSE connection from being silently killed by an idle-connection
+// timeout on the Tailscale Serve proxy in front of this server, well under
+// any reasonable such timeout.
+const SSE_HEARTBEAT_MS = 25_000;
 
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
 const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock']);
@@ -82,10 +96,26 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+// Every body this server actually accepts is a handful of fields
+// (a contactId string, an `enabled` boolean) — this is a generous ceiling
+// against a request (from any other local process; this port is
+// loopback-only but not restricted to this app — see createControlServer's
+// doc comment) that never stops sending data, not a real payload budget.
+const MAX_JSON_BODY_BYTES = 65_536;
+
+class PayloadTooLargeError extends Error {}
+
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk) => {
+    let bytes = 0;
+    req.on('data', (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        req.destroy();
+        reject(new PayloadTooLargeError(`request body exceeded ${MAX_JSON_BODY_BYTES} bytes`));
+        return;
+      }
       data += chunk;
     });
     req.on('end', () => {
@@ -127,6 +157,11 @@ async function readValidatedJsonBody(req: IncomingMessage, res: ServerResponse):
   try {
     return await readJsonBody(req);
   } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      logger.warn({ error: err.message }, 'rejected: request body too large');
+      sendJson(res, 413, { error: 'request body too large' });
+      return undefined;
+    }
     logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'rejected: invalid JSON body');
     sendJson(res, 400, { error: 'invalid JSON body' });
     return undefined;
@@ -190,8 +225,33 @@ async function handleApi(
 ): Promise<boolean> {
   const { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks } = deps;
 
+  // Server-Sent Events: pushes a `data: <topic>` line whenever contacts,
+  // the roster, or the audit log changes (see src/store/events.ts), so the
+  // control app can refetch immediately instead of waiting for its
+  // fallback poll. One-way and text-only, so plain SSE over this server's
+  // existing http.Server needs no extra dependency or protocol upgrade —
+  // unlike a WebSocket, it also reconnects on its own via the browser's
+  // built-in EventSource.
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'events') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write(':ok\n\n');
+    const unsubscribe = onControlEvent((topic) => res.write(`data: ${topic}\n\n`));
+    const heartbeat = setInterval(() => res.write(':hb\n\n'), SSE_HEARTBEAT_MS);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+    return true;
+  }
+
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
-    const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id) }));
+    const selfId = deps.getSelfId();
+    const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id), isSelf: c.id === selfId, allowSelf: deps.allowSelf }));
     sendJson(res, 200, contacts);
     return true;
   }
@@ -250,6 +310,10 @@ async function handleApi(
     }
     if (!isIndividualJid(body.contactId)) {
       sendJson(res, 400, { error: 'contactId must be an individual contact, not a group or broadcast list' });
+      return true;
+    }
+    if (!deps.allowSelf && body.contactId === deps.getSelfId()) {
+      sendJson(res, 400, { error: 'Moderating your own account is disabled — set TEST_ALLOW_SELF=1 to enable it for testing' });
       return true;
     }
     monitoredContacts.add(body.contactId);

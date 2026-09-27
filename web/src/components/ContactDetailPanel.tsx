@@ -29,6 +29,11 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
+  // Only blocks turning it ON: if it's already monitored (e.g. added while
+  // TEST_ALLOW_SELF=1, then the env var got turned back off), the operator
+  // must still be able to turn it back off — locking that too would strand
+  // them with a switch they can see is on but can never touch.
+  const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
   // Guards against a rapid double-click firing two overlapping requests for the same control (each key here is independent, so other controls stay usable).
   async function withPending(key: string, fn: () => Promise<unknown>): Promise<void> {
@@ -66,11 +71,19 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
         <section className="rounded-xl border border-border bg-muted/40 px-4">
           <SettingRow
             title="Moderate this contact"
-            description={monitored ? undefined : 'Start tracking strikes and enable auto-blocking for this contact.'}
+            description={
+              selfBlocked
+                ? "This is your own account — it can't be moderated. Set TEST_ALLOW_SELF=1 to test the pipeline against messages you send yourself."
+                : contact.isSelf && !contact.allowSelf && monitored
+                  ? 'This was enabled for self-testing (TEST_ALLOW_SELF=1) — you can turn it off, but re-enabling it needs that setting again.'
+                  : monitored
+                    ? undefined
+                    : 'Start tracking strikes and enable auto-blocking for this contact.'
+            }
             control={
               <Switch
                 checked={monitored}
-                disabled={pending.has('monitor')}
+                disabled={pending.has('monitor') || selfBlocked}
                 onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
               />
             }

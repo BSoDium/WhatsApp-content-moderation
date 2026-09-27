@@ -142,3 +142,13 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* theme.ts toggles this for one frame around a live light/dark scheme
+   change, so every element's own color transition flips together instead of
+   visibly cascading (see toggleDarkWithoutTransitions()'s comment). */
+.theme-transition-off,
+.theme-transition-off *,
+.theme-transition-off *::before,
+.theme-transition-off *::after {
+  transition: none !important;
+}

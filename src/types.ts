@@ -37,6 +37,7 @@ export interface ContactRecord {
   name: string | null;
   notify: string | null;
   verified_name: string | null;
+  lid: string | null;
   last_message_at: number | null;
 }
 
