@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ErrorBanner } from './ErrorBanner';
 import { SettingRow } from './SettingRow';
@@ -13,12 +14,13 @@ interface SettingsPanelProps {
 }
 
 const SECTION_TITLES: Record<Setting['section'], string> = {
+  general: 'General',
   classifier: 'Classifier',
   warning: 'Warning messages',
   strikes: 'Strikes & blocking',
 };
 
-const SECTION_ORDER: Setting['section'][] = ['classifier', 'warning', 'strikes'];
+const SECTION_ORDER: Setting['section'][] = ['general', 'classifier', 'warning', 'strikes'];
 
 interface SettingFieldProps {
   setting: Setting;
@@ -42,6 +44,23 @@ function SettingField({ setting, pending, onSave }: SettingFieldProps) {
     if (draft === lastSyncedValue.current) setDraft(setting.value);
     lastSyncedValue.current = setting.value;
   }, [setting.value]);
+
+  if (setting.type === 'bool') {
+    return (
+      <Switch
+        checked={draft === '1'}
+        disabled={pending}
+        onCheckedChange={async (checked) => {
+          const next = checked ? '1' : '0';
+          setDraft(next);
+          const ok = await onSave(setting.key, next);
+          const synced = ok ? next : setting.value;
+          lastSyncedValue.current = synced;
+          setDraft(synced);
+        }}
+      />
+    );
+  }
 
   return (
     <Input

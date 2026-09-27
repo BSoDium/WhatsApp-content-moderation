@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
+import { useMeta } from '@/lib/useMeta';
 import { readUrlState, writeUrlState } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { ActivityPanel } from '@/components/ActivityPanel';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { OpenAccessBanner } from '@/components/OpenAccessBanner';
 
 interface ActivityRequest {
   seq: number;
@@ -23,6 +25,7 @@ function App() {
   // URL (the effect below), not the other way around.
   const initialUrlState = useMemo(() => readUrlState(), []);
   const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext } = useControlData(initialUrlState.contactId);
+  const meta = useMeta();
   const [activityOpen, setActivityOpen] = useState(initialUrlState.activityOpen);
   const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: initialUrlState.activityContactId });
   const [policyOpen, setPolicyOpen] = useState(false);
@@ -91,6 +94,7 @@ function App() {
                 </Button>
               </div>
             </div>
+            {meta && !meta.authRequired && <OpenAccessBanner />}
             {error && <ErrorBanner error={error} onDismiss={dismissError} />}
           </div>
           <div className="min-h-0 flex-1 px-4 lg:px-8">

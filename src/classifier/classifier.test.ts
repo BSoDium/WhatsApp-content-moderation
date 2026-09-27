@@ -11,7 +11,7 @@ after(() => {
 });
 
 // A fixed policy string is injected in every test below so this suite never
-// touches config/policy.md (gitignored — may not exist on a fresh clone or CI).
+// depends on a real policy having been set via the control app.
 const POLICY = 'Flag anything that looks like harassment.';
 
 function fakeClient(response) {

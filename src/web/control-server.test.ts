@@ -111,10 +111,15 @@ async function withServer(
     blocks = makeBlocks(),
     getSelfId = () => null,
     allowSelf = false,
+    // A distinct flag rather than an `allowedLogin` option defaulting to
+    // ALLOWED: passing `allowedLogin: undefined` explicitly wouldn't override
+    // a default-parameter fallback, since default destructuring treats an
+    // explicit `undefined` the same as an omitted key.
+    openAccess = false,
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: ALLOWED, getSelfId, allowSelf });
+  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, allowSelf });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks });
@@ -177,6 +182,28 @@ test('GET / sets no cookie — identity is re-verified on every request, nothing
   await withServer({}, async (base) => {
     const res = await fetch(base, { headers: authHeaders() });
     assert.equal(res.headers.get('set-cookie'), null);
+  });
+});
+
+test('GET /api/meta reports authRequired: true when allowedLogin is set', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/meta`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { authRequired: true });
+  });
+});
+
+test('with no allowedLogin, every route is reachable with no Tailscale-User-Login header at all', async () => {
+  await withServer({ openAccess: true }, async (base) => {
+    const meta = await fetch(`${base}/api/meta`);
+    assert.equal(meta.status, 200);
+    assert.deepEqual(await meta.json(), { authRequired: false });
+
+    const roster = await fetch(`${base}/api/roster`);
+    assert.equal(roster.status, 200);
+
+    const page = await fetch(base);
+    assert.equal(page.status, 200);
   });
 });
 

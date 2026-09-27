@@ -23,12 +23,17 @@ export interface RosterEntry {
 // Matches src/store/settings.ts's SettingDef/SettingView shape.
 export interface Setting {
   key: string;
-  section: 'classifier' | 'warning' | 'strikes';
+  section: 'general' | 'classifier' | 'warning' | 'strikes';
   label: string;
   description: string;
-  type: 'string' | 'int' | 'float';
+  type: 'string' | 'int' | 'float' | 'bool';
   value: string;
   default: string;
+}
+
+// Matches GET /api/meta.
+export interface Meta {
+  authRequired: boolean;
 }
 
 export interface ControlError {
