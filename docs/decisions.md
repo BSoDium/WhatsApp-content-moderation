@@ -38,7 +38,7 @@ intervals, as a partial mitigation against that pattern being recognizable.
   tracked by `src/store/strikes.ts`) reaches `STRIKE_THRESHOLD` (default
   **3**) *and* they have no currently-active block row
   (`SELECT ... FROM blocks WHERE contact_id = ? AND unblocked_at IS NULL`).
-  Checked right after `moderation-pipeline.js` records a strike, inside the
+  Checked right after `moderation-pipeline.ts` records a strike, inside the
   same per-contact `serialize()` chain `handleBurst` already uses — no
   separate idempotency guard needed at this layer, since two bursts for the
   same contact already can't run concurrently.
@@ -88,7 +88,7 @@ physically live rather than trusting a third party with them. See README
 
 ## State & audit log via SQLite
 
-The three stores from README's "Planned architecture" — strike counts,
+The three stores from README's "Architecture" — strike counts,
 block records, and a message/classification audit log — all live in
 SQLite, for one reason worth calling out: once a message is actually
 deleted via `deleteForMe`, the audit log is the *only* remaining record of
@@ -143,7 +143,7 @@ Both of these still apply verbatim to whatever ends up calling
 Originally this ran against exactly one `TARGET_CONTACT_JID` env var. The
 pipeline, buffer, and all three SQLite stores were already parameterized by
 `contactId` throughout — only `index.ts`'s wiring and
-`manual-override.js`'s constructor-bound target and global `paused` flag
+`manual-override.ts`'s constructor-bound target and global `paused` flag
 carried the single-contact assumption, so extending to many contacts was a
 wiring change, not a rearchitecture.
 
@@ -159,7 +159,7 @@ oversight, but it means the control app changed from optional to required
 for this build to be useful.
 
 **Escalation is per-contact and gates only the block step.** Disabling it
-(`escalation_enabled = 0`) still lets `moderation-pipeline.js` classify,
+(`escalation_enabled = 0`) still lets `moderation-pipeline.ts` classify,
 delete-for-me, warn, record strikes, and audit-log every message exactly as
 before — `maybeBlockContact` just returns early instead of calling
 `block()`/`createBlock()`. This matters because a contact you can't afford
@@ -186,7 +186,7 @@ already was.
 
 **Known limitation, not yet solved:** `src/whatsapp/contact-directory.ts`
 keys contacts by whatever id each Baileys event reports (the same id space
-`moderation-pipeline.js` already keys off `msg.key.remoteJid`), and does not
+`moderation-pipeline.ts` already keys off `msg.key.remoteJid`), and does not
 cross-reference Baileys 7's split `@lid`/`@s.whatsapp.net` id spaces for the
 same underlying person — there's no documented stable mapping between them
 in this Baileys version. In practice this means the same real contact could
@@ -310,9 +310,18 @@ regardless of timing.
 
 ## Web control app: Tailscale identity headers (issue #29)
 
+**Partially superseded.** This entry's auth mechanism (the
+`CONTROL_SERVER_TOKEN` shared secret + cookie described below) was replaced
+by a `whois`-based design and then, after that design turned out not to
+work, reverted to header-only trust with no token at all — see "Web control
+app: back to trusting the header (issue #29, twice revisited)" below for
+what's actually in place today. Kept here for the reasoning trail: why a
+second factor seemed necessary at the time, and the CSRF analysis it
+produced, most of which still holds even though the token itself is gone.
+
 `src/web/control-server.ts` is the control surface #9 needed: a static
-page plus a JSON API in front of `manual-override.js`'s per-contact
-pause/resume/unblock routines, `contact-directory.js`'s known-contacts
+page plus a JSON API in front of `manual-override.ts`'s per-contact
+pause/resume/unblock routines, `contact-directory.ts`'s known-contacts
 list, and the monitored-contacts roster (see "Multi-contact moderation
 roster" above). The interesting decision here is
 authentication, since "only reachable over the self-host's VPN" is not by
