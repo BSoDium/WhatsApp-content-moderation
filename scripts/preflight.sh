@@ -13,9 +13,10 @@ cd "$REPO_ROOT" || exit 1
 . ./scripts/lib.sh
 
 FAILURES=0
+MANUAL=0
 pass() { printf '  [ok]   %s\n' "$1"; }
 fail() { printf '  [FAIL] %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
-info() { printf '  [--]   %s\n' "$1"; }
+info() { printf '  [--]   %s\n' "$1"; MANUAL=$((MANUAL + 1)); }
 
 if [ ! -f .env ]; then
   fail ".env not found — run ./scripts/setup.sh first"
@@ -23,7 +24,7 @@ fi
 PORT="$(read_env_var WEB_CONTROL_PORT)"
 PORT="${PORT:-$CONTROL_PORT_DEFAULT}"
 MODEL="$(read_env_var OLLAMA_MODEL)"
-MODEL="${MODEL:-llama3.2:3b}"
+MODEL="${MODEL:-$DEFAULT_OLLAMA_MODEL}"
 CONTROL_SERVER_TOKEN="$(read_env_var CONTROL_SERVER_TOKEN)"
 ALLOWED_TAILSCALE_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
@@ -53,7 +54,7 @@ else
 fi
 
 log "Ollama model"
-if docker compose exec -T ollama ollama list 2>/dev/null | grep -q "$MODEL"; then
+if docker compose exec -T ollama ollama list 2>/dev/null | awk 'NR>1{print $1}' | grep -qxF "$MODEL"; then
   pass "model '$MODEL' is pulled"
 else
   fail "model '$MODEL' is not pulled (docker compose exec ollama ollama pull $MODEL)"
@@ -96,7 +97,7 @@ fi
 log "Tailscale Serve"
 if command -v tailscale >/dev/null 2>&1; then
   serve_status="$(tailscale serve status 2>/dev/null || true)"
-  if echo "$serve_status" | grep -q ":${PORT}"; then
+  if echo "$serve_status" | grep -qE ":${PORT}([^0-9]|\$)"; then
     pass "tailscale serve is proxying to port ${PORT}"
   else
     fail "tailscale serve doesn't mention port ${PORT} — run: sudo tailscale serve --bg ${PORT}"
@@ -121,7 +122,11 @@ fi
 
 echo
 if [ "$FAILURES" -eq 0 ]; then
-  echo "All checks passed."
+  if [ "$MANUAL" -eq 0 ]; then
+    echo "All checks passed."
+  else
+    echo "All automated checks passed, but $MANUAL item(s) marked [--] above could not be checked automatically — review them manually before going live."
+  fi
   exit 0
 else
   echo "$FAILURES check(s) failed — see [FAIL] lines above."

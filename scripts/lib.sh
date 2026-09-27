@@ -4,6 +4,8 @@
 
 CONTAINER_UID=1000
 CONTROL_PORT_DEFAULT=4756
+# Must match src/classifier/classifier.ts's own OLLAMA_MODEL default.
+DEFAULT_OLLAMA_MODEL="llama3.2:3b"
 
 log() { printf '\n==> %s\n' "$1"; }
 warn() { printf '\n!! %s\n' "$1" >&2; }
@@ -57,8 +59,8 @@ detect_tailscale_login() {
 upsert_env_var() {
   local key="$1" value="$2" tmp
   tmp="$(mktemp)"
-  if grep -qE "^#?${key}=" .env; then
-    awk -v k="$key" -v v="$value" '$0 ~ "^#?" k "=" { print k "=" v; next } { print }' .env > "$tmp"
+  if grep -qE "^[[:space:]]*#?${key}=" .env; then
+    awk -v k="$key" -v v="$value" '$0 ~ "^[[:space:]]*#?" k "=" { print k "=" v; next } { print }' .env > "$tmp"
   else
     cp .env "$tmp"
     printf '%s=%s\n' "$key" "$value" >> "$tmp"

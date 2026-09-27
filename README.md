@@ -435,8 +435,12 @@ in one pass, including whether this host's Tailscale login matches
 403 from the control app). Fix anything it flags, then open the URL from
 `sudo tailscale serve status` with `?token=<CONTROL_SERVER_TOKEN>` appended
 (get the token with `grep CONTROL_SERVER_TOKEN .env` — don't paste it into
-chat, a shared note, or shell history you'd keep around). Add a contact in
-the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
+chat, a shared note, or shell history you'd keep around). preflight.sh's
+login check is only a same-host heuristic, not a substitute for the real
+test: confirm the page actually works from your allowed Tailscale login and
+is rejected from a different login or device — see "Web control app" below.
+Add a contact in the control app and review shadow-mode logs before setting
+`SHADOW_MODE=0`.
 
 The app uses host networking so its loopback-only control server is the
 same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and
@@ -471,4 +475,6 @@ use `sudoedit config/policy.md` to edit the private, container-owned policy.
 Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
 `ALLOWED_TAILSCALE_LOGIN` (run `tailscale status` and use exactly what it
 reports for your account), generate `CONTROL_SERVER_TOKEN` with
-`openssl rand -hex 24`.
+`openssl rand -hex 24`. Leave `SHADOW_MODE=1` until you've reviewed how it
+behaves against real traffic, and keep `.env`, `config/policy.md`,
+`auth_info/`, and `data/` private and backed up.

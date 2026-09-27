@@ -26,6 +26,9 @@ fi
 if ! command -v tailscale >/dev/null 2>&1; then
   warn "Tailscale isn't on PATH — install it and run 'tailscale up' before continuing (see README)."
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  warn "jq isn't on PATH — install it if you want ALLOWED_TAILSCALE_LOGIN auto-detected, or set it manually in .env later."
+fi
 
 log "Setting up config files"
 if [ ! -f .env ]; then
@@ -47,15 +50,15 @@ mkdir -p auth_info data
 chmod 600 .env
 
 for path in auth_info data config/policy.md; do
+  case "$path" in
+    config/policy.md) chmod 600 "$path" ;;
+    *) chmod 700 "$path" ;;
+  esac
   owner="$(owner_uid "$path")"
   if [ "$owner" = "$CONTAINER_UID" ]; then
     echo "$path is already owned by UID $CONTAINER_UID, leaving it alone"
     continue
   fi
-  case "$path" in
-    config/policy.md) chmod 600 "$path" ;;
-    *) chmod 700 "$path" ;;
-  esac
   if [ "$(id -u)" -eq 0 ]; then
     chown -R "$CONTAINER_UID:$CONTAINER_UID" "$path"
   elif command -v sudo >/dev/null 2>&1; then
@@ -67,7 +70,7 @@ for path in auth_info data config/policy.md; do
 done
 
 log "Configuring the web control app"
-if ! grep -qE '^CONTROL_SERVER_TOKEN=.+' .env; then
+if ! grep -qE '^[[:space:]]*CONTROL_SERVER_TOKEN=.+' .env; then
   TOKEN="$(openssl rand -hex 24)"
   upsert_env_var CONTROL_SERVER_TOKEN "$TOKEN"
   echo "Generated a new CONTROL_SERVER_TOKEN"
@@ -75,14 +78,14 @@ else
   echo "CONTROL_SERVER_TOKEN already set, leaving it alone"
 fi
 
-if ! grep -qE '^WEB_CONTROL_PORT=.+' .env; then
+if ! grep -qE '^[[:space:]]*WEB_CONTROL_PORT=.+' .env; then
   upsert_env_var WEB_CONTROL_PORT "$CONTROL_PORT_DEFAULT"
   echo "Set WEB_CONTROL_PORT=$CONTROL_PORT_DEFAULT"
 else
   echo "WEB_CONTROL_PORT already set, leaving it alone"
 fi
 
-if ! grep -qE '^ALLOWED_TAILSCALE_LOGIN=.+' .env; then
+if ! grep -qE '^[[:space:]]*ALLOWED_TAILSCALE_LOGIN=.+' .env; then
   if DETECTED_LOGIN="$(detect_tailscale_login)"; then
     upsert_env_var ALLOWED_TAILSCALE_LOGIN "$DETECTED_LOGIN"
     echo "Detected this host's Tailscale login as '$DETECTED_LOGIN' and set ALLOWED_TAILSCALE_LOGIN — double-check this is the account you'll open the control app from."
@@ -93,6 +96,11 @@ else
   echo "ALLOWED_TAILSCALE_LOGIN already set, leaving it alone"
 fi
 
+CONFIGURED_PORT="$(read_env_var WEB_CONTROL_PORT)"
+CONFIGURED_PORT="${CONFIGURED_PORT:-$CONTROL_PORT_DEFAULT}"
+CONFIGURED_MODEL="$(read_env_var OLLAMA_MODEL)"
+CONFIGURED_MODEL="${CONFIGURED_MODEL:-$DEFAULT_OLLAMA_MODEL}"
+
 log "Setup complete"
 cat <<EOF
 Before starting:
@@ -102,8 +110,8 @@ Before starting:
 
 Next steps:
   docker compose up -d --build
-  docker compose exec ollama ollama pull llama3.2:3b
+  docker compose exec ollama ollama pull $CONFIGURED_MODEL
   docker compose logs -f app        # scan the QR code shown here
   ./scripts/preflight.sh            # verify everything before pairing/going live
-  sudo tailscale serve --bg $CONTROL_PORT_DEFAULT
+  sudo tailscale serve --bg $CONFIGURED_PORT
 EOF
