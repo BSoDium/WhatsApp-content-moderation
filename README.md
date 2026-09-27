@@ -196,7 +196,7 @@ cd WhatsApp-content-moderation
 ./scripts/setup.sh
 ```
 
-`setup.sh` creates `.env` and `config/policy.md`, fixes directory ownership for the container, and prints the exact commands to run next. It's safe to re-run. Then, following what it prints:
+`setup.sh` creates `.env` and `config/policy.md`, fixes directory ownership for the container, and prints the exact commands to run next. It's safe to re-run. **If it warns that `ALLOWED_TAILSCALE_LOGIN` is still unset, fix that first** — the app refuses to start without it, and will crash-loop under Docker's restart policy rather than just failing once. Then, following what it prints:
 
 ```sh
 docker compose up -d --build

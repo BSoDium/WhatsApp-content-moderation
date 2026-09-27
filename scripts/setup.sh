@@ -98,8 +98,24 @@ CONFIGURED_PORT="$(read_env_var WEB_CONTROL_PORT)"
 CONFIGURED_PORT="${CONFIGURED_PORT:-$CONTROL_PORT_DEFAULT}"
 CONFIGURED_MODEL="$(read_env_var OLLAMA_MODEL)"
 CONFIGURED_MODEL="${CONFIGURED_MODEL:-$DEFAULT_OLLAMA_MODEL}"
+CONFIGURED_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
 log "Setup complete"
+
+# WEB_CONTROL_PORT is always set by this point (above), so an empty login here
+# is a guaranteed crash under `restart: always` — index.ts refuses to start
+# the control server unauthenticated. Block on it instead of letting it hide
+# among the routine "Next steps".
+if [ -z "$CONFIGURED_LOGIN" ]; then
+  warn "ALLOWED_TAILSCALE_LOGIN is still unset. The app WILL crash-loop under Docker's restart policy until you fix this — don't run 'docker compose up' yet."
+  cat <<EOF
+  Run 'tailscale status' and copy the exact login it reports for YOUR OWN
+  account (not the host's, if this host is Tailscale-tagged, e.g. tag:server)
+  into .env:
+    ALLOWED_TAILSCALE_LOGIN=you@example.com
+EOF
+fi
+
 printf '%sBefore starting:%s\n' "$C_YELLOW" "$C_RESET"
 cat <<EOF
   - Review config/policy.md — it still has placeholder text.

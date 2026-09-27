@@ -103,8 +103,10 @@ if command -v tailscale >/dev/null 2>&1; then
         fail "this host's Tailscale login ('$DETECTED_LOGIN') does not match ALLOWED_TAILSCALE_LOGIN ('$ALLOWED_TAILSCALE_LOGIN') — this is a common cause of a 403 from the control app. Open it from the '$ALLOWED_TAILSCALE_LOGIN' account, or update ALLOWED_TAILSCALE_LOGIN in .env to '$DETECTED_LOGIN' if that's wrong. (Heuristic: assumes the host and your browser share one tailnet account — the real check is the Tailscale-User-Login header the app logs on rejection.)"
       fi
     else
-      info "ALLOWED_TAILSCALE_LOGIN is not set in .env"
+      fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated (set it to '$DETECTED_LOGIN', if that's your own login and not the host's)"
     fi
+  elif [ -z "${ALLOWED_TAILSCALE_LOGIN:-}" ]; then
+    fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated. Run 'tailscale status' on your own device and set it to the exact login it reports for your account."
   else
     info "could not detect this host's Tailscale login (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — verify ALLOWED_TAILSCALE_LOGIN manually against 'tailscale status' run from your own device, not this host"
   fi
