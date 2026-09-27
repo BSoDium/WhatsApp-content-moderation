@@ -74,7 +74,9 @@ function makeMonitoredContacts(initial = []) {
     setContext: (contactId, context) => {
       const row = roster.get(contactId);
       if (!row) return false;
-      row.context = context;
+      // Mirrors the real store's normalization (monitored-contacts.ts) so
+      // this fixture doesn't mask a regression in it.
+      row.context = context?.trim() ? context.trim() : null;
       return true;
     },
   };
@@ -499,7 +501,8 @@ test('POST /api/roster/:contactId/context sets and clears a contact\'s moderatio
       body: JSON.stringify({ context: '' }),
     });
     assert.equal(clear.status, 200);
-    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').context, '');
+    assert.deepEqual(await clear.json(), { context: null });
+    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').context, null);
   });
 });
 

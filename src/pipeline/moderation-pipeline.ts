@@ -135,8 +135,8 @@ function jitter(ms: number): number {
  *   a caller iterating several messages in one burst can skip the
  *   getActiveBlock read once a block's already succeeded this burst.
  */
-async function maybeBlockContact(contactId: string, strikeCount: number, block: BurstActions['block']): Promise<boolean> {
-  if (strikeCount < getNumberSetting('STRIKE_THRESHOLD')) return false;
+async function maybeBlockContact(contactId: string, strikeCount: number, strikeThreshold: number, block: BurstActions['block']): Promise<boolean> {
+  if (strikeCount < strikeThreshold) return false;
   if (getActiveBlock(contactId)) return true;
 
   if (!isEscalationEnabled(contactId)) {
@@ -175,6 +175,10 @@ async function runBurst(
   // Read once per burst, not once per message — a contact's context can't
   // change mid-burst since edits go through the roster, not this loop.
   const contactContext = getMonitored(contactId)?.context ?? undefined;
+  // Same reasoning: read once so the warning text ("N strikes remain") and
+  // the actual block decision below always agree, even if this setting is
+  // edited mid-burst.
+  const strikeThreshold = getNumberSetting('STRIKE_THRESHOLD');
 
   for (const { text, key, timestamp } of messages) {
     if (isPaused(contactId)) {
@@ -202,7 +206,6 @@ async function runBurst(
       continue;
     }
 
-    const strikeThreshold = getNumberSetting('STRIKE_THRESHOLD');
     const warningResult = await generateWarning({
       message: text,
       category: classification.category,
@@ -257,7 +260,7 @@ async function runBurst(
     history.push({ from: 'me', text: warningText });
 
     if (!isBlocked) {
-      isBlocked = await maybeBlockContact(contactId, strikeCount, block);
+      isBlocked = await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);
     }
   }
 

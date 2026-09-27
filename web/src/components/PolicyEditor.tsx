@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -15,18 +15,27 @@ interface PolicyEditorProps {
 export function PolicyEditor({ open, onOpenChange }: PolicyEditorProps) {
   const { text, loading, saving, error, refresh, save } = usePolicy({ open });
   const [draft, setDraft] = useState(text);
+  // The last server text this draft was synced from — lets the effect below
+  // tell "no local edit since the last sync" apart from "an unsaved edit is
+  // in progress," instead of unconditionally overwriting the textarea.
+  const lastSyncedText = useRef(text);
 
-  // Only overwrite the draft when the server text first arrives or changes
-  // out from under us (an SSE-driven refresh) — not on every render, or a
-  // keystroke would keep getting clobbered by the still-in-flight fetch.
+  // Applies a live update (first load, or an SSE-driven refresh from
+  // another tab/operator) only when there's no unsaved local edit —
+  // otherwise a policy change landing elsewhere would silently discard
+  // whatever the operator is still typing here.
   useEffect(() => {
-    setDraft(text);
+    if (draft === lastSyncedText.current) setDraft(text);
+    lastSyncedText.current = text;
   }, [text]);
 
   const dirty = draft !== text;
 
   async function handleSave() {
-    if (await save(draft)) setDraft(draft.trim());
+    if (await save(draft)) {
+      lastSyncedText.current = draft.trim();
+      setDraft(draft.trim());
+    }
   }
 
   return (
@@ -40,7 +49,7 @@ export function PolicyEditor({ open, onOpenChange }: PolicyEditorProps) {
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          {error && <ErrorBanner error={{ title: 'Could not load the policy', description: error, retry: refresh }} onDismiss={() => {}} />}
+          {error && <ErrorBanner error={{ ...error, retry: refresh }} onDismiss={() => {}} />}
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

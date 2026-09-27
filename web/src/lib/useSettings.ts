@@ -10,6 +10,13 @@ interface UseOpenOptions {
   open: boolean;
 }
 
+// Distinct title per failure (load vs. save) so the banner names what
+// actually went wrong instead of always reading like a fetch failure.
+interface SettingsError {
+  title: string;
+  description: string;
+}
+
 // Fetches on open (remounted via a `key` in App.tsx, same as ActivityPanel)
 // and stays live via SSE while open, so an edit from another tab shows up
 // without reopening this one.
@@ -17,7 +24,7 @@ export function usePolicy({ open }: UseOpenOptions) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SettingsError | null>(null);
   const opened = useRef(false);
 
   const refresh = useCallback(async function refresh() {
@@ -27,7 +34,7 @@ export function usePolicy({ open }: UseOpenOptions) {
       setText(result.text);
       setError(null);
     } catch (err: unknown) {
-      setError(errorMessage(err));
+      setError({ title: 'Could not load the policy', description: errorMessage(err) });
     } finally {
       setLoading(false);
     }
@@ -45,7 +52,7 @@ export function usePolicy({ open }: UseOpenOptions) {
       setError(null);
       return true;
     } catch (err: unknown) {
-      setError(errorMessage(err));
+      setError({ title: 'Could not save the policy', description: errorMessage(err) });
       return false;
     } finally {
       setSaving(false);
@@ -76,7 +83,7 @@ export function usePolicy({ open }: UseOpenOptions) {
 export function useSettingsList({ open }: UseOpenOptions) {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SettingsError | null>(null);
   const [pendingKeys, setPendingKeys] = useState(() => new Set<string>());
   const opened = useRef(false);
 
@@ -86,7 +93,7 @@ export function useSettingsList({ open }: UseOpenOptions) {
       setSettings(await apiFetch<Setting[]>('/api/settings'));
       setError(null);
     } catch (err: unknown) {
-      setError(errorMessage(err));
+      setError({ title: 'Could not load settings', description: errorMessage(err) });
     } finally {
       setLoading(false);
     }
@@ -105,7 +112,8 @@ export function useSettingsList({ open }: UseOpenOptions) {
         await refresh();
         return true;
       } catch (err: unknown) {
-        setError(errorMessage(err));
+        const label = settings.find((s) => s.key === key)?.label ?? key;
+        setError({ title: `Could not save "${label}"`, description: errorMessage(err) });
         return false;
       } finally {
         setPendingKeys((prev) => {
@@ -115,7 +123,7 @@ export function useSettingsList({ open }: UseOpenOptions) {
         });
       }
     },
-    [refresh],
+    [refresh, settings],
   );
 
   useEffect(() => {

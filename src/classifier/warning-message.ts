@@ -71,7 +71,10 @@ function buildUserPrompt({ message, category, reason, strikeCount, strikeThresho
 function sanitize(raw: string, maxLength: number): string {
   const collapsed = raw.replace(/\s+/g, ' ').trim();
   const unquoted = collapsed.replace(/^["'“‘`]+/, '').replace(/["'”’`]+$/, '').trim();
-  return unquoted.length > maxLength ? `${unquoted.slice(0, maxLength - 1).trimEnd()}…` : unquoted;
+  if (unquoted.length <= maxLength) return unquoted;
+  // Math.max guards maxLength <= 1: slice(0, negative) counts from the end
+  // in JS, which would return almost the whole string instead of ~nothing.
+  return `${unquoted.slice(0, Math.max(maxLength - 1, 0)).trimEnd()}…`;
 }
 
 /**
