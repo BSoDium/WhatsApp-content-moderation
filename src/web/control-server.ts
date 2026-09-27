@@ -13,6 +13,8 @@ import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
 import type { AuditLogRecord } from '../types.ts';
+import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
+import { listSettings, setSetting } from '../store/settings.ts';
 
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
@@ -24,6 +26,7 @@ interface ControlServerDependencies {
     add: (contactId: string) => void;
     remove: (contactId: string) => boolean;
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
+    setContext: (contactId: string, context: string | null) => boolean;
   };
   auditLog: {
     getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
@@ -54,6 +57,11 @@ const LOOPBACK_HOST = '127.0.0.1';
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
+// A generous ceiling on a contact's moderation-context textarea — real
+// guidance, not a payload budget (see MAX_JSON_BODY_BYTES below for that).
+const MAX_CONTEXT_LENGTH = 10_000;
+// Same idea for the global policy editor.
+const MAX_POLICY_LENGTH = 50_000;
 // Keeps an SSE connection from being silently killed by an idle-connection
 // timeout on the Tailscale Serve proxy in front of this server, well under
 // any reasonable such timeout.
@@ -96,12 +104,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-// Every body this server actually accepts is a handful of fields
-// (a contactId string, an `enabled` boolean) — this is a generous ceiling
+// Most bodies this server accepts are a handful of fields (a contactId
+// string, an `enabled` boolean); the policy/context editors are the
+// exception, up to MAX_POLICY_LENGTH characters of free text. This ceiling
+// is comfortably above that (worst case, multi-byte UTF-8) — a defense
 // against a request (from any other local process; this port is
 // loopback-only but not restricted to this app — see createControlServer's
 // doc comment) that never stops sending data, not a real payload budget.
-const MAX_JSON_BODY_BYTES = 65_536;
+const MAX_JSON_BODY_BYTES = 262_144;
 
 class PayloadTooLargeError extends Error {}
 
@@ -173,13 +183,14 @@ function isIndividualJid(contactId: string): boolean {
 }
 
 function rosterEntry(
-  { contactId, escalationEnabled }: { contactId: string; escalationEnabled: boolean },
+  { contactId, escalationEnabled, context }: { contactId: string; escalationEnabled: boolean; context: string | null },
   { contactDirectory, manualOverride }: Pick<ControlServerDependencies, 'contactDirectory' | 'manualOverride'>,
 ) {
   return {
     id: contactId,
     name: contactDirectory.get(contactId).name,
     escalationEnabled,
+    context,
     ...manualOverride.getStatus(contactId),
   };
 }
@@ -293,6 +304,54 @@ async function handleApi(
     return true;
   }
 
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'policy') {
+    sendJson(res, 200, { text: getPolicyText() });
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 1 && segments[0] === 'policy') {
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    if (typeof body !== 'object' || body === null || !('text' in body) || typeof body.text !== 'string') {
+      sendJson(res, 400, { error: 'text must be a string' });
+      return true;
+    }
+    if (body.text.length > MAX_POLICY_LENGTH) {
+      sendJson(res, 400, { error: `text must be at most ${MAX_POLICY_LENGTH} characters` });
+      return true;
+    }
+    const result = setPolicyText(body.text);
+    if (!result.ok) {
+      sendJson(res, 400, { error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { text: getPolicyText() });
+    return true;
+  }
+
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'settings') {
+    sendJson(res, 200, listSettings());
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 2 && segments[0] === 'settings') {
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    if (typeof body !== 'object' || body === null || !('value' in body) || typeof body.value !== 'string') {
+      sendJson(res, 400, { error: 'value must be a string' });
+      return true;
+    }
+    const result = setSetting(segments[1], body.value);
+    if (!result.ok) {
+      sendJson(res, 400, { error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { key: segments[1], value: body.value });
+    return true;
+  }
+
   if (segments[0] !== 'roster') return false;
 
   if (req.method === 'GET' && segments.length === 1) {
@@ -365,6 +424,27 @@ async function handleApi(
         return true;
       }
       sendJson(res, 200, { escalationEnabled: body.enabled });
+      return true;
+    }
+
+    if (action === 'context') {
+      if (!requireJsonContentType(req, res)) return true;
+      const body = await readValidatedJsonBody(req, res);
+      if (body === undefined) return true;
+      if (typeof body !== 'object' || body === null || !('context' in body) || typeof body.context !== 'string') {
+        sendJson(res, 400, { error: 'context must be a string' });
+        return true;
+      }
+      if (body.context.length > MAX_CONTEXT_LENGTH) {
+        sendJson(res, 400, { error: `context must be at most ${MAX_CONTEXT_LENGTH} characters` });
+        return true;
+      }
+      const updated = monitoredContacts.setContext(contactId, body.context);
+      if (!updated) {
+        sendJson(res, 404, { error: 'not monitored' });
+        return true;
+      }
+      sendJson(res, 200, { context: monitoredContacts.get(contactId)?.context ?? null });
       return true;
     }
   }
@@ -455,12 +535,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *   },
  *   contactDirectory: { list: () => object[], get: (contactId: string) => object },
  *   monitoredContacts: {
- *     list: () => { contactId: string, escalationEnabled: boolean }[],
+ *     list: () => { contactId: string, escalationEnabled: boolean, context: string | null }[],
  *     isMonitored: (contactId: string) => boolean,
- *     get: (contactId: string) => { contactId: string, escalationEnabled: boolean } | undefined,
+ *     get: (contactId: string) => { contactId: string, escalationEnabled: boolean, context: string | null } | undefined,
  *     add: (contactId: string) => void,
  *     remove: (contactId: string) => boolean,
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
+ *     setContext: (contactId: string, context: string | null) => boolean,
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
  *   blocks: { countActive: () => number },

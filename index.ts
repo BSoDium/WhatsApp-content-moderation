@@ -17,6 +17,7 @@ import {
   addMonitored,
   removeMonitored,
   setEscalationEnabled,
+  setContext,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
@@ -87,6 +88,7 @@ const monitoredContacts = {
   add: addMonitored,
   remove: removeMonitored,
   setEscalationEnabled,
+  setContext,
 };
 
 let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;

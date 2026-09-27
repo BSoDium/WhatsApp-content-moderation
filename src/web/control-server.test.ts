@@ -1,9 +1,22 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createControlServer } from './control-server.ts';
+
+// GET/POST /api/policy and /api/settings go through the real settings store
+// (control-server.ts imports it directly, not via injected deps like every
+// other route here), so this suite needs its own isolated DB like the store
+// test files do.
+process.env.DB_PATH = 'data/test-control-server.test.sqlite';
+
+const { createControlServer } = await import('./control-server.ts');
+const { getRawSetting } = await import('../store/settings.ts');
+const { getPolicyText } = await import('../classifier/policy.ts');
+
+after(() => {
+  for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
+});
 
 const DIST_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
 
@@ -43,19 +56,25 @@ function makeContactDirectory(entries = []) {
 }
 
 function makeMonitoredContacts(initial = []) {
-  const roster = new Map(initial.map((row) => [row.contactId, row]));
+  const roster = new Map(initial.map((row) => [row.contactId, { context: null, ...row }]));
   return {
     list: () => Array.from(roster.values()),
     isMonitored: (contactId) => roster.has(contactId),
     get: (contactId) => roster.get(contactId),
     add: (contactId) => {
-      if (!roster.has(contactId)) roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now() });
+      if (!roster.has(contactId)) roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now(), context: null });
     },
     remove: (contactId) => roster.delete(contactId),
     setEscalationEnabled: (contactId, enabled) => {
       const row = roster.get(contactId);
       if (!row) return false;
       row.escalationEnabled = enabled;
+      return true;
+    },
+    setContext: (contactId, context) => {
+      const row = roster.get(contactId);
+      if (!row) return false;
+      row.context = context;
       return true;
     },
   };
@@ -221,7 +240,7 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
     const res = await fetch(`${base}/api/roster`, { headers: authHeaders() });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), [
-      { id: 'alice@s.whatsapp.net', name: 'Alice', escalationEnabled: false, paused: false, strikeCount: 2, block: null },
+      { id: 'alice@s.whatsapp.net', name: 'Alice', escalationEnabled: false, context: null, paused: false, strikeCount: 2, block: null },
     ]);
   });
 });
@@ -459,6 +478,127 @@ test('POST /api/roster/:contactId/escalation on an unmonitored contact returns 4
       body: JSON.stringify({ enabled: false }),
     });
     assert.equal(res.status, 404);
+  });
+});
+
+test('POST /api/roster/:contactId/context sets and clears a contact\'s moderation context', async () => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  await withServer({ monitoredContacts }, async (base) => {
+    const set = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/context`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ context: 'This is my landlord.' }),
+    });
+    assert.equal(set.status, 200);
+    assert.deepEqual(await set.json(), { context: 'This is my landlord.' });
+    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').context, 'This is my landlord.');
+
+    const clear = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/context`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ context: '' }),
+    });
+    assert.equal(clear.status, 200);
+    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').context, '');
+  });
+});
+
+test('POST /api/roster/:contactId/context rejects a non-string context', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/context`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ context: 42 }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('POST /api/roster/:contactId/context on an unmonitored contact returns 404', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/context`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ context: 'hi' }),
+    });
+    assert.equal(res.status, 404);
+  });
+});
+
+test('GET /api/policy returns the current policy text', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/policy`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { text: getPolicyText() });
+  });
+});
+
+test('POST /api/policy sets the policy text', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/policy`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ text: 'Flag anything hostile.' }),
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { text: 'Flag anything hostile.' });
+    assert.equal(getPolicyText(), 'Flag anything hostile.');
+  });
+});
+
+test('POST /api/policy rejects empty/whitespace-only text', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/policy`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ text: '   ' }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('GET /api/settings lists every tunable with its current value and default', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/settings`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    const settings = await res.json();
+    const threshold = settings.find((s) => s.key === 'STRIKE_THRESHOLD');
+    assert.equal(threshold.value, getRawSetting('STRIKE_THRESHOLD'));
+    assert.equal(threshold.default, '3');
+  });
+});
+
+test('POST /api/settings/:key persists a valid value', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/settings/${encodeURIComponent('STRIKE_THRESHOLD')}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ value: '5' }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(getRawSetting('STRIKE_THRESHOLD'), '5');
+  });
+});
+
+test('POST /api/settings/:key rejects an unknown key', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/settings/${encodeURIComponent('NOT_A_REAL_SETTING')}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ value: '1' }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('POST /api/settings/:key rejects a value that fails manifest validation', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/settings/${encodeURIComponent('BUFFER_WINDOW_MS')}`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ value: 'soon' }),
+    });
+    assert.equal(res.status, 400);
   });
 });
 
