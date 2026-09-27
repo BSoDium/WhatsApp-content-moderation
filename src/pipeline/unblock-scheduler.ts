@@ -1,13 +1,11 @@
 import pino from 'pino';
 import { getExpiredBlocks } from '../store/blocks.ts';
 import { resolveUnblock } from './unblock-resolution.ts';
+import { getNumberSetting } from '../store/settings.ts';
 
 interface UnblockActions {
   unblock: (contactId: string) => Promise<void>;
 }
-
-// The poll cadence itself doesn't need jitter — see docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
-const POLL_INTERVAL_MS = Number(process.env.UNBLOCK_POLL_INTERVAL_MS ?? 2 * 60 * 1000);
 
 const logger = pino({ name: 'unblock-scheduler' });
 
@@ -50,37 +48,50 @@ export async function runTick(actions: UnblockActions): Promise<void> {
  * call would leave the contact blocked forever with nothing left to retry
  * it (see AGENTS.md "Error handling").
  *
- * A tick that's still running when the next one is due is skipped rather
- * than overlapped, since actions.unblock (and the getExpiredBlocks/
- * markUnblocked round-trip) can outlast POLL_INTERVAL_MS. A tick's own
- * failure (e.g. a SQLite error, possibly from the DB closing mid-tick
- * during shutdown) is caught and logged here rather than left to escape —
- * setInterval has no way to catch a rejected callback, so an uncaught one
- * would crash the whole process, not just this scheduler.
+ * Self-reschedules via setTimeout rather than a fixed setInterval, reading
+ * the UNBLOCK_POLL_INTERVAL_MS setting fresh before each reschedule — so an
+ * edit made via the control app changes the cadence starting with the next
+ * tick, not only after a restart. This also means a tick can never overlap
+ * the next one (the next tick isn't scheduled until this one settles), and
+ * a tick's own failure (e.g. a SQLite error, possibly from the DB closing
+ * mid-tick during shutdown) is caught and logged here rather than left to
+ * escape — an uncaught rejection here would crash the whole process, not
+ * just this scheduler.
  *
- * stop() is async and waits for any tick already in flight, so a caller
- * (index.ts's shutdown()) can safely close the DB right after it resolves
- * without racing a tick's own markUnblocked call.
+ * stop() is async and waits for any tick already in flight, and marks the
+ * scheduler stopped before doing so, so the in-flight tick's own reschedule
+ * (in its `finally`) is suppressed instead of leaving a dangling timer that
+ * fires again after a caller (index.ts's shutdown()) has already moved on
+ * to close the DB.
  *
  * @param {{ unblock: (contactId: string) => Promise<void> }} actions
  * @returns {{ stop: () => Promise<void> }}
  */
 export function startUnblockScheduler(actions: UnblockActions): { stop: () => Promise<void> } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: Promise<void> | null = null;
+  let stopped = false;
+
+  function scheduleNext() {
+    if (stopped) return;
+    timer = setTimeout(tick, getNumberSetting('UNBLOCK_POLL_INTERVAL_MS'));
+  }
 
   function tick() {
-    if (inFlight) return;
     inFlight = runTick(actions)
       .catch((err) => logger.error({ error: err instanceof Error ? err.message : String(err) }, 'scheduler tick failed'))
       .finally(() => {
         inFlight = null;
+        scheduleNext();
       });
   }
 
-  const timer = setInterval(tick, POLL_INTERVAL_MS);
+  scheduleNext();
+
   return {
     stop: async () => {
-      clearInterval(timer);
+      stopped = true;
+      clearTimeout(timer);
       await inFlight;
     },
   };

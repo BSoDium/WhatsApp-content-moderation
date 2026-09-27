@@ -2,16 +2,16 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 
-// Set before the dynamic imports below, so moderation-pipeline.js's
-// module-level `const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3)` picks this up.
 process.env.DB_PATH = 'data/test-moderation-pipeline.test.sqlite';
-process.env.STRIKE_THRESHOLD = '2';
-process.env.WARNING_MESSAGE = 'TEST_FALLBACK_WARNING';
 
 const { handleBurst } = await import('./moderation-pipeline.ts');
 const { getAuditLog } = await import('../store/audit-log.ts');
 const { createBlock, getActiveBlock } = await import('../store/blocks.ts');
 const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.ts');
+const { setSetting } = await import('../store/settings.ts');
+
+setSetting('STRIKE_THRESHOLD', '2');
+setSetting('WARNING_MESSAGE', 'TEST_FALLBACK_WARNING');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });

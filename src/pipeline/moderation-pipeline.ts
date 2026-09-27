@@ -6,6 +6,7 @@ import { logMessage, getAuditLog } from '../store/audit-log.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
 import { isEscalationEnabled } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
+import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from '../types.ts';
 
@@ -31,23 +32,13 @@ interface BurstActions {
 type ConversationMessage = { from: 'me' | 'them'; text: string };
 
 const SHADOW_MODE = process.env.SHADOW_MODE === '1';
-const HISTORY_LIMIT = Number(process.env.CLASSIFIER_HISTORY_LIMIT ?? 10);
-// Used only when generateWarningMessage fails open (see its own JSDoc) — the
-// contact still needs to be told their message was removed even when the LLM
-// call itself couldn't produce a contextual one.
-const FALLBACK_WARNING_MESSAGE =
-  process.env.WARNING_MESSAGE ?? "That message was removed for violating this chat's policy.";
-// See docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
-const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3);
-const BLOCK_DURATION_MS = Number(process.env.BLOCK_DURATION_MS ?? 24 * 60 * 60 * 1000);
-const BLOCK_JITTER_MS = Number(process.env.BLOCK_JITTER_MS ?? 4 * 60 * 60 * 1000);
 // Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
 const MIN_BLOCK_MS = 60 * 1000;
 
 const logger = pino({ name: 'pipeline' });
 
 function loadHistory(contactId: string): ConversationMessage[] {
-  return getAuditLog(contactId, HISTORY_LIMIT)
+  return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
     .reverse()
     .map((row) => ({ from: row.direction === 'me' ? 'me' : 'them', text: row.message }));
 }
@@ -145,7 +136,7 @@ function jitter(ms: number): number {
  *   getActiveBlock read once a block's already succeeded this burst.
  */
 async function maybeBlockContact(contactId: string, strikeCount: number, block: BurstActions['block']): Promise<boolean> {
-  if (strikeCount < STRIKE_THRESHOLD) return false;
+  if (strikeCount < getNumberSetting('STRIKE_THRESHOLD')) return false;
   if (getActiveBlock(contactId)) return true;
 
   if (!isEscalationEnabled(contactId)) {
@@ -153,7 +144,9 @@ async function maybeBlockContact(contactId: string, strikeCount: number, block: 
     return false;
   }
 
-  const unblockAt = Date.now() + Math.max(BLOCK_DURATION_MS + jitter(Math.min(BLOCK_JITTER_MS, BLOCK_DURATION_MS)), MIN_BLOCK_MS);
+  const blockDurationMs = getNumberSetting('BLOCK_DURATION_MS');
+  const blockJitterMs = getNumberSetting('BLOCK_JITTER_MS');
+  const unblockAt = Date.now() + Math.max(blockDurationMs + jitter(Math.min(blockJitterMs, blockDurationMs)), MIN_BLOCK_MS);
   let blockedOnWhatsApp = false;
   try {
     await block(contactId);
@@ -206,17 +199,21 @@ async function runBurst(
       continue;
     }
 
+    const strikeThreshold = getNumberSetting('STRIKE_THRESHOLD');
     const warningResult = await generateWarning({
       message: text,
       category: classification.category,
       reason: classification.reason,
       strikeCount: strikeCount + 1,
-      strikeThreshold: STRIKE_THRESHOLD,
+      strikeThreshold,
     });
     if (!warningResult.ok) {
       logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
     }
-    const warningText = warningResult.ok ? warningResult.text : FALLBACK_WARNING_MESSAGE;
+    // Used only when generateWarningMessage fails open (see its own JSDoc) — the
+    // contact still needs to be told their message was removed even when the LLM
+    // call itself couldn't produce a contextual one.
+    const warningText = warningResult.ok ? warningResult.text : getRawSetting('WARNING_MESSAGE');
 
     const [deleteOutcome, warnOutcome] = await Promise.allSettled([
       deleteForMe(contactId, key, timestamp),

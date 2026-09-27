@@ -78,9 +78,9 @@ export const SETTINGS: readonly SettingDef[] = [
     key: 'WARNING_MAX_LENGTH',
     section: 'warning',
     label: 'Warning max length',
-    description: "Hard cap on the generated warning's length, in characters.",
+    description: "Hard cap on the generated warning's length, in characters — a warning read on a phone screen needs to be a text, not a paragraph.",
     type: 'int',
-    default: '320',
+    default: '180',
   },
   {
     key: 'WARNING_MESSAGE',

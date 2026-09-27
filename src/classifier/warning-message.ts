@@ -1,5 +1,6 @@
 import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
+import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -17,17 +18,11 @@ interface WarningMessageDependencies {
 type WarningMessageResult = { ok: true; text: string } | { ok: false; error: string };
 
 // Falls back to the classifier's own model — same local Ollama install, no extra pull required —
-// but overridable independently since generation and classification are different tasks.
-const MODEL = process.env.WARNING_MODEL ?? process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
-const DEFAULT_TIMEOUT_MS = 90_000;
-const TIMEOUT_MS = Number(process.env.WARNING_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
-const DEFAULT_TEMPERATURE = 0.4;
-const TEMPERATURE = Number(process.env.WARNING_TEMPERATURE ?? DEFAULT_TEMPERATURE);
-// A hard ceiling, not a target length — small local models asked for "a short message" still
-// occasionally ramble, and this is what actually gets sent to a real person's phone. Lowered
-// from an earlier 320: a warning read on a phone screen needs to be a text, not a paragraph.
-const DEFAULT_MAX_LENGTH = 180;
-const MAX_LENGTH = Number(process.env.WARNING_MAX_LENGTH ?? DEFAULT_MAX_LENGTH);
+// but overridable independently since generation and classification are different tasks. Empty
+// WARNING_MODEL (its manifest default) means "inherit", so `||` not `??` on the empty string.
+function warningModel(): string {
+  return getRawSetting('WARNING_MODEL') || getRawSetting('OLLAMA_MODEL');
+}
 
 function buildSystemPrompt(): string {
   return [
@@ -73,10 +68,10 @@ function buildUserPrompt({ message, category, reason, strikeCount, strikeThresho
 
 // Collapses whatever formatting a small local model adds (surrounding quotes, stray newlines,
 // multiple spaces) down to the single plain line an actual text message would be.
-function sanitize(raw: string): string {
+function sanitize(raw: string, maxLength: number): string {
   const collapsed = raw.replace(/\s+/g, ' ').trim();
   const unquoted = collapsed.replace(/^["'“‘`]+/, '').replace(/["'”’`]+$/, '').trim();
-  return unquoted.length > MAX_LENGTH ? `${unquoted.slice(0, MAX_LENGTH - 1).trimEnd()}…` : unquoted;
+  return unquoted.length > maxLength ? `${unquoted.slice(0, maxLength - 1).trimEnd()}…` : unquoted;
 }
 
 /**
@@ -100,8 +95,8 @@ export async function generateWarningMessage(
   input: WarningMessageInput,
   { client }: WarningMessageDependencies = {},
 ): Promise<WarningMessageResult> {
-  const { model = MODEL } = input;
-  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
+  const { model = warningModel() } = input;
+  const ollama = client ?? createOllamaClient(getNumberSetting('WARNING_TIMEOUT_MS'));
 
   try {
     const response = await ollama.chat({
@@ -110,10 +105,10 @@ export async function generateWarningMessage(
         { role: 'system', content: buildSystemPrompt() },
         { role: 'user', content: buildUserPrompt(input) },
       ],
-      options: { temperature: TEMPERATURE },
+      options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
     });
 
-    const text = sanitize(response.message.content);
+    const text = sanitize(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
     if (!text) throw new Error('empty warning message generated');
 
     return { ok: true, text };

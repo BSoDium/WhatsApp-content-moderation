@@ -1,6 +1,7 @@
 import type { Ollama } from 'ollama';
 import { loadPolicy } from './policy.ts';
 import { createOllamaClient } from './ollama-client.ts';
+import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 import type { Classification } from '../types.ts';
 
 interface ConversationMessage {
@@ -18,11 +19,6 @@ interface ClassifierDependencies {
   client?: Ollama;
   policy?: string;
 }
-
-// See README "Classifier" for why 3b, not the cheaper 1b, is the default.
-const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
-const DEFAULT_TIMEOUT_MS = 90_000;
-const TIMEOUT_MS = Number(process.env.CLASSIFIER_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
 // Property order matters here: schema-constrained decoding fills fields in
 // this order, so category/reason are written before flagged — the model
@@ -74,10 +70,10 @@ function formatHistory(history: ConversationMessage[]): string {
  * @returns {Promise<{ ok: true, flagged: boolean, category: string, reason: string } | { ok: false, error: string }>}
  */
 export async function classifyMessage(
-  { message, history = [], model = MODEL }: ClassifierInput,
+  { message, history = [], model = getRawSetting('OLLAMA_MODEL') }: ClassifierInput,
   { client, policy }: ClassifierDependencies = {},
 ): Promise<Classification> {
-  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
+  const ollama = client ?? createOllamaClient(getNumberSetting('CLASSIFIER_TIMEOUT_MS'));
 
   try {
     const response = await ollama.chat({

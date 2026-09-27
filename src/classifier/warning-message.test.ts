@@ -1,11 +1,17 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
 
-// Set before the dynamic import below, so warning-message.ts's module-level
-// `const MAX_LENGTH = Number(process.env.WARNING_MAX_LENGTH ?? 180)` picks this up.
-process.env.WARNING_MAX_LENGTH = '20';
+process.env.DB_PATH = 'data/test-warning-message.test.sqlite';
 
+const { setSetting } = await import('../store/settings.ts');
 const { generateWarningMessage } = await import('./warning-message.ts');
+
+setSetting('WARNING_MAX_LENGTH', '20');
+
+after(() => {
+  for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
+});
 
 const INPUT = { message: 'you should be scared', category: 'harassment', reason: 'contains a threat', strikeCount: 1, strikeThreshold: 3 };
 

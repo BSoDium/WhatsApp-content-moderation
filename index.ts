@@ -9,6 +9,7 @@ import { createContactDirectory, canonicalContactId, canonicalMessageContactId }
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
 import { ensureDefaultsSeeded } from './src/store/settings.ts';
+import { importPolicyFromFileIfUnset } from './src/classifier/policy.ts';
 import {
   listMonitored,
   isMonitored,
@@ -95,6 +96,9 @@ async function start() {
   // Must run before anything else touches a moderation-tuning setting, so
   // every read downstream sees a real value instead of racing an empty table.
   ensureDefaultsSeeded();
+  // Migrates an existing config/policy.md into the settings store exactly
+  // once, so upgrading from the file-based policy doesn't silently lose it.
+  importPolicyFromFileIfUnset();
 
   if (WEB_CONTROL_PORT) {
     controlServer = createControlServer({

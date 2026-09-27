@@ -1,6 +1,14 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyMessage } from './classifier.ts';
+import { rmSync } from 'node:fs';
+
+process.env.DB_PATH = 'data/test-classifier.test.sqlite';
+
+const { classifyMessage } = await import('./classifier.ts');
+
+after(() => {
+  for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
+});
 
 // A fixed policy string is injected in every test below so this suite never
 // touches config/policy.md (gitignored — may not exist on a fresh clone or CI).

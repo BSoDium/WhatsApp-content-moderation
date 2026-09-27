@@ -4,8 +4,9 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-unblock-scheduler.test.sqlite';
 
-const { runTick } = await import('./unblock-scheduler.ts');
+const { runTick, startUnblockScheduler } = await import('./unblock-scheduler.ts');
 const { createBlock, getActiveBlock, markUnblocked } = await import('../store/blocks.ts');
+const { setSetting } = await import('../store/settings.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -88,4 +89,33 @@ test('one contact throwing does not stop the rest of the batch from unblocking',
   assert.ok(getActiveBlock(failing), 'the failing contact should remain blocked for retry');
   assert.equal(getActiveBlock(succeeding), undefined);
   assert.deepEqual(unblocked, [succeeding]);
+});
+
+test('startUnblockScheduler polls at the configured interval and unblocks expired blocks', async () => {
+  setSetting('UNBLOCK_POLL_INTERVAL_MS', '10');
+  const contact = 'ivan@s.whatsapp.net';
+  createBlock(contact, Date.now() - 1000);
+  const unblocked = [];
+
+  const scheduler = startUnblockScheduler({ unblock: async (jid) => unblocked.push(jid) });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await scheduler.stop();
+
+  assert.ok(unblocked.includes(contact));
+});
+
+test('stop() suppresses the in-flight tick\'s own reschedule, leaving no dangling timer', async () => {
+  setSetting('UNBLOCK_POLL_INTERVAL_MS', '10');
+  let tickCount = 0;
+  const scheduler = startUnblockScheduler({ unblock: async () => { tickCount += 1; } });
+
+  await new Promise((resolve) => setTimeout(resolve, 30)); // let a few ticks happen
+  await scheduler.stop();
+  const countAtStop = tickCount;
+
+  // Long enough that a stray reschedule from the in-flight tick's own
+  // `finally` — the exact race stop()'s `stopped` flag guards against —
+  // would have fired again by now if it weren't suppressed.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(tickCount, countAtStop, 'no further ticks should fire once stop() has resolved');
 });
