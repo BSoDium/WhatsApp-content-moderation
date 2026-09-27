@@ -13,10 +13,10 @@ diff in this repo.
 - No multi-line `//` comment blocks and no section-banner comments
   (`// ---- Foo ----`). They're a sign a file is doing too much — split into
   atomic files instead (one file, one responsibility), as `src/classifier/`
-  already does (`classifier.js`, `policy.js`, `test-classifier.js` are
+  already does (`classifier.ts`, `policy.ts`, `test-classifier.ts` are
   separate files rather than one grab-bag module).
 - JSDoc is for exported functions whose contract isn't obvious from the
-  signature alone (see `classifyMessage` in `src/classifier/classifier.js`)
+  signature alone (see `classifyMessage` in `src/classifier/classifier.ts`)
   — one block explaining behavior/failure modes, not a paragraph per param.
 - Don't leave `// TODO` or hand-tuned magic numbers without a plan. Hoist
   constants to a top-level `const` with a name that explains the value
@@ -27,7 +27,7 @@ diff in this repo.
 - Fail open on anything talking to an external system (Ollama, WhatsApp) —
   never let a failed classification silently become an action. See
   `classifyMessage`'s `{ ok: false }` contract in
-  `src/classifier/classifier.js`. Any new code that gates a
+  `src/classifier/classifier.ts`. Any new code that gates a
   delete/warn/block/unblock on a fallible call must follow the same shape: a
   result the caller has to check, not a thrown exception the caller might
   forget to catch, and never a guessed default that fails closed by
@@ -45,13 +45,13 @@ diff in this repo.
 - ESM only (`"type": "module"` is already set) — never mix in `require`.
 - `const` by default; `let` only for a genuinely reassigned local. No `var`.
 - Named exports over default exports, so call sites read as
-  `import { classifyMessage } from './classifier.js'`, not a guessed name.
+  `import { classifyMessage } from './classifier.ts'`, not a guessed name.
 - Small, single-purpose functions. A module-local helper that isn't reused
-  elsewhere stays unexported (`policy.js`'s `cached` variable and its
+  elsewhere stays unexported (`policy.ts`'s `cached` variable and its
   lazy-load guard are file-private, not exported).
 - No bare magic numbers/strings inline — hoist to a top-level `const`,
   ideally sourced from `process.env` with a documented default when it's
-  something a deployment might reasonably override (see `classifier.js`'s
+  something a deployment might reasonably override (see `classifier.ts`'s
   `MODEL`, `TIMEOUT_MS`, `OLLAMA_HOST`).
 - Prefer template literals over string concatenation.
 - Async/await over raw `.then()` chains, except for small one-off
