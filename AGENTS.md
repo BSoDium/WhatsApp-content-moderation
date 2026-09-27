@@ -82,6 +82,12 @@ diff in this repo.
   port to the LAN.
 - The app image needs the built `web/dist` bundle. Keep the frontend build
   stage and copy in `Dockerfile` in sync with `src/web/control-server.ts`.
+- The app image needs the `drizzle/` migrations folder at runtime, not just
+  build time — `src/store/db.ts` resolves it relative to its own file, so a
+  missing `COPY drizzle ./drizzle` in `Dockerfile` fails at startup, not
+  build. Regenerate it (`npx drizzle-kit generate`) and commit the result
+  whenever `src/store/schema.ts` changes; don't hand-edit anything under
+  `drizzle/`.
 - Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` out of the
   image and persist them as Compose bind mounts. Update the Debian install
   steps in `README.md` whenever these paths, ownership, networking, or the
