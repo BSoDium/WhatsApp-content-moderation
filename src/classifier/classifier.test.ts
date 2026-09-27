@@ -64,3 +64,35 @@ test('defaults reason to an empty string when the model omits it', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.reason, '');
 });
+
+test('contactContext, when given, is folded into the system prompt', async () => {
+  let systemPrompt;
+  const client = {
+    chat: async ({ messages }) => {
+      systemPrompt = messages.find((m) => m.role === 'system').content;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage(
+    { message: 'hey', contactContext: 'This is my landlord — be lenient about payment disputes.' },
+    { client, policy: POLICY },
+  );
+
+  assert.match(systemPrompt, /# Contact-specific context/);
+  assert.match(systemPrompt, /landlord/);
+});
+
+test('omitting contactContext leaves the system prompt without that section', async () => {
+  let systemPrompt;
+  const client = {
+    chat: async ({ messages }) => {
+      systemPrompt = messages.find((m) => m.role === 'system').content;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage({ message: 'hey' }, { client, policy: POLICY });
+
+  assert.doesNotMatch(systemPrompt, /# Contact-specific context/);
+});

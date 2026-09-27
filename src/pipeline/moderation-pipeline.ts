@@ -4,7 +4,7 @@ import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog } from '../store/audit-log.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
-import { isEscalationEnabled } from '../store/monitored-contacts.ts';
+import { isEscalationEnabled, getMonitored } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
 import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
@@ -172,6 +172,9 @@ async function runBurst(
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
   let isBlocked = false;
+  // Read once per burst, not once per message — a contact's context can't
+  // change mid-burst since edits go through the roster, not this loop.
+  const contactContext = getMonitored(contactId)?.context ?? undefined;
 
   for (const { text, key, timestamp } of messages) {
     if (isPaused(contactId)) {
@@ -179,7 +182,7 @@ async function runBurst(
       continue;
     }
 
-    const classification = await classify({ message: text, history });
+    const classification = await classify({ message: text, history, contactContext });
     history.push({ from: 'them', text });
 
     if (!classification.ok) {
