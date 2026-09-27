@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS contacts (
   lid TEXT,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
 
 let db: Database | undefined;
@@ -84,6 +90,15 @@ function migrateContactsTable(database: Database): void {
   if (!hasLid) database.exec('ALTER TABLE contacts ADD COLUMN lid TEXT');
 }
 
+// Same exception as migrateContactsTable above: an existing monitored_contacts
+// table is an operator's actual roster, not something to force them to redo.
+function migrateMonitoredContactsTable(database: Database): void {
+  const hasContext = database
+    .prepare("SELECT 1 FROM pragma_table_info('monitored_contacts') WHERE name = 'context'")
+    .get();
+  if (!hasContext) database.exec('ALTER TABLE monitored_contacts ADD COLUMN context TEXT');
+}
+
 // Lazy-opened, like policy.js's loadPolicy, so importing this module never
 // has a side effect and every caller shares one connection.
 export function getDb(): Database {
@@ -97,6 +112,7 @@ export function getDb(): Database {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec(SCHEMA);
   migrateContactsTable(db);
+  migrateMonitoredContactsTable(db);
   return db;
 }
 

@@ -25,3 +25,10 @@ auth_info*/
 # Personal moderation policy — describes a real person/situation, never
 # committed. config/policy.example.md (the template) stays tracked.
 config/policy.md
+
+# Opt-in local override to build from source instead of pulling the
+# published image — see docker-compose.override.yml.example (the template,
+# stays tracked) and README "Building from source". Exact name, not a
+# broader glob, so a real docker-compose*.yml a contributor adds on purpose
+# isn't swallowed by accident.
+docker-compose.override.yml

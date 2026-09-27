@@ -10,7 +10,7 @@
     "build:web": "npm run --prefix web build",
     "watch:web": "npm run --prefix web watch",
     "pretest": "npm run build:web",
-    "test": "node --experimental-strip-types --test src/buffer/message-buffer.test.ts src/store/strikes.test.ts src/store/blocks.test.ts src/store/audit-log.test.ts src/store/monitored-contacts.test.ts src/pipeline/incoming-message.test.ts src/pipeline/unblock-scheduler.test.ts src/pipeline/moderation-pipeline.test.ts src/classifier/classifier.test.ts src/classifier/warning-message.test.ts src/override/manual-override.test.ts src/whatsapp/contact-directory.test.ts src/web/tailscale-auth.test.ts src/web/control-server.test.ts",
+    "test": "node --experimental-strip-types --test src/buffer/message-buffer.test.ts src/store/strikes.test.ts src/store/blocks.test.ts src/store/audit-log.test.ts src/store/monitored-contacts.test.ts src/store/settings.test.ts src/pipeline/incoming-message.test.ts src/pipeline/unblock-scheduler.test.ts src/pipeline/moderation-pipeline.test.ts src/classifier/classifier.test.ts src/classifier/warning-message.test.ts src/classifier/policy.test.ts src/override/manual-override.test.ts src/whatsapp/contact-directory.test.ts src/web/tailscale-auth.test.ts src/web/control-server.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint index.ts 'src/**/*.ts'",
     "setup": "bash scripts/setup.sh",

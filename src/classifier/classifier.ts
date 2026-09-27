@@ -1,6 +1,7 @@
 import type { Ollama } from 'ollama';
 import { loadPolicy } from './policy.ts';
 import { createOllamaClient } from './ollama-client.ts';
+import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 import type { Classification } from '../types.ts';
 
 interface ConversationMessage {
@@ -12,17 +13,16 @@ interface ClassifierInput {
   message: string;
   history?: ConversationMessage[];
   model?: string;
+  // The contact's own moderation notes (monitored_contacts.context) — real
+  // per-call input that varies per contact, not a test-injection point like
+  // ClassifierDependencies.policy below.
+  contactContext?: string;
 }
 
 interface ClassifierDependencies {
   client?: Ollama;
   policy?: string;
 }
-
-// See README "Classifier" for why 3b, not the cheaper 1b, is the default.
-const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
-const DEFAULT_TIMEOUT_MS = 90_000;
-const TIMEOUT_MS = Number(process.env.CLASSIFIER_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
 // Property order matters here: schema-constrained decoding fills fields in
 // this order, so category/reason are written before flagged — the model
@@ -38,7 +38,7 @@ const RESPONSE_SCHEMA = {
   required: ['category', 'reason', 'flagged'],
 };
 
-function buildSystemPrompt(policy = loadPolicy()): string {
+function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): string {
   return [
     "You are a content moderation filter for one specific person's personal WhatsApp chat.",
     "You will be shown recent conversation history for context, then the newest incoming message.",
@@ -46,6 +46,7 @@ function buildSystemPrompt(policy = loadPolicy()): string {
     '',
     '# Policy',
     policy,
+    ...(contactContext ? ['', '# Contact-specific context', contactContext] : []),
     '',
     'Respond with JSON only, matching the given schema. Fill in "category" (a short label, ' +
       'e.g. "harassment", "unwanted_contact", or "none" when not flagged) and "reason" (one ' +
@@ -66,24 +67,24 @@ function formatHistory(history: ConversationMessage[]): string {
  * timeout) returns { ok: false } rather than a guessed verdict, so callers
  * must never delete/block on ok: false — see AGENTS.md's "Error handling".
  *
- * @param {{ message: string, history?: { from: 'me'|'them', text: string }[], model?: string }} input
+ * @param {{ message: string, history?: { from: 'me'|'them', text: string }[], model?: string, contactContext?: string }} input
  * @param {{ client?: Ollama, policy?: string }} [deps] - injectable for
  *   tests: `client` in place of a real Ollama connection, `policy` in place
- *   of reading config/policy.md (which is gitignored and may not exist on
- *   a fresh clone or CI box).
+ *   of reading the configured policy (which may not exist yet on a fresh
+ *   install with no policy entered).
  * @returns {Promise<{ ok: true, flagged: boolean, category: string, reason: string } | { ok: false, error: string }>}
  */
 export async function classifyMessage(
-  { message, history = [], model = MODEL }: ClassifierInput,
+  { message, history = [], model = getRawSetting('OLLAMA_MODEL'), contactContext }: ClassifierInput,
   { client, policy }: ClassifierDependencies = {},
 ): Promise<Classification> {
-  const ollama = client ?? createOllamaClient(TIMEOUT_MS);
+  const ollama = client ?? createOllamaClient(getNumberSetting('CLASSIFIER_TIMEOUT_MS'));
 
   try {
     const response = await ollama.chat({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt(policy) },
+        { role: 'system', content: buildSystemPrompt(policy, contactContext) },
         {
           role: 'user',
           content: `# Recent conversation\n${formatHistory(history)}\n\n# Newest message to classify\nThem: ${message}`,

@@ -96,8 +96,6 @@ fi
 
 CONFIGURED_PORT="$(read_env_var WEB_CONTROL_PORT)"
 CONFIGURED_PORT="${CONFIGURED_PORT:-$CONTROL_PORT_DEFAULT}"
-CONFIGURED_MODEL="$(read_env_var OLLAMA_MODEL)"
-CONFIGURED_MODEL="${CONFIGURED_MODEL:-$DEFAULT_OLLAMA_MODEL}"
 CONFIGURED_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
 log "Setup complete"
@@ -113,15 +111,20 @@ fi
 
 printf '%sBefore starting:%s\n' "$C_YELLOW" "$C_RESET"
 cat <<EOF
-  - Review config/policy.md — it still has placeholder text.
+  - Review config/policy.md — it still has placeholder text. It's only read
+    once, on first boot, to seed the policy — edit it in the control app
+    (Policy button) for anything after that.
   - SHADOW_MODE=1 by default: classifies and logs, takes no action.
+  - The classifier model, warning behavior, and strike/block timings are no
+    longer set in .env — they start at their defaults below and are tuned
+    live from the control app's Settings panel, no restart needed.
 
 Next steps:
 EOF
 printf '%s' "$C_BOLD"
 cat <<EOF
-  docker compose up -d --build
-  docker compose exec ollama ollama pull $CONFIGURED_MODEL
+  docker compose up -d              # pulls the published image
+  docker compose exec ollama ollama pull $DEFAULT_OLLAMA_MODEL
   ./scripts/pair.sh                 # scan the QR code shown here; returns once connected
   ./scripts/preflight.sh            # verify before pairing/going live
   sudo tailscale serve --bg $CONFIGURED_PORT

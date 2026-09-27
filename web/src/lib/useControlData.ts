@@ -118,7 +118,24 @@ export function useControlData(initialSelectedId: string | null = null) {
     [refreshRoster],
   );
 
+  const setContext = useCallback(
+    async function setContext(contactId: string, context: string): Promise<void> {
+      try {
+        await apiFetch(`/api/roster/${encodeURIComponent(contactId)}/context`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ context }),
+        });
+        setError(null);
+        await refreshRoster();
+      } catch (error: unknown) {
+        setError({ title: 'Could not update moderation context', description: errorMessage(error), retry: () => setContext(contactId, context) });
+      }
+    },
+    [refreshRoster],
+  );
+
   const dismissError = useCallback(() => setError(null), []);
 
-  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation };
+  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext };
 }

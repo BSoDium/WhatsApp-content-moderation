@@ -23,8 +23,10 @@ if [ ! -f .env ]; then
 fi
 PORT="$(read_env_var WEB_CONTROL_PORT)"
 PORT="${PORT:-$CONTROL_PORT_DEFAULT}"
-MODEL="$(read_env_var OLLAMA_MODEL)"
-MODEL="${MODEL:-$DEFAULT_OLLAMA_MODEL}"
+# The classifier model is a live control-app setting now, not an .env value —
+# this can only check the default, so it may false-negative after the model
+# is changed via the Settings panel. See lib.sh's DEFAULT_OLLAMA_MODEL.
+MODEL="$DEFAULT_OLLAMA_MODEL"
 ALLOWED_TAILSCALE_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
 log "Docker"
@@ -44,7 +46,7 @@ RUNNING="$(docker compose ps --status running --services 2>/dev/null || true)"
 if echo "$RUNNING" | grep -qx app; then
   pass "app service is running"
 else
-  fail "app service is not running (docker compose up -d --build)"
+  fail "app service is not running (docker compose up -d)"
 fi
 if echo "$RUNNING" | grep -qx ollama; then
   pass "ollama service is running"

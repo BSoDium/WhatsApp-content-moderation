@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
-# Routine source update: pull the latest commit and rebuild the app service.
+# Routine update: pull the latest commit (keeps scripts/*.sh and the compose
+# files current) and restart the app service against the latest published
+# image — pass --build to instead rebuild from your local source (needs
+# docker-compose.override.yml, see docker-compose.override.yml.example).
 # .env, config/policy.md, auth_info/, and data/ are all gitignored and
 # untouched by this — see README "Debian install and updates".
 set -euo pipefail
+
+BUILD=0
+if [ "${1:-}" = "--build" ]; then
+  BUILD=1
+elif [ -n "${1:-}" ]; then
+  echo "Usage: $0 [--build]" >&2
+  exit 1
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -21,8 +32,14 @@ BEFORE_EXAMPLE="$(cat .env.example)"
 git pull --ff-only
 AFTER_EXAMPLE="$(cat .env.example)"
 
-log "Rebuilding and restarting the app"
-docker compose up -d --build app
+if [ "$BUILD" -eq 1 ]; then
+  log "Rebuilding from source and restarting the app"
+  docker compose up -d --build app
+else
+  log "Pulling the latest published image and restarting the app"
+  docker compose pull app
+  docker compose up -d app
+fi
 
 if [ "$BEFORE_EXAMPLE" != "$AFTER_EXAMPLE" ] && [ -f .env ]; then
   NEW_KEYS="$(comm -23 \

@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-monitored-contacts.test.sqlite';
 
-const { listMonitored, isMonitored, getMonitored, addMonitored, removeMonitored, setEscalationEnabled, isEscalationEnabled } =
+const { listMonitored, isMonitored, getMonitored, addMonitored, removeMonitored, setEscalationEnabled, isEscalationEnabled, setContext } =
   await import('./monitored-contacts.ts');
 
 after(() => {
@@ -71,4 +71,32 @@ test('listMonitored returns roster rows ordered oldest-added first', () => {
   const row = listMonitored().find((r) => r.contactId === 'first@s.whatsapp.net');
   assert.equal(row.escalationEnabled, true);
   assert.equal(typeof row.addedAt, 'number');
+});
+
+test('a newly added contact has no context', () => {
+  const contact = 'frank@s.whatsapp.net';
+  addMonitored(contact);
+  assert.equal(getMonitored(contact).context, null);
+});
+
+test('setContext stores and clears a contact\'s moderation context', () => {
+  const contact = 'grace@s.whatsapp.net';
+  addMonitored(contact);
+  assert.equal(setContext(contact, 'This is my landlord.'), true);
+  assert.equal(getMonitored(contact).context, 'This is my landlord.');
+
+  assert.equal(setContext(contact, null), true);
+  assert.equal(getMonitored(contact).context, null);
+});
+
+test('setContext normalizes an empty/whitespace string to null', () => {
+  const contact = 'heidi@s.whatsapp.net';
+  addMonitored(contact);
+  setContext(contact, 'some context');
+  assert.equal(setContext(contact, '   '), true);
+  assert.equal(getMonitored(contact).context, null);
+});
+
+test('setContext returns false for a contact not on the roster', () => {
+  assert.equal(setContext('ghost@s.whatsapp.net', 'anything'), false);
 });

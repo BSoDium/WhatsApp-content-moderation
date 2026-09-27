@@ -1,6 +1,14 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyMessage } from './classifier.ts';
+import { rmSync } from 'node:fs';
+
+process.env.DB_PATH = 'data/test-classifier.test.sqlite';
+
+const { classifyMessage } = await import('./classifier.ts');
+
+after(() => {
+  for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
+});
 
 // A fixed policy string is injected in every test below so this suite never
 // touches config/policy.md (gitignored — may not exist on a fresh clone or CI).
@@ -55,4 +63,36 @@ test('defaults reason to an empty string when the model omits it', async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.reason, '');
+});
+
+test('contactContext, when given, is folded into the system prompt', async () => {
+  let systemPrompt;
+  const client = {
+    chat: async ({ messages }) => {
+      systemPrompt = messages.find((m) => m.role === 'system').content;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage(
+    { message: 'hey', contactContext: 'This is my landlord — be lenient about payment disputes.' },
+    { client, policy: POLICY },
+  );
+
+  assert.match(systemPrompt, /# Contact-specific context/);
+  assert.match(systemPrompt, /landlord/);
+});
+
+test('omitting contactContext leaves the system prompt without that section', async () => {
+  let systemPrompt;
+  const client = {
+    chat: async ({ messages }) => {
+      systemPrompt = messages.find((m) => m.role === 'system').content;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage({ message: 'hey' }, { client, policy: POLICY });
+
+  assert.doesNotMatch(systemPrompt, /# Contact-specific context/);
 });

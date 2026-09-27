@@ -8,6 +8,8 @@ import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
+import { ensureDefaultsSeeded } from './src/store/settings.ts';
+import { importPolicyFromFileIfUnset } from './src/classifier/policy.ts';
 import {
   listMonitored,
   isMonitored,
@@ -15,6 +17,7 @@ import {
   addMonitored,
   removeMonitored,
   setEscalationEnabled,
+  setContext,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
@@ -85,12 +88,20 @@ const monitoredContacts = {
   add: addMonitored,
   remove: removeMonitored,
   setEscalationEnabled,
+  setContext,
 };
 
 let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;
 let controlServer: ReturnType<typeof createControlServer> | undefined;
 
 async function start() {
+  // Must run before anything else touches a moderation-tuning setting, so
+  // every read downstream sees a real value instead of racing an empty table.
+  ensureDefaultsSeeded();
+  // Migrates an existing config/policy.md into the settings store exactly
+  // once, so upgrading from the file-based policy doesn't silently lose it.
+  importPolicyFromFileIfUnset();
+
   if (WEB_CONTROL_PORT) {
     controlServer = createControlServer({
       manualOverride,

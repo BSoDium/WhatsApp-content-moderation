@@ -2,16 +2,16 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
 
-// Set before the dynamic imports below, so moderation-pipeline.js's
-// module-level `const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3)` picks this up.
 process.env.DB_PATH = 'data/test-moderation-pipeline.test.sqlite';
-process.env.STRIKE_THRESHOLD = '2';
-process.env.WARNING_MESSAGE = 'TEST_FALLBACK_WARNING';
 
 const { handleBurst } = await import('./moderation-pipeline.ts');
 const { getAuditLog } = await import('../store/audit-log.ts');
 const { createBlock, getActiveBlock } = await import('../store/blocks.ts');
-const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.ts');
+const { addMonitored, setEscalationEnabled, setContext } = await import('../store/monitored-contacts.ts');
+const { setSetting } = await import('../store/settings.ts');
+
+setSetting('STRIKE_THRESHOLD', '2');
+setSetting('WARNING_MESSAGE', 'TEST_FALLBACK_WARNING');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -51,6 +51,36 @@ test('classifier ok:false fails open: no strike, no action, logged as classifier
   assert.equal(deleteForMeCalled, false);
   const [entry] = getAuditLog(contact);
   assert.equal(entry.action, 'classifier_error');
+});
+
+test("a monitored contact's roster context is passed to classify as contactContext", async () => {
+  const contact = 'ivy@s.whatsapp.net';
+  addMonitored(contact);
+  setContext(contact, 'This is my landlord — be lenient about payment disputes.');
+  const seenInputs = [];
+  const classify = async (input) => {
+    seenInputs.push(input);
+    return okPass();
+  };
+
+  await handleBurst(burst(contact, ['when is rent due?']), { ...noopActions, classify });
+
+  assert.equal(seenInputs.length, 1);
+  assert.equal(seenInputs[0].contactContext, 'This is my landlord — be lenient about payment disputes.');
+});
+
+test('a contact with no roster context passes contactContext: undefined to classify', async () => {
+  const contact = 'jack@s.whatsapp.net';
+  addMonitored(contact);
+  const seenInputs = [];
+  const classify = async (input) => {
+    seenInputs.push(input);
+    return okPass();
+  };
+
+  await handleBurst(burst(contact, ['hey']), { ...noopActions, classify });
+
+  assert.equal(seenInputs[0].contactContext, undefined);
 });
 
 test('a passed message decays the strike count and logs action: none', async () => {
