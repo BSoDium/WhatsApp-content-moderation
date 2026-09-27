@@ -22,7 +22,7 @@ fi
 # status` run *here* then reports the host's own tag, e.g. tag:server, not a
 # human login). Shared by setup.sh and preflight.sh so the instructions stay
 # in sync between them.
-TAILSCALE_LOGIN_HELP="Run 'tailscale status' on a device YOU sign in with (your phone or laptop, not this server) — your login is the third column. Or open https://login.tailscale.com/admin/machines in a browser and check the 'Owner' column for the device you'll use to open the control app."
+TAILSCALE_LOGIN_HELP="Run 'tailscale status' on a device YOU sign in with (your phone or laptop, not this server) — your login is the third column. Or open https://login.tailscale.com/admin/machines in a browser and check the 'Owner' column for the device you'll use to open the control app. Then add it to .env: ALLOWED_TAILSCALE_LOGIN=you@example.com"
 
 log() { printf '\n%s==> %s%s\n' "$C_BOLD" "$1" "$C_RESET"; }
 warn() { printf '%s!! %s%s\n' "$C_YELLOW" "$1" "$C_RESET" >&2; }

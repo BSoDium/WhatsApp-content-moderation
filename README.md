@@ -201,7 +201,7 @@ cd WhatsApp-content-moderation
 ```sh
 docker compose up -d --build
 docker compose exec ollama ollama pull llama3.2:3b
-docker compose logs -f app        # scan the QR code shown here
+./scripts/pair.sh                 # scan the QR code shown here; returns once connected
 ./scripts/preflight.sh            # sanity-check before going live
 sudo tailscale serve --bg 4756
 ```
@@ -248,7 +248,7 @@ Edit `.env`: set `WEB_CONTROL_PORT=4756` and your exact Tailscale login in `ALLO
 <details>
 <summary><strong>Scanning the QR code and running <code>preflight.sh</code></strong></summary>
 
-Scan the QR shown by `docker compose logs -f app` from WhatsApp → Linked devices. Then run [`scripts/preflight.sh`](scripts/preflight.sh) — it checks Compose, the pulled model, bind-mount ownership, the control port, and `tailscale serve` in one pass, including whether this host's Tailscale login matches `ALLOWED_TAILSCALE_LOGIN` (a mismatch there is the most common cause of a 403 from the control app). Fix anything it flags, then open the URL from `sudo tailscale serve status` — no query param needed. `preflight.sh`'s login check is only a same-host heuristic, not a substitute for the real test: confirm the page actually works from your allowed Tailscale login and is rejected from a different login or device — see [Web control app](#web-control-app). Add a contact in the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
+[`scripts/pair.sh`](scripts/pair.sh) shows the app's log in human-readable form (it pulls `.msg` out of each JSON line) instead of the raw structured output `docker compose logs` prints by default, and returns control on its own once the app connects — it doesn't block your terminal forever the way `docker compose logs -f` does, and killing it never touches the running container (`docker compose up -d` already detached it). Scan the QR it shows from WhatsApp → Linked devices; if it times out after 5 minutes without connecting, the app is still running regardless — check `docker compose logs -f app` manually. Then run [`scripts/preflight.sh`](scripts/preflight.sh) — it checks Compose, the pulled model, bind-mount ownership, the control port, and `tailscale serve` in one pass, including whether this host's Tailscale login matches `ALLOWED_TAILSCALE_LOGIN` (a mismatch there is the most common cause of a 403 from the control app). Fix anything it flags, then open the URL from `sudo tailscale serve status` — no query param needed. `preflight.sh`'s login check is only a same-host heuristic, not a substitute for the real test: confirm the page actually works from your allowed Tailscale login and is rejected from a different login or device — see [Web control app](#web-control-app). Add a contact in the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
 
 The app uses host networking so its loopback-only control server is the same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and is published on host loopback only.
 

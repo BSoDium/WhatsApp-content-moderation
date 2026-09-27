@@ -109,7 +109,6 @@ log "Setup complete"
 if [ -z "$CONFIGURED_LOGIN" ]; then
   warn "ALLOWED_TAILSCALE_LOGIN is still unset. The app WILL crash-loop under Docker's restart policy until you fix this — don't run 'docker compose up' yet."
   echo "  $TAILSCALE_LOGIN_HELP"
-  echo "  Then add it to .env: ALLOWED_TAILSCALE_LOGIN=you@example.com"
 fi
 
 printf '%sBefore starting:%s\n' "$C_YELLOW" "$C_RESET"
@@ -123,7 +122,7 @@ printf '%s' "$C_BOLD"
 cat <<EOF
   docker compose up -d --build
   docker compose exec ollama ollama pull $CONFIGURED_MODEL
-  docker compose logs -f app        # scan the QR code shown here
+  ./scripts/pair.sh                 # scan the QR code shown here; returns once connected
   ./scripts/preflight.sh            # verify before pairing/going live
   sudo tailscale serve --bg $CONFIGURED_PORT
 EOF
