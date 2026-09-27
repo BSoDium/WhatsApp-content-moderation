@@ -34,10 +34,13 @@ function buildSystemPrompt(): string {
     'A message from this contact was just detected as violating that policy and has already been deleted from the chat.',
     'Write the message this system sends back to the contact, right now, in the account owner\'s place.',
     '',
-    'Requirements:',
-    "- Tell them plainly to stop the specific behavior described below — be concrete, not generic ('stop sending threatening messages', not 'please be respectful').",
-    '- State clearly that this is an automated moderation system watching the conversation, not the account owner replying personally.',
-    '- Make clear that continuing will get this contact blocked, and reference how close they are to that if it is relevant.',
+    'Every message you write MUST include all three of these, in your own words:',
+    "1. A concrete, specific instruction to stop the exact behavior described below — never generic ('stop sending threatening messages', not 'please be respectful').",
+    "2. An explicit statement that an automated system, not the account owner personally, is sending this and watching the conversation. A vague phrase like 'this conversation has been flagged' is NOT enough on its own — say outright that this is automated, not a person.",
+    '3. The consequence exactly as given below (imminent block, one strike left, or strikes remaining) — never soften or omit it.',
+    '',
+    'Other requirements:',
+    '- Describe the violation using the reason given below, in your own plain words — do not invent a different or more severe-sounding violation than what actually happened.',
     '- 1-3 short sentences, like a real text message a person could plausibly send — no bullet points, no headers, no markdown, no surrounding quotation marks.',
     '- Firm and factual, never insulting, sarcastic, or threatening beyond stating the actual consequence.',
     "- Respond with only the message text itself — no preamble like 'Here's a message:'.",
@@ -45,11 +48,20 @@ function buildSystemPrompt(): string {
 }
 
 function buildUserPrompt({ category, reason, strikeCount, strikeThreshold }: WarningMessageInput): string {
+  const strikesRemaining = strikeThreshold - strikeCount;
+  const consequence =
+    strikesRemaining <= 0
+      ? 'This contact has reached the strike threshold — this is their final warning before being blocked.'
+      : strikesRemaining === 1
+        ? 'This is their last strike before being blocked — one more violation blocks them.'
+        : `${strikesRemaining} strikes remain before this contact is blocked.`;
+
   return [
     '# What happened',
     `Category: ${category}`,
     `Reason: ${reason}`,
-    `Strikes so far: ${strikeCount} of ${strikeThreshold} before this contact is blocked.`,
+    `Strikes so far: ${strikeCount} of ${strikeThreshold}.`,
+    `Consequence to state: ${consequence}`,
     '',
     '# Task',
     'Write the reply to send back to them now.',
