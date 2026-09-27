@@ -1,3 +1,4 @@
+import { jidNormalizedUser } from '@whiskeysockets/baileys';
 import { getDb } from '../store/db.ts';
 import type { Chat, Contact, WAMessage, WASocket } from '@whiskeysockets/baileys';
 import type { ContactRecord } from '../types.ts';
@@ -22,6 +23,17 @@ function isLid(jid: string): boolean {
   return jid.endsWith('@lid');
 }
 
+// sock.user.id (used to identify the self contact) commonly still carries
+// the account's own device suffix (e.g. "...:31@s.whatsapp.net"), unlike
+// every JID this module otherwise sees from contacts.*/messages.* events,
+// which Baileys already normalizes without one — so a bare string compare
+// against a directory row silently never matches. jidNormalizedUser() is a
+// no-op on an already-bare JID, so normalizing everything through here is
+// always safe.
+function normalizeJid(jid: string): string {
+  return jidNormalizedUser(jid) || jid;
+}
+
 // Baileys assigns every contact a stable @lid identity alongside their
 // phone-number JID as part of WhatsApp's ongoing privacy migration (see also
 // the self-chat @lid note in README "Quick start"). The two forms surface
@@ -42,15 +54,6 @@ function reconcileJid(id: string, altId?: string | null): { canonicalId: string;
   return { canonicalId, lid };
 }
 
-// Resolves a Baileys Contact-like object's canonical (phone-number) JID the
-// same way ingest() reconciles the directory — used by index.ts to identify
-// the logged-in account's own contact_id (`sock.user`) so the control app
-// can recognize and disable self-moderation, without a second, divergent
-// notion of "canonical" living outside this module.
-export function canonicalContactId({ id, lid, phoneNumber }: { id: string; lid?: string | null; phoneNumber?: string | null }): string {
-  return reconcileJid(id, phoneNumber || lid || undefined).canonicalId;
-}
-
 // A lid learned from an earlier event (recorded on its row's `lid` column)
 // lets a later lid-only event — e.g. a bare {id: <lid>, notify}
 // contacts.update, which never carries the phoneNumber counterpart itself —
@@ -58,6 +61,27 @@ export function canonicalContactId({ id, lid, phoneNumber }: { id: string; lid?:
 function lookupCanonicalForLid(lid: string): string | undefined {
   const row = getDb().prepare('SELECT contact_id FROM contacts WHERE lid = ?').get(lid) as { contact_id: string } | undefined;
   return row?.contact_id;
+}
+
+// Shared by ingestOne() and canonicalContactId(): resolves the "other JID
+// form" for a normalized id, falling back to a mapping this module already
+// learned (via lookupCanonicalForLid) when the caller doesn't hand us one
+// directly — e.g. sock.user often exposes only a bare @lid with no
+// populated .phoneNumber, even though some other event already taught the
+// directory that lid's phone-number pairing.
+function resolveAltId(id: string, direct: string | undefined): string | undefined {
+  if (direct) return normalizeJid(direct);
+  return isLid(id) ? lookupCanonicalForLid(id) : undefined;
+}
+
+// Resolves a Baileys Contact-like object's canonical (phone-number) JID the
+// same way ingest() reconciles the directory — used by index.ts to identify
+// the logged-in account's own contact_id (`sock.user`) so the control app
+// can recognize and disable self-moderation, without a second, divergent
+// notion of "canonical" living outside this module.
+export function canonicalContactId({ id, lid, phoneNumber }: { id: string; lid?: string | null; phoneNumber?: string | null }): string {
+  const normalizedId = normalizeJid(id);
+  return reconcileJid(normalizedId, resolveAltId(normalizedId, phoneNumber || lid || undefined)).canonicalId;
 }
 
 // COALESCE against the existing name/notify/verifiedName/lid columns, not a
@@ -110,11 +134,11 @@ function foldAlias(canonicalId: string, aliasId: string | null | undefined): voi
   getDb().prepare('DELETE FROM contacts WHERE contact_id = ?').run(aliasId);
 }
 
-function ingestOne(id: string, altId: string | undefined, rest: Partial<Contact> & { lastMessageAt?: number | null }): void {
-  if (NON_INDIVIDUAL_JID_SUFFIXES.some((suffix) => id.endsWith(suffix))) return;
+function ingestOne(rawId: string, rawAltId: string | undefined, rest: Partial<Contact> & { lastMessageAt?: number | null }): void {
+  if (NON_INDIVIDUAL_JID_SUFFIXES.some((suffix) => rawId.endsWith(suffix))) return;
 
-  const resolvedAlt = altId || (isLid(id) ? lookupCanonicalForLid(id) : undefined);
-  const { canonicalId, lid } = reconcileJid(id, resolvedAlt);
+  const id = normalizeJid(rawId);
+  const { canonicalId, lid } = reconcileJid(id, resolveAltId(id, rawAltId));
   // Either side of the pairing might already have its own stale row from
   // before this event taught us they're the same person — fold both.
   if (lid && lid !== id) foldAlias(canonicalId, lid);

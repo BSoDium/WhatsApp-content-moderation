@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-contact-directory.test.sqlite';
 
-const { createContactDirectory } = await import('./contact-directory.ts');
+const { createContactDirectory, canonicalContactId } = await import('./contact-directory.ts');
 const { getDb } = await import('../store/db.ts');
 
 beforeEach(() => {
@@ -242,6 +242,41 @@ test('a lid contact with no phone-number pairing known yet stays as its own row 
   sock.emit('contacts.update', [{ id: '444@lid', notify: 'Unpaired' }]);
 
   assert.equal(directory.get('444@lid').name, 'Unpaired');
+});
+
+test('canonicalContactId strips a device suffix, e.g. sock.user.id vs. a message-derived remoteJid', () => {
+  assert.equal(canonicalContactId({ id: '15551234567:31@s.whatsapp.net' }), '15551234567@s.whatsapp.net');
+});
+
+test('canonicalContactId resolves a bare lid (no .phoneNumber on the object) via a mapping the directory already learned', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  // Some other event already taught the directory this lid<->pn pairing...
+  sock.emit('contacts.upsert', [{ id: '555@lid', phoneNumber: '15551234567@s.whatsapp.net' }]);
+
+  // ...so resolving sock.user, which often exposes only the bare lid with no
+  // populated .phoneNumber, still lands on the same canonical row.
+  assert.equal(canonicalContactId({ id: '555@lid' }), '15551234567@s.whatsapp.net');
+});
+
+test('canonicalContactId falls back to the (normalized) lid itself when no mapping is known at all', () => {
+  assert.equal(canonicalContactId({ id: '999:5@lid' }), '999@lid');
+});
+
+test("a self contact (device-suffixed sock.user.id) matches the directory's normalized row for the same JID", () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messages.upsert', {
+    messages: [{ key: { remoteJid: '15551234567@s.whatsapp.net', fromMe: true }, messageTimestamp: 1_700_000_100 }],
+    type: 'notify',
+  });
+
+  const selfId = canonicalContactId({ id: '15551234567:31@s.whatsapp.net' });
+  assert.deepEqual(directory.list().map((c) => c.id), [selfId]);
 });
 
 test('contacts persist across separate createContactDirectory() instances (i.e. across restarts)', () => {
