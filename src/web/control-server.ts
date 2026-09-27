@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
-import { verifyControlToken, verifyControlCookie, CONTROL_TOKEN_COOKIE } from './control-token-auth.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
@@ -24,7 +23,6 @@ interface ControlServerDependencies {
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
   };
   allowedLogin: string;
-  controlToken: string;
 }
 
 const logger = pino({ name: 'control-server' });
@@ -41,9 +39,6 @@ const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume',
 function isOverrideCommand(action: string): action is OverrideCommand {
   return COMMAND_ROUTES.has(action as OverrideCommand);
 }
-
-// 400 days: the max Chrome will honor for Set-Cookie Max-Age, matching how long localStorage effectively lasts.
-const CONTROL_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 const ASSET_CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
@@ -232,8 +227,8 @@ async function handleApi(
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: ControlServerDependencies): Promise<void> {
-  const { allowedLogin, controlToken } = deps;
-  const { pathname, searchParams } = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
+  const { allowedLogin } = deps;
+  const { pathname } = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
 
   if (req.method === 'GET' && (pathname === '/favicon.svg' || pathname.startsWith('/assets/')) && serveDistFile(res, pathname)) {
     return;
@@ -245,18 +240,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
     return;
   }
 
-  // Only GET / accepts the cookie — see verifyControlCookie's doc comment
-  // for why every other route (state-changing ones especially) must keep
-  // requiring the header/query token exclusively.
   const isRootPage = req.method === 'GET' && pathname === '/';
-  const authed = verifyControlToken(req, searchParams, controlToken) || (isRootPage && verifyControlCookie(req, controlToken));
-
-  if (!authed) {
-    logger.warn('rejected: missing or invalid control token');
-    sendJson(res, 403, { error: 'forbidden' });
-    return;
-  }
-
   if (isRootPage) {
     let indexHtml;
     try {
@@ -266,9 +250,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
       sendJson(res, 503, { error: 'frontend not built' });
       return;
     }
-    // (Re)issued on every successful load, cookie- or token-authenticated alike, so a returning visit keeps sliding the expiry forward the same way localStorage never expires on its own.
-    const cookie = `${CONTROL_TOKEN_COOKIE}=${encodeURIComponent(controlToken)}; Path=/; Max-Age=${CONTROL_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`;
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Set-Cookie': cookie });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(indexHtml);
     return;
   }
@@ -289,35 +271,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  * routines, src/whatsapp/contact-directory.ts's known-contacts list, and
  * src/store/monitored-contacts.ts's roster.
  *
- * Auth is two factors, both required on `GET /` and every `/api/*` route —
- * see docs/decisions.md "Web control app: Tailscale identity headers (issue
- * #29)":
- * 1. A `Tailscale-User-Login` header matching `allowedLogin`, which
- *    `tailscale serve` sets when proxying a tailnet request to a local port.
- * 2. A `controlToken` shared secret (via `X-Control-Token` header or a
- *    `token` query param — and, for `GET /` alone, a `controlToken` cookie
- *    set on a prior successful load, since a plain browser navigation can
- *    never attach a custom header the way `fetch()` can — see
- *    verifyControlCookie's doc comment for why that cookie is accepted
- *    nowhere else), because the header alone is not proof the request
- *    actually came through `tailscale serve`'s proxy hop — the loopback
- *    bind in `listen()` stops *remote* access, but any other local
- *    process/user on this host can otherwise set that header directly.
- *    The token isn't derivable from anything Tailscale sets, so it closes
- *    that gap.
+ * Auth is a single check, required on `GET /` and every `/api/*` route —
+ * see docs/decisions.md "Web control app: back to trusting the header
+ * (issue #29, twice revisited)": `verifyTailscaleIdentity` trusts the
+ * `Tailscale-User-Login` header `tailscale serve` sets when proxying a
+ * tailnet request to this app, checked against `allowedLogin`. No shared
+ * secret, no cookie, no bootstrap step — a plain visit to the tailnet URL
+ * just works, every time. **Deliberately single-factor**: an earlier
+ * revision tried closing the local-forgery gap (any other process/user on
+ * this host connecting to this port directly, since the loopback bind in
+ * `listen()` stops only *remote* access) via tailscaled's LocalAPI `whois`,
+ * but that doesn't work for a `tailscale serve`-proxied backend — see the
+ * decisions.md entry for why. Accepted for a single-operator host where
+ * the operator is the only account with shell access to the machine.
  *
  * `GET /assets/*` (the Vite-built frontend's JS/CSS/font bundle) is the sole
- * exception, checked before either factor: none of these files contain a
- * secret (the control token only ever lives in the browser's
- * `localStorage`, never in served source), and a `<link>`/`<script src>`
- * tag can't attach `X-Control-Token` the way `fetch()` can anyway — see
- * docs/decisions.md "Control page styling" for the full reasoning.
+ * exception, checked before the identity check: none of these files
+ * contain anything secret — see docs/decisions.md "Control page styling"
+ * for the full reasoning.
  *
  * State-changing POSTs additionally require `Content-Type: application/json`
  * (a CSRF defense — see the inline comments at each check). `DELETE` doesn't
  * need the same check: unlike POST, DELETE isn't a CORS-safelisted method,
  * so a cross-origin request already forces a preflight regardless of
- * Content-Type.
+ * Content-Type. This server never sends `Access-Control-Allow-Origin`, so a
+ * forced preflight blocks the real cross-origin request outright.
  *
  * `close()` force-closes every connection (not just idle ones) rather than
  * waiting for in-flight requests to finish on their own, so a slow command
@@ -339,7 +317,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
  *   },
  *   allowedLogin: string,
- *   controlToken: string,
  * }} deps
  * @returns {{ listen: (port: number) => Promise<number>, close: () => Promise<void> }}
  */

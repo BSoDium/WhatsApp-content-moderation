@@ -8,7 +8,6 @@ import { createControlServer } from './control-server.ts';
 const DIST_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
 
 const ALLOWED = 'alice@github';
-const TOKEN = 'test-control-token';
 
 function makeOverride() {
   const paused = new Map();
@@ -63,7 +62,7 @@ function makeMonitoredContacts(initial = []) {
 }
 
 async function withServer({ manualOverride = makeOverride(), contactDirectory = makeContactDirectory(), monitoredContacts = makeMonitoredContacts() } = {}, run) {
-  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, allowedLogin: ALLOWED, controlToken: TOKEN });
+  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, allowedLogin: ALLOWED });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts });
@@ -73,7 +72,7 @@ async function withServer({ manualOverride = makeOverride(), contactDirectory = 
 }
 
 function authHeaders(extra = {}) {
-  return { 'Tailscale-User-Login': ALLOWED, 'X-Control-Token': TOKEN, ...extra };
+  return { 'Tailscale-User-Login': ALLOWED, ...extra };
 }
 
 test('GET /assets/* (the built frontend bundle) is served with no auth headers at all', async () => {
@@ -94,7 +93,7 @@ test('GET /assets/* (the built frontend bundle) is served with no auth headers a
 
 test('rejects a request with no Tailscale-User-Login header', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster`, { headers: { 'X-Control-Token': TOKEN } });
+    const res = await fetch(`${base}/api/roster`);
     assert.equal(res.status, 403);
   });
 });
@@ -106,28 +105,14 @@ test('rejects a request with a mismatched login', async () => {
   });
 });
 
-test('rejects a request with the right login but no control token (local forgery of the header alone)', async () => {
+test('rejects an empty Tailscale-User-Login header', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster`, { headers: { 'Tailscale-User-Login': ALLOWED } });
+    const res = await fetch(`${base}/api/roster`, { headers: { 'Tailscale-User-Login': '' } });
     assert.equal(res.status, 403);
   });
 });
 
-test('rejects a request with a mismatched control token', async () => {
-  await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster`, { headers: authHeaders({ 'X-Control-Token': 'wrong' }) });
-    assert.equal(res.status, 403);
-  });
-});
-
-test('accepts the control token via a query string on GET /', async () => {
-  await withServer({}, async (base) => {
-    const res = await fetch(`${base}/?token=${TOKEN}`, { headers: { 'Tailscale-User-Login': ALLOWED } });
-    assert.equal(res.status, 200);
-  });
-});
-
-test('GET / serves the static control page', async () => {
+test('GET / serves the static control page with no query param or cookie needed', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(base, { headers: authHeaders() });
     assert.equal(res.status, 200);
@@ -136,41 +121,24 @@ test('GET / serves the static control page', async () => {
   });
 });
 
-test('GET / issues a controlToken cookie on a successful load', async () => {
+test('GET / sets no cookie — identity is re-verified on every request, nothing to persist', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(base, { headers: authHeaders() });
-    const cookie = res.headers.get('set-cookie');
-    assert.match(cookie, /controlToken=test-control-token/);
-    assert.match(cookie, /HttpOnly/);
-    assert.match(cookie, /Secure/);
-    assert.match(cookie, /SameSite=Strict/);
+    assert.equal(res.headers.get('set-cookie'), null);
   });
 });
 
-test('GET / accepts the cookie alone on a plain reload (no header, no query token)', async () => {
+test('no response ever carries Access-Control-Allow-Origin, so a cross-origin preflight can never succeed', async () => {
   await withServer({}, async (base) => {
-    const first = await fetch(`${base}/?token=${TOKEN}`, { headers: { 'Tailscale-User-Login': ALLOWED } });
-    const cookie = first.headers.get('set-cookie').split(';')[0];
+    const get = await fetch(base, { headers: authHeaders() });
+    assert.equal(get.headers.get('access-control-allow-origin'), null);
 
-    const reload = await fetch(base, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: cookie } });
-    assert.equal(reload.status, 200);
-  });
-});
-
-test('GET / rejects a mismatched cookie with no other credential', async () => {
-  await withServer({}, async (base) => {
-    const res = await fetch(base, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: 'controlToken=wrong' } });
-    assert.equal(res.status, 403);
-  });
-});
-
-test('the cookie is not accepted on /api/* routes — only GET / accepts it', async () => {
-  await withServer({}, async (base) => {
-    const first = await fetch(`${base}/?token=${TOKEN}`, { headers: { 'Tailscale-User-Login': ALLOWED } });
-    const cookie = first.headers.get('set-cookie').split(';')[0];
-
-    const res = await fetch(`${base}/api/roster`, { headers: { 'Tailscale-User-Login': ALLOWED, Cookie: cookie } });
-    assert.equal(res.status, 403);
+    const post = await fetch(`${base}/api/roster`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ contactId: 'cors-check@s.whatsapp.net' }),
+    });
+    assert.equal(post.headers.get('access-control-allow-origin'), null);
   });
 });
 
@@ -399,7 +367,6 @@ test('close() resolves promptly even with a request in flight', async () => {
     contactDirectory: makeContactDirectory(),
     monitoredContacts: makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]),
     allowedLogin: ALLOWED,
-    controlToken: TOKEN,
   });
   const port = await server.listen(0);
 
