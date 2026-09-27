@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
+import { readUrlState, writeUrlState } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
@@ -15,14 +16,25 @@ interface ActivityRequest {
 }
 
 function App() {
-  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation } = useControlData();
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: null });
+  // Read once at mount, not on every render — the URL is the initial
+  // source of truth for a fresh load/refresh, afterwards state drives the
+  // URL (the effect below), not the other way around.
+  const initialUrlState = useMemo(() => readUrlState(), []);
+  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation } = useControlData(initialUrlState.contactId);
+  const [activityOpen, setActivityOpen] = useState(initialUrlState.activityOpen);
+  const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: initialUrlState.activityContactId });
 
   function openActivity(contactId: string | null = null) {
     setActivityRequest((prev) => ({ seq: prev.seq + 1, contactId }));
     setActivityOpen(true);
   }
+
+  // Keeps the URL in sync with what's on screen so a reload (or a shared
+  // link) reopens the same contact/panel instead of landing back on the
+  // bare list — see lib/urlState.ts.
+  useEffect(() => {
+    writeUrlState({ contactId: selectedId, activityOpen, activityContactId: activityRequest.contactId });
+  }, [selectedId, activityOpen, activityRequest.contactId]);
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
   const selectedEntry = selectedContact ? roster.find((entry) => entry.id === selectedContact.id) : undefined;
