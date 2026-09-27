@@ -52,7 +52,7 @@ function App() {
             </div>
             {error && <ErrorBanner error={error} onDismiss={dismissError} />}
           </div>
-          <div className="min-h-0 flex-1 px-4 pb-8 lg:px-8">
+          <div className="min-h-0 flex-1 px-4 lg:px-8">
             <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={setSelectedId} onToggle={setMonitored} />
           </div>
         </section>
