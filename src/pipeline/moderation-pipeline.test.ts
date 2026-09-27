@@ -107,7 +107,7 @@ test('warning generation failing open falls back to the static WARNING_MESSAGE, 
   assert.equal(warningRow.message, 'TEST_FALLBACK_WARNING');
 });
 
-test('deleteForMe/sendWarning throwing logs action_failed and does not record a strike', async () => {
+test('deleteForMe throwing logs delete_failed and does not record a strike', async () => {
   const contact = 'dave@s.whatsapp.net';
 
   const { strikeCount } = await handleBurst(burst(contact, ['bad message']), {
@@ -122,7 +122,27 @@ test('deleteForMe/sendWarning throwing logs action_failed and does not record a 
 
   assert.equal(strikeCount, 0);
   const [entry] = getAuditLog(contact);
-  assert.equal(entry.action, 'action_failed');
+  assert.equal(entry.action, 'delete_failed');
+});
+
+test('sendWarning throwing (deleteForMe succeeding) logs warn_failed distinctly, not a generic action_failed', async () => {
+  const contact = 'dave2@s.whatsapp.net';
+  const deleted = [];
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad message']), {
+    deleteForMe: async (jid) => deleted.push(jid),
+    sendWarning: async () => {
+      throw new Error('sendMessage failed');
+    },
+    block: async () => {},
+    classify: okFlag,
+    generateWarning: okWarning,
+  });
+
+  assert.deepEqual(deleted, [contact]);
+  assert.equal(strikeCount, 0);
+  const [entry] = getAuditLog(contact);
+  assert.equal(entry.action, 'warn_failed');
 });
 
 test('crossing STRIKE_THRESHOLD triggers block()', async () => {

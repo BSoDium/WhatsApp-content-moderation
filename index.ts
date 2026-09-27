@@ -67,6 +67,7 @@ const buffer = createMessageBuffer<IncomingMessage>(async (contactId, messages) 
         deleteForMe: (jid, key, timestamp) => deleteForMe(currentSocket(), jid, key, timestamp),
         sendWarning: (jid, text) => sendWarning(currentSocket(), jid, text),
         block: (jid) => block(currentSocket(), jid),
+        isPaused: (jid) => manualOverride.isPaused(jid),
       },
     );
     logger.info({ contactId, strikeCount }, 'burst handled');

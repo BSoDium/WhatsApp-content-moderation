@@ -5,6 +5,7 @@ import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog } from '../store/audit-log.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
 import { isEscalationEnabled } from '../store/monitored-contacts.ts';
+import { emitControlEvent } from '../store/events.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from '../types.ts';
 
@@ -19,6 +20,12 @@ interface BurstActions {
   block: (contactId: string) => Promise<unknown>;
   classify?: typeof classifyMessage;
   generateWarning?: typeof generateWarningMessage;
+  // Re-checked before acting on every message, not just once when the
+  // message was first buffered (index.ts) — a burst can sit buffered for
+  // several seconds, long enough for an operator's 'pause' override to land
+  // mid-burst. Defaults to "never paused" so existing callers/tests that
+  // don't pass it are unaffected.
+  isPaused?: (contactId: string) => boolean;
 }
 
 type ConversationMessage = { from: 'me' | 'them'; text: string };
@@ -152,6 +159,7 @@ async function maybeBlockContact(contactId: string, strikeCount: number, block: 
     await block(contactId);
     blockedOnWhatsApp = true;
     createBlock(contactId, unblockAt);
+    emitControlEvent('roster');
     logger.info({ contactId, strikeCount, unblockAt }, 'contact blocked');
     return true;
   } catch (err) {
@@ -166,13 +174,18 @@ async function maybeBlockContact(contactId: string, strikeCount: number, block: 
 
 async function runBurst(
   { contactId, messages }: Burst,
-  { deleteForMe, sendWarning, block, classify = classifyMessage, generateWarning = generateWarningMessage }: BurstActions,
+  { deleteForMe, sendWarning, block, classify = classifyMessage, generateWarning = generateWarningMessage, isPaused = () => false }: BurstActions,
 ): Promise<{ strikeCount: number }> {
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
   let isBlocked = false;
 
   for (const { text, key, timestamp } of messages) {
+    if (isPaused(contactId)) {
+      logger.info({ contactId }, 'moderation paused; message left unclassified and unactioned');
+      continue;
+    }
+
     const classification = await classify({ message: text, history });
     history.push({ from: 'them', text });
 
@@ -205,11 +218,30 @@ async function runBurst(
     }
     const warningText = warningResult.ok ? warningResult.text : FALLBACK_WARNING_MESSAGE;
 
-    try {
-      await Promise.all([deleteForMe(contactId, key, timestamp), sendWarning(contactId, warningText)]);
-    } catch (err) {
-      logger.error({ contactId, error: err instanceof Error ? err.message : String(err) }, 'deleteForMe/sendWarning failed');
-      logMessage({ contactId, direction: 'them', message: text, classification, action: 'action_failed' });
+    const [deleteOutcome, warnOutcome] = await Promise.allSettled([
+      deleteForMe(contactId, key, timestamp),
+      sendWarning(contactId, warningText),
+    ]);
+    if (deleteOutcome.status === 'rejected' || warnOutcome.status === 'rejected') {
+      // allSettled (not all) so one call's rejection never hides whether the
+      // other one actually went through — the two log distinctly ('the
+      // message was never deleted' vs. 'deleted, but the contact was never
+      // told') instead of a single ambiguous 'action_failed' either way.
+      logger.error(
+        {
+          contactId,
+          deleteError: deleteOutcome.status === 'rejected' ? String(deleteOutcome.reason) : undefined,
+          warnError: warnOutcome.status === 'rejected' ? String(warnOutcome.reason) : undefined,
+        },
+        'deleteForMe/sendWarning failed',
+      );
+      logMessage({
+        contactId,
+        direction: 'them',
+        message: text,
+        classification,
+        action: deleteOutcome.status === 'rejected' ? 'delete_failed' : 'warn_failed',
+      });
       continue;
     }
 
