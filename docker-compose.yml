@@ -1,14 +1,15 @@
 services:
   app:
-    build: .
+    # Published by .github/workflows/container.yml on every tagged release —
+    # this default file always runs that, never builds from source. Building
+    # locally (for development) is opt-in: see
+    # docker-compose.override.yml.example.
     image: ghcr.io/bsodium/whatsapp-content-moderation:latest
     restart: always
     # Shares the Debian host loopback so host Tailscale Serve can proxy safely.
     network_mode: host
     env_file:
       - .env
-    environment:
-      OLLAMA_HOST: http://127.0.0.1:11434
     volumes:
       # WhatsApp session keys — see docs/decisions.md "auth_info/ is a
       # credential". Back this directory up; losing it means re-linking.
@@ -16,7 +17,9 @@ services:
       # SQLite audit log / strikes / block records.
       - ./data:/app/data
       # The real moderation policy — gitignored, not baked into the image.
-      # Create it first: cp config/policy.example.md config/policy.md
+      # Create it first: cp config/policy.example.md config/policy.md. Only
+      # read once, to seed the policy on first boot — edit it afterward from
+      # the control app, not this file (see src/classifier/policy.ts).
       - ./config/policy.md:/app/config/policy.md:ro
     depends_on:
       - ollama

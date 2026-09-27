@@ -4,7 +4,10 @@
 
 CONTAINER_UID=1000
 CONTROL_PORT_DEFAULT=4756
-# Must match src/classifier/classifier.ts's own OLLAMA_MODEL default.
+# Must match src/store/settings.ts's own OLLAMA_MODEL manifest default. Only
+# meaningful before first boot (or if the operator never changed it since) —
+# the model is a live setting in the control app's Settings panel from then
+# on, and a shell script has no way to read that DB-backed value.
 DEFAULT_OLLAMA_MODEL="llama3.2:3b"
 
 # No color on a pipe/redirect (docker compose logs, CI) or when NO_COLOR is set
