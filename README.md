@@ -61,6 +61,10 @@ operator-managed roster with a per-contact escalation toggle, added/removed
 through the control app's contact picker and tabs. See "Web control app"
 below and [`docs/decisions.md`](docs/decisions.md#multi-contact-moderation-roster-issue-32).
 
+**Warning messages are now generated per violation, not a fixed string
+(2026-09-27).** `src/classifier/warning-message.ts` — see "Warning messages"
+below.
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -308,6 +312,20 @@ Notes from building this:
 - Fails open: any Ollama error, timeout, or malformed response returns
   `{ ok: false }` rather than a guessed verdict. Callers must never
   delete/block on `ok: false`.
+
+### Warning messages
+
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is
+generated per violation, not a fixed string: it names the actual category/
+reason the message was flagged for and tells the contact plainly that an
+automated moderation system is watching the chat and will block them if it
+continues — this project deliberately doesn't hide that a system, not the
+account owner, is responding. Same fail-open contract as the classifier: any
+Ollama error, timeout, or empty response returns `{ ok: false }`, and
+`moderation-pipeline.ts` falls back to the static `WARNING_MESSAGE` so a
+warning is still sent either way. Configurable independently of the
+classifier's model/host — see `.env.example`'s "Warning message generation"
+section.
 
 ## Reference hardware
 

@@ -854,6 +854,52 @@ and `@fontsource`'s package ships the `.woff2` files straight into the Vite
 build (see the previous paragraph), so there's no per-load dependency on
 Google's CDN either way.
 
+## Warning messages are generated, not a fixed string
+
+The reply sent alongside a delete was originally a single hardcoded
+`WARNING_MESSAGE` string, sent verbatim for every flagged message regardless
+of what it actually said or how many strikes the contact already had. Two
+problems with that: it can't reference the actual violation (reads as a
+canned auto-reply, not a real consequence), and it says nothing about *why*
+the message disappeared or that a system — not the account owner — is
+watching and will act again.
+
+**Chosen: generate the warning text per violation via the same local Ollama
+model the classifier already uses** (`src/classifier/warning-message.ts`,
+`generateWarningMessage`), given the classification's `category`/`reason`
+and the contact's current strike count, and explicitly instructed to (1) name
+the actual behavior to stop, (2) state plainly that this is an automated
+moderation system, not the account owner personally, and (3) say that
+continuing gets the contact blocked. **Transparency was a deliberate
+requirement, not an oversight to fix later**: the contact is always told a
+system is enforcing this, never left to think they're arguing with a person
+who just isn't replying.
+
+**Same fail-open contract as `classifyMessage`, deliberately not "fail open
+= skip the warning."** An unreachable Ollama, a timeout, or an empty/
+malformed response returns `{ ok: false }`, and `moderation-pipeline.ts`
+falls back to the original static `WARNING_MESSAGE` env var (renamed
+`FALLBACK_WARNING_MESSAGE` internally, same env var name for deployments
+already setting it) rather than sending nothing. The message was already
+deleted by this point — leaving the contact with no explanation at all is a
+worse failure mode than a generic one, so the fallback path exists
+specifically to avoid that, not as an afterthought.
+
+**Sanitized before sending, not trusted verbatim.** A small local model asked
+for "a short message" still sometimes wraps it in quotes, adds a preamble, or
+rambles past a couple of sentences — `sanitize()` strips wrapping quotes,
+collapses whitespace/newlines to a single line, and hard-truncates to
+`WARNING_MAX_LENGTH` (default 320 chars) with a trailing ellipsis. This is a
+safety ceiling on what actually reaches a real person's phone, not a target
+length the prompt is expected to hit exactly.
+
+**Configurable independently of the classifier's model**, via `WARNING_MODEL`
+(falls back to `OLLAMA_MODEL` if unset; both share `OLLAMA_HOST`) and its own
+`WARNING_TIMEOUT_MS`/`WARNING_TEMPERATURE`/`WARNING_MAX_LENGTH` —
+classification and generation are different tasks (structured JSON verdict
+vs. free-text phrasing) and may end up wanting different models even though
+they share a default today.
+
 ## `auth_info/` is a credential
 
 The `auth_info/` folder holds Signal protocol session keys equivalent to
