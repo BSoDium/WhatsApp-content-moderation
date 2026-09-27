@@ -1,5 +1,7 @@
-import { getDb } from './db.ts';
+import { asc, eq, sql } from 'drizzle-orm';
+import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
+import { monitoredContacts } from './schema.ts';
 import type { MonitoredContactRecord } from '../types.ts';
 
 export interface MonitoredContact {
@@ -22,23 +24,27 @@ function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
  * Returns the full roster of monitored contacts, oldest-added first.
  */
 export function listMonitored(): MonitoredContact[] {
-  return (getDb()
-    .prepare('SELECT contact_id, escalation_enabled, added_at, context FROM monitored_contacts ORDER BY added_at ASC, rowid ASC')
-    .all() as unknown as MonitoredContactRecord[])
+  return getOrm()
+    .select()
+    .from(monitoredContacts)
+    .orderBy(asc(monitoredContacts.added_at), asc(sql`rowid`))
+    .all()
     .map(toMonitoredContact);
 }
 
 export function isMonitored(contactId: string): boolean {
-  return getDb().prepare('SELECT 1 FROM monitored_contacts WHERE contact_id = ?').get(contactId) !== undefined;
+  return getOrm()
+    .select({ contact_id: monitoredContacts.contact_id })
+    .from(monitoredContacts)
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .get() !== undefined;
 }
 
 /**
  * @returns {{ contactId: string, escalationEnabled: boolean, addedAt: number, context: string | null } | undefined}
  */
 export function getMonitored(contactId: string): MonitoredContact | undefined {
-  const row = getDb()
-    .prepare('SELECT contact_id, escalation_enabled, added_at, context FROM monitored_contacts WHERE contact_id = ?')
-    .get(contactId) as MonitoredContactRecord | undefined;
+  const row = getOrm().select().from(monitoredContacts).where(eq(monitoredContacts.contact_id, contactId)).get();
   return row ? toMonitoredContact(row) : undefined;
 }
 
@@ -48,12 +54,11 @@ export function getMonitored(contactId: string): MonitoredContact | undefined {
  * value rather than being reset to the default.
  */
 export function addMonitored(contactId: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO monitored_contacts (contact_id, escalation_enabled, added_at) VALUES (?, 1, ?)
-       ON CONFLICT (contact_id) DO NOTHING`,
-    )
-    .run(contactId, Date.now());
+  getOrm()
+    .insert(monitoredContacts)
+    .values({ contact_id: contactId, escalation_enabled: 1, added_at: Date.now() })
+    .onConflictDoNothing({ target: monitoredContacts.contact_id })
+    .run();
   emitControlEvent('roster');
 }
 
@@ -65,7 +70,7 @@ export function addMonitored(contactId: string): void {
  * @returns {boolean} whether a roster row was actually removed
  */
 export function removeMonitored(contactId: string): boolean {
-  const { changes } = getDb().prepare('DELETE FROM monitored_contacts WHERE contact_id = ?').run(contactId);
+  const { changes } = getOrm().delete(monitoredContacts).where(eq(monitoredContacts.contact_id, contactId)).run();
   if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }
@@ -74,9 +79,11 @@ export function removeMonitored(contactId: string): boolean {
  * @returns {boolean} whether contactId was on the roster to update
  */
 export function setEscalationEnabled(contactId: string, enabled: boolean): boolean {
-  const { changes } = getDb()
-    .prepare('UPDATE monitored_contacts SET escalation_enabled = ? WHERE contact_id = ?')
-    .run(enabled ? 1 : 0, contactId);
+  const { changes } = getOrm()
+    .update(monitoredContacts)
+    .set({ escalation_enabled: enabled ? 1 : 0 })
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .run();
   if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }
@@ -92,9 +99,11 @@ export function setEscalationEnabled(contactId: string, enabled: boolean): boole
  */
 export function setContext(contactId: string, context: string | null): boolean {
   const normalized = context?.trim() ? context.trim() : null;
-  const { changes } = getDb()
-    .prepare('UPDATE monitored_contacts SET context = ? WHERE contact_id = ?')
-    .run(normalized, contactId);
+  const { changes } = getOrm()
+    .update(monitoredContacts)
+    .set({ context: normalized })
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .run();
   if (changes > 0) emitControlEvent('roster');
   return changes > 0;
 }
@@ -107,8 +116,10 @@ export function setContext(contactId: string, context: string | null): boolean {
  * the operator just stopped monitoring.
  */
 export function isEscalationEnabled(contactId: string): boolean {
-  const row = getDb()
-    .prepare('SELECT escalation_enabled FROM monitored_contacts WHERE contact_id = ?')
-    .get(contactId) as Pick<MonitoredContactRecord, 'escalation_enabled'> | undefined;
+  const row = getOrm()
+    .select({ escalation_enabled: monitoredContacts.escalation_enabled })
+    .from(monitoredContacts)
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .get();
   return row ? Boolean(row.escalation_enabled) : false;
 }

@@ -1,13 +1,10 @@
-import { getDb } from './db.ts';
+import { eq } from 'drizzle-orm';
+import { getOrm } from './db.ts';
+import { contacts } from './schema.ts';
 
 export interface PhotoCacheEntry {
   url: string | null;
   fetchedAt: number | null;
-}
-
-interface PhotoCacheRow {
-  photo_url: string | null;
-  photo_fetched_at: number | null;
 }
 
 /**
@@ -16,18 +13,20 @@ interface PhotoCacheRow {
  * looking up arbitrary JIDs the account has never actually heard of.
  */
 export function getPhotoCache(contactId: string): PhotoCacheEntry | undefined {
-  const row = getDb()
-    .prepare('SELECT photo_url, photo_fetched_at FROM contacts WHERE contact_id = ?')
-    .get(contactId) as PhotoCacheRow | undefined;
+  const row = getOrm()
+    .select({ photo_url: contacts.photo_url, photo_fetched_at: contacts.photo_fetched_at })
+    .from(contacts)
+    .where(eq(contacts.contact_id, contactId))
+    .get();
   return row && { url: row.photo_url, fetchedAt: row.photo_fetched_at };
 }
 
 // An UPDATE, never an upsert: a contact folded away or never ingested by
 // the directory must not be resurrected by a late-finishing photo lookup.
 export function setPhotoCache(contactId: string, url: string | null, fetchedAt: number): void {
-  getDb().prepare('UPDATE contacts SET photo_url = ?, photo_fetched_at = ? WHERE contact_id = ?').run(url, fetchedAt, contactId);
+  getOrm().update(contacts).set({ photo_url: url, photo_fetched_at: fetchedAt }).where(eq(contacts.contact_id, contactId)).run();
 }
 
 export function invalidatePhotoCache(contactId: string): void {
-  getDb().prepare('UPDATE contacts SET photo_fetched_at = NULL WHERE contact_id = ?').run(contactId);
+  getOrm().update(contacts).set({ photo_fetched_at: null }).where(eq(contacts.contact_id, contactId)).run();
 }
