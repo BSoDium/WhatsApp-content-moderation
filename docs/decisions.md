@@ -450,6 +450,23 @@ does.
 
 ## Web control app: replacing the header+token with LocalAPI WhoIs (issue #29 revisited)
 
+**Superseded — reverted.** The `whois`-based design below does not work:
+live testing found `tailscale whois` returns `peer not found` for a
+`tailscale serve`-proxied backend connection's loopback address, even
+queried synchronously while the connection was still open, and
+`tailscaled`'s own source confirms why (`ipn/ipnlocal/serve.go` has a
+`TODO(bradfitz): do the RegisterIPPortIdentity and UnregisterIPPortIdentity
+stuff that netstack does` on exactly this proxy path) — the identity
+registration `whois` depends on is implemented for `tsnet`-style apps that
+terminate the tailnet connection themselves, not for `serve`'s
+reverse-proxy-to-a-separate-backend path this app uses. `verifyTailscaleWhoIs`
+would have returned `false` for every request in production: fail-closed as
+designed, so not a security hole, but a completely non-functional control
+app. See "Web control app: back to trusting the header (issue #29, twice
+revisited)" below for what replaced it. Kept here, not deleted, for the
+reasoning trail — including why it looked right from documentation and
+`tsnet` examples alone, and why it needed a live test to catch.
+
 The header+token design above got its first live confirmation: an operator
 finishing the Debian install got a 403 whose log line
 (`rejected: missing or invalid control token`) showed the
@@ -545,6 +562,49 @@ API over its Unix socket, which requires no new process and no language
 boundary. It also would have meant giving up `tailscale serve`'s TLS
 termination and MagicDNS hostname, both of which this app gets for free
 today.
+
+**This alternative is what the rejection above actually should have been
+weighed against — not "an app with a shared secret" but "an app trusting the
+header alone."** Rejected here for the same reason: no maintained Node.js
+`tsnet`, and a Go helper process is a bigger lift than this project's stack
+currently justifies. It remains the correct fix if the single-operator
+assumption in the next entry ever stops holding.
+
+## Web control app: back to trusting the header (issue #29, twice revisited)
+
+The `whois` design above was verified live before being trusted further —
+consistent with this project's own practice of not shipping an unverified
+assumption about `tailscale serve`'s behavior a second time. The result was
+conclusive: on a real tailnet, hitting a real `tailscale serve` rule
+proxying to a plain HTTP server, `tailscale whois <the observed loopback
+address:port>` returned `peer not found`, both immediately after the
+request and while the connection was still being handled. `tailscaled`'s
+own source explains why (quoted in the entry above) — this is a genuine
+capability gap in `tailscale serve`'s proxy path, not a permissions issue,
+a macOS-vs-Linux difference, or a mistake in how the address was formed.
+
+**Chosen: trust `Tailscale-User-Login` directly, drop `whois` entirely,
+keep everything else about the redesign.** `src/web/tailscale-auth.ts`
+(deleted in the `whois` change) is restored verbatim — the header-checking
+logic itself was never wrong, only the belief that it could be replaced
+with something strictly stronger while keeping this exact architecture. What
+survives from the `whois` attempt: no `CONTROL_SERVER_TOKEN`, no bootstrap
+link, no cookie, no distinction between a first visit and a later one — all
+of that was correct and doesn't depend on which identity check backs it.
+
+**The trade-off this reintroduces, made explicit rather than mitigated:**
+the loopback bind stops remote access, but any other local process or user
+account on this host can still `fetch()` `127.0.0.1:<port>` and set
+`Tailscale-User-Login` itself — exactly the gap `CONTROL_SERVER_TOKEN`
+existed to close, see "Web control app: Tailscale identity headers" above.
+Asked directly, the operator confirmed they are the only account with shell
+access to this host, which is the condition under which this gap has no
+practical attacker: there's no other local identity for a forged request to
+belong to. **This is a property of the deployment, not the code** — if this
+host ever gets a second local user account or runs software the operator
+doesn't fully trust, this assumption needs revisiting, and the real fix at
+that point is the `tsnet`-based approach noted as a rejected alternative
+above, not a new shared secret bolted back on.
 
 ## Control page styling: three files, two of them unauthenticated
 

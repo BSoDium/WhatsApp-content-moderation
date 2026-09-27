@@ -40,16 +40,20 @@ driven by issue #29's Tailscale-authenticated web app (`src/web/`), not
 WhatsApp chat commands — see "Manual override routines" and "Web control
 app" below.
 
-**Control-app auth redesigned around LocalAPI WhoIs, no shared token
-(2026-09-27).** The original header+token design worked once confirmed live
-(see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)),
+**Control-app auth simplified to the Tailscale identity header alone, no
+token (2026-09-27).** The original header+token design worked once
+confirmed live (see
+[`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)),
 but the mandatory first-visit `?token=...` step was confusing enough in
-practice to redesign: the control app now asks `tailscaled`'s own local API
-who owns each connection instead of trusting a proxy header, so there's no
-token to generate, paste, or bootstrap — see "Web control app" below and
-[`docs/decisions.md`](docs/decisions.md#web-control-app-replacing-the-headertoken-with-localapi-whois-issue-29-revisited).
-**Not yet validated against a live `tailscale serve` + `tailscaled`** — see
-"Web control app"'s own callout.
+practice to look for something with no login step at all. A LocalAPI
+`whois`-based redesign was built and then reverted after live testing showed
+`tailscaled` doesn't track identity for a `tailscale serve`-proxied backend
+connection the way that needed (a confirmed gap in `tailscaled` itself, not
+a config issue — see `docs/decisions.md`). The control app now trusts the
+`Tailscale-User-Login` header alone: no token, no bootstrap link, no cookie,
+and an explicit single-operator-host assumption in place of the token's
+local-forgery defense — see "Web control app" below and
+[`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited).
 
 **Multi-contact roster + redesigned control app built (2026-09-26).** Issue
 #32: `TARGET_CONTACT_JID` is gone — moderated contacts are now an
@@ -86,7 +90,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port, with a fake stand-in for `tailscaled`'s local API — not against a live `tailscale serve`/`tailscaled`, see "Web control app")
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port, with a synthetic `Tailscale-User-Login` header — not against a live `tailscale serve`, see "Web control app")
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -188,21 +192,19 @@ monitored contact never affects another:
 Issues #29 and #32. A small web app hosted by the same process
 (`src/web/`), authenticated via Tailscale identity rather than any
 password/OAuth login or shared secret — see
-[`docs/decisions.md`](docs/decisions.md#web-control-app-replacing-the-headertoken-with-localapi-whois-issue-29-revisited)
-for the full reasoning. On the page (`GET /`) and every `/api/*` route, the
-server asks `tailscaled`'s own local API (`GET
-/localapi/v0/whois?addr=...`) who actually owns the TCP connection the
-request arrived on, and checks that identity's login against a single
-allow-listed login — the same thing `tailscale whois` prints, just called
-over HTTP instead of the CLI. When `tailscale serve` proxies a real tailnet
-request to this app, `tailscaled` itself opens the backend connection and
-knows which tailnet peer it belongs to; a local process on this host
-connecting to the port directly (the thing a shared secret used to guard
-against) gets its own connection `tailscaled` has no record of, so the
-lookup fails closed. There's nothing to generate, paste, or store — a plain
-visit to the tailnet URL just works, every time, for the allow-listed login
-only. `GET /assets/*` (the built frontend's JS/CSS/font bundle) is the only
-unauthenticated route — none of it contains anything secret — see
+[`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited)
+for the full reasoning, including a rejected LocalAPI-`whois` design and why
+it doesn't work for this architecture. On the page (`GET /`) and every
+`/api/*` route, the server checks the `Tailscale-User-Login` header that
+`tailscale serve` sets when proxying a request from the tailnet, against a
+single allow-listed login. **This is deliberately single-factor**, accepted
+for a host where the operator is the only account with shell access to the
+machine: the loopback bind stops remote access, but any *local* process on
+the same host could still set that header directly — see `docs/decisions.md`
+if that assumption doesn't hold for your setup (e.g. a shared or
+multi-user server). `GET /assets/*` (the built frontend's JS/CSS/font
+bundle) is the only unauthenticated route — none of it contains anything
+secret — see
 [`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
 
 This is where contacts actually get moderated: a scrollable list shows
@@ -221,17 +223,13 @@ audit history is kept.
 ```
 WEB_CONTROL_PORT=4756
 ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
-#TAILSCALED_SOCKET=/var/run/tailscale/tailscaled.sock   # default; override only for a non-default tailscaled --socket
 ```
 
 The process refuses to start if `WEB_CONTROL_PORT` is set without
 `ALLOWED_TAILSCALE_LOGIN` — fail closed rather than run unauthenticated or
 with a mistyped port silently disabling the whole thing. The server binds
 to `127.0.0.1` only, on purpose: it must be reachable *only* through
-`tailscale serve`'s local proxy hop, never directly. Docker Compose also
-needs `tailscaled`'s Unix socket bind-mounted into the container (already
-in `docker-compose.yml`) — the LocalAPI call happens over that socket, not
-the network.
+`tailscale serve`'s local proxy hop, never directly.
 
 **Running it**, on the same machine:
 
@@ -260,16 +258,10 @@ a one-off production build; `npm test` runs it automatically first
 (`pretest`), since `control-server.test.js` serves real files out of
 `web/dist/`.
 
-**Not yet validated against a live `tailscale serve` + `tailscaled`.**
-Automated tests (`src/web/control-server.test.ts`,
-`src/web/tailscale-whois-auth.test.ts`) cover the HTTP/auth logic against a
-fake stand-in for `tailscaled`'s local API, but not that a real `tailscaled`
-resolves a `tailscale serve`-proxied connection's ephemeral loopback port
-the way this relies on, or that this host's socket permissions actually let
-the container's UID reach `/var/run/tailscale/tailscaled.sock` — see
-`docs/decisions.md`'s "replacing the header+token with LocalAPI WhoIs" for
-exactly what to check before relying on this. Before trusting this: confirm
-the socket is reachable, then open the page from the allow-listed device and
+**Confirmed live**: the identity header itself has been checked against a
+real `tailscale serve` — `Tailscale-User-Login` matched the operator's
+actual login on a real request. What's still worth re-confirming after any
+change to this auth logic: open the page from the allow-listed device and
 confirm it works, then from a different tailnet device/login and confirm
 you're rejected. A request from any device that isn't on the tailnet
 shouldn't even reach the port at all, since it's bound to loopback.
@@ -419,23 +411,6 @@ until you have reviewed the results. Write your own
 moderation rules in `config/policy.md` before connecting a real account.
 Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` private and
 back up the session and database.
-
-The control app identifies you via `tailscaled`'s local API instead of a
-token, over its Unix socket — already bind-mounted in
-`docker-compose.yml`, but the socket's host permissions must let UID 1000
-connect. Check this before relying on it:
-
-```sh
-ls -l /var/run/tailscale/tailscaled.sock
-curl --unix-socket /var/run/tailscale/tailscaled.sock \
-  'http://local-tailscaled.sock/localapi/v0/whois?addr=127.0.0.1:1'
-```
-
-A permission/connection error (not just a "no such connection" response,
-which is expected for the bogus port above) means UID 1000 can't reach the
-socket yet — see
-[`docs/decisions.md`](docs/decisions.md#web-control-app-replacing-the-headertoken-with-localapi-whois-issue-29-revisited)
-for what to try next before starting the app.
 
 ```sh
 docker compose up -d --build
