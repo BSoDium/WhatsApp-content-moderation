@@ -1,5 +1,6 @@
 import pino from 'pino';
 import { classifyMessage } from '../classifier/classifier.ts';
+import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog } from '../store/audit-log.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
@@ -17,13 +18,17 @@ interface BurstActions {
   sendWarning: (contactId: string, text: string) => Promise<unknown>;
   block: (contactId: string) => Promise<unknown>;
   classify?: typeof classifyMessage;
+  generateWarning?: typeof generateWarningMessage;
 }
 
 type ConversationMessage = { from: 'me' | 'them'; text: string };
 
 const SHADOW_MODE = process.env.SHADOW_MODE === '1';
 const HISTORY_LIMIT = Number(process.env.CLASSIFIER_HISTORY_LIMIT ?? 10);
-const WARNING_MESSAGE =
+// Used only when generateWarningMessage fails open (see its own JSDoc) — the
+// contact still needs to be told their message was removed even when the LLM
+// call itself couldn't produce a contextual one.
+const FALLBACK_WARNING_MESSAGE =
   process.env.WARNING_MESSAGE ?? "That message was removed for violating this chat's policy.";
 // See docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
 const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3);
@@ -60,7 +65,10 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
  * audit-log entries seed classifyMessage's history, and earlier messages in
  * this same burst are folded in as they're processed, so a burst is judged
  * as a conversation rather than message-by-message in isolation (see
- * docs/roadmap.md issue #6).
+ * docs/roadmap.md issue #6). The warning reply text itself comes from
+ * generateWarningMessage — contextual to the actual violation, not a fixed
+ * string — with FALLBACK_WARNING_MESSAGE used verbatim if that generation
+ * fails open; either way a warning is always sent alongside the delete.
  *
  * Fails open per classifyMessage's { ok: false } contract: an
  * unclassifiable message is logged and left alone, never deleted, warned,
@@ -92,6 +100,7 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
  *   sendWarning: (contactId: string, text: string) => Promise<void>,
  *   block: (contactId: string) => Promise<void>,
  *   classify?: typeof classifyMessage,
+ *   generateWarning?: typeof generateWarningMessage,
  * }} actions
  * @returns {Promise<{ strikeCount: number }>}
  */
@@ -157,7 +166,7 @@ async function maybeBlockContact(contactId: string, strikeCount: number, block: 
 
 async function runBurst(
   { contactId, messages }: Burst,
-  { deleteForMe, sendWarning, block, classify = classifyMessage }: BurstActions,
+  { deleteForMe, sendWarning, block, classify = classifyMessage, generateWarning = generateWarningMessage }: BurstActions,
 ): Promise<{ strikeCount: number }> {
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
@@ -184,8 +193,20 @@ async function runBurst(
       continue;
     }
 
+    const warningResult = await generateWarning({
+      message: text,
+      category: classification.category,
+      reason: classification.reason,
+      strikeCount: strikeCount + 1,
+      strikeThreshold: STRIKE_THRESHOLD,
+    });
+    if (!warningResult.ok) {
+      logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
+    }
+    const warningText = warningResult.ok ? warningResult.text : FALLBACK_WARNING_MESSAGE;
+
     try {
-      await Promise.all([deleteForMe(contactId, key, timestamp), sendWarning(contactId, WARNING_MESSAGE)]);
+      await Promise.all([deleteForMe(contactId, key, timestamp), sendWarning(contactId, warningText)]);
     } catch (err) {
       logger.error({ contactId, error: err instanceof Error ? err.message : String(err) }, 'deleteForMe/sendWarning failed');
       logMessage({ contactId, direction: 'them', message: text, classification, action: 'action_failed' });
@@ -197,11 +218,11 @@ async function runBurst(
     logMessage({
       contactId,
       direction: 'me',
-      message: WARNING_MESSAGE,
+      message: warningText,
       classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
       action: 'warning_sent',
     });
-    history.push({ from: 'me', text: WARNING_MESSAGE });
+    history.push({ from: 'me', text: warningText });
 
     if (!isBlocked) {
       isBlocked = await maybeBlockContact(contactId, strikeCount, block);

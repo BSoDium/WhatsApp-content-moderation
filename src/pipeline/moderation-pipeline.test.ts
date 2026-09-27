@@ -6,6 +6,7 @@ import { rmSync } from 'node:fs';
 // module-level `const STRIKE_THRESHOLD = Number(process.env.STRIKE_THRESHOLD ?? 3)` picks this up.
 process.env.DB_PATH = 'data/test-moderation-pipeline.test.sqlite';
 process.env.STRIKE_THRESHOLD = '2';
+process.env.WARNING_MESSAGE = 'TEST_FALLBACK_WARNING';
 
 const { handleBurst } = await import('./moderation-pipeline.ts');
 const { getAuditLog } = await import('../store/audit-log.ts');
@@ -18,10 +19,12 @@ after(() => {
 
 const okPass = async () => ({ ok: true, flagged: false, category: 'none', reason: 'fine' });
 const okFlag = async () => ({ ok: true, flagged: true, category: 'harassment', reason: 'bad' });
+const okWarning = async () => ({ ok: true, text: 'Stop that — this is an automated system and you will be blocked.' });
 const noopActions = {
   deleteForMe: async () => {},
   sendWarning: async () => {},
   block: async () => {},
+  generateWarning: okWarning,
 };
 
 function burst(contactId, texts) {
@@ -60,29 +63,48 @@ test('a passed message decays the strike count and logs action: none', async () 
   assert.equal(entry.action, 'none');
 });
 
-test('a flagged message deletes+warns, records a strike, and logs both the "them" and "me" rows', async () => {
+test('a flagged message deletes+warns with the generated text, records a strike, and logs both the "them" and "me" rows', async () => {
   const contact = 'carol@s.whatsapp.net';
   const deleted = [];
   const warned = [];
 
   const { strikeCount } = await handleBurst(burst(contact, ['bad message']), {
     deleteForMe: async (jid) => deleted.push(jid),
-    sendWarning: async (jid) => warned.push(jid),
+    sendWarning: async (jid, text) => warned.push({ jid, text }),
     block: async () => {},
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(strikeCount, 1);
   assert.deepEqual(deleted, [contact]);
-  assert.deepEqual(warned, [contact]);
+  assert.deepEqual(warned, [{ jid: contact, text: (await okWarning()).text }]);
 
   const log = getAuditLog(contact);
   assert.equal(log.length, 2);
   const [warningRow, flaggedRow] = log; // newest first
   assert.equal(warningRow.direction, 'me');
   assert.equal(warningRow.action, 'warning_sent');
+  assert.equal(warningRow.message, (await okWarning()).text);
   assert.equal(flaggedRow.direction, 'them');
   assert.equal(flaggedRow.action, 'delete+warn');
+});
+
+test('warning generation failing open falls back to the static WARNING_MESSAGE, and the warning is still sent', async () => {
+  const contact = 'judy@s.whatsapp.net';
+  const warned = [];
+
+  await handleBurst(burst(contact, ['bad message']), {
+    deleteForMe: async () => {},
+    sendWarning: async (jid, text) => warned.push(text),
+    block: async () => {},
+    classify: okFlag,
+    generateWarning: async () => ({ ok: false, error: 'Ollama unreachable' }),
+  });
+
+  assert.deepEqual(warned, ['TEST_FALLBACK_WARNING']);
+  const [warningRow] = getAuditLog(contact);
+  assert.equal(warningRow.message, 'TEST_FALLBACK_WARNING');
 });
 
 test('deleteForMe/sendWarning throwing logs action_failed and does not record a strike', async () => {
@@ -95,6 +117,7 @@ test('deleteForMe/sendWarning throwing logs action_failed and does not record a 
     sendWarning: async () => {},
     block: async () => {},
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(strikeCount, 0);
@@ -115,6 +138,7 @@ test('crossing STRIKE_THRESHOLD triggers block()', async () => {
       blockedJid = jid;
     },
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(blockedJid, contact);
@@ -133,6 +157,7 @@ test('a contact with an existing active block is not re-blocked', async () => {
       blockCalled = true;
     },
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(blockCalled, false);
@@ -151,6 +176,7 @@ test('escalation disabled: strikes/delete/warn/audit-log still happen, but block
       blockCalled = true;
     },
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(strikeCount, 2);
@@ -171,6 +197,7 @@ test('a contact with no roster row at all (e.g. removed mid-burst) fails toward 
       blockCalled = true;
     },
     classify: okFlag,
+    generateWarning: okWarning,
   });
 
   assert.equal(strikeCount, 2);
