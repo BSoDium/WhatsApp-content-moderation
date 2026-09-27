@@ -61,6 +61,12 @@ operator-managed roster with a per-contact escalation toggle, added/removed
 through the control app's contact picker and tabs. See "Web control app"
 below and [`docs/decisions.md`](docs/decisions.md#multi-contact-moderation-roster-issue-32).
 
+**Control app gained a moderation activity panel — stats plus a full,
+filterable message explorer (2026-09-27).** See "Activity panel" under
+"Web control app" below and `docs/decisions.md`. The page also now follows
+the OS/browser's light/dark preference automatically (no in-app toggle —
+see `docs/decisions.md` "Auto dark mode, no in-app toggle").
+
 **Not yet ready to run against a real contact.** `config/policy.md` is
 still the example placeholder — see docs/roadmap.md "Before trusting this
 with a real contact" for the remaining checklist (real policy, shadow-mode
@@ -214,9 +220,21 @@ as a bare number), searchable by name or number, each with a switch that
 directly turns moderation on/off. Clicking a contact (not the switch) opens
 a detail panel — strikes, block status, a pause switch, an escalation
 switch (turn off auto-blocking for a contact you can't afford to actually
-block — the rest of moderation still runs), and an unblock button. Turning
-a contact's switch off only stops future moderation — its strike/block/
-audit history is kept.
+block — the rest of moderation still runs), an unblock button, and a
+"Message history" link into the activity panel below. Turning a contact's
+switch off only stops future moderation — its strike/block/audit history is
+kept.
+
+**Activity panel**: the "Activity" button in the header (or a contact's
+"Message history" row) opens a panel with roster-wide stats (monitored
+count, active blocks, messages flagged/deleted, warnings sent, classifier
+errors, most-flagged categories) and a filterable, paginated explorer over
+every logged message — including anything already deleted, since the audit
+log is the only remaining record of it (see `docs/decisions.md` "State &
+audit log via SQLite"). Filter by contact, by action (deleted/warned/
+passed/classifier error/action failed/shadow), or by message text; "Load
+more" pages further back via `GET /api/audit-log`'s cursor, `GET /api/stats`
+backs the numbers at the top.
 
 **Enabling it** (`.env` or environment):
 

@@ -854,6 +854,118 @@ and `@fontsource`'s package ships the `.woff2` files straight into the Vite
 build (see the previous paragraph), so there's no per-load dependency on
 Google's CDN either way.
 
+## Activity panel: stats + a cross-contact message explorer
+
+The control app previously had no way to see moderation activity except by
+opening SQLite directly — no counts, no way to browse what had actually been
+flagged/deleted/warned-about, per-contact or across the whole roster. Added
+a "Moderation activity" sheet (`web/src/components/ActivityPanel.tsx`),
+reachable from a header button (global) or a contact's new "Message
+history" row (pre-filtered to that contact) — backed by two new read-only
+endpoints on `src/web/control-server.ts`: `GET /api/stats` and
+`GET /api/audit-log`.
+
+**`getAuditLogPage` (src/store/audit-log.ts) is a new, separate query from
+`getAuditLog`**, not a generalization of it: `getAuditLog(contactId, limit)`
+is the pipeline's own history-seeding read (always one contact, always
+newest-`created_at`-first, no filters) and stays exactly as it was: changing
+its contract to support the explorer's filters/cursor would touch a
+classifier-history code path for a feature that has nothing to do with it.
+`getAuditLogPage` cursors on `id`, not `created_at` — `id` is monotonic with
+insertion order and never ties the way two rows in the same millisecond
+can, which matters once "load more" is a real button a person clicks
+repeatedly rather than a one-shot fixed limit.
+
+**Stats are a single all-time, all-contact aggregate** (`getAuditLogStats`),
+not scoped by whatever contact the explorer happens to be filtered to —
+opening the panel for one contact still shows the whole roster's numbers at
+the top, with only the table below scoped to that contact. Splitting stats
+into "global" vs "per-contact" views was considered and dropped: the
+roster is small (one operator, a handful of monitored contacts), so a
+second stats mode would be more UI than the data justifies.
+
+**The API maps every snake_case DB column to camelCase**
+(`auditLogEntry()` in control-server.ts), matching every other endpoint's
+existing convention (`escalationEnabled`, `strikeCount`, etc.) — the
+frontend never sees `classification_ok` or `contact_id`.
+
+**`auditLog`/`blocks` are injected dependencies on `createControlServer`,
+not direct store imports**, matching how `monitoredContacts`/
+`contactDirectory`/`manualOverride` already work — `control-server.test.ts`
+exercises the new routes against in-memory fakes, never a real SQLite file,
+consistent with every other route in that suite.
+
+**The sheet is remounted on every open via a `key` that increments each
+time**, not just toggled open/closed — the same pattern
+`ContactDetailPanel` already uses (`key={selectedContact?.id}`) to reset
+local state on a new selection without a dedicated reset effect. This
+matters here specifically because opening the same contact's history twice
+in a row needs to reset scroll position and re-fetch, not just re-show
+stale state; a plain `open`/`initialContactId` prop pair without the key
+would need extra effects to detect "same contact, opened again" and those
+effects are exactly the kind of subtle state-sync bug the key trick avoids
+by construction.
+
+**A real bug caught by browser-testing the built app, not by unit tests:
+rapid filter changes could let an older request's response overwrite a
+newer one.** `useActivityData` fires a fetch on every `contactId`/`action`
+change (search is debounced, see below) — nothing stopped an in-flight
+request from an earlier filter combination from resolving after a later
+one and clobbering its result. Fixed with a monotonic request counter
+(`requestSeq` in `web/src/lib/useActivityData.ts`): every fetch-initiating
+call bumps it and captures its own value, and a response is only applied if
+that value still matches when it resolves. `search` itself is debounced
+(300ms) before it's applied to a fetch at all, purely so fast typing doesn't
+fire a request per keystroke — orthogonal to the ordering bug above, which
+the counter guards regardless of debouncing.
+
+**Another real bug, also only visible by actually rendering the built
+app at a real (short) viewport height, not by reading the JSX: a nested
+`flex-1 min-h-0 overflow-y-auto` region inside another `flex-1 min-h-0
+overflow-y-auto` region does not give the inner region its own scrollbar
+the way it looks like it should.** The original layout gave both the
+sheet's outer content wrapper and the message table's own container this
+pairing, intending "the table scrols internally when there's room, and the
+outer wrapper is a fallback scroll for very short viewports." In practice,
+`min-h-0` on the inner flex item just lets flexbox shrink it to satisfy the
+outer's height before ever triggering the outer's own overflow — on a
+mobile-height viewport this crushed the table down to a sliver (measured at
+79px tall) instead of either region ever scrolling correctly. Fixed by
+removing the inner region's `flex-1`/`min-h-0`/`overflow-y-auto` entirely:
+there is exactly one scroll region now (the sheet's outer content wrapper),
+holding stats, filters, and the full table together — the table's own
+horizontal scroll (from shadcn's `Table` component's built-in
+`overflow-x-auto` wrapper) is unaffected and still handles narrow
+viewports for the 4-column row content. A `sticky` table header was tried
+and dropped for the same reason: `Table`'s wrapper div sets
+`overflow-x-auto`, which per the CSS overflow spec also computes
+`overflow-y` to `auto` (a non-`visible` value on one axis forces the other
+off `visible` too) — that wrapper becomes the nearest containing block for
+`position: sticky`, and since that wrapper itself never scrolls (the real
+scrolling happens on its ancestor), the header would never actually stick.
+Kept simple rather than fighting the framework: no sticky header, one clear
+scroll region.
+
+**Category labels are formatted for display only** (`formatCategory` in
+`web/src/lib/activity.ts` swaps `_` for a space, e.g. `unwanted_contact` ->
+`unwanted contact`) — the classifier's raw snake_case category strings are
+never sent back to the API or altered in the database, only reformatted at
+render time in `StatsCards`/`MessageExplorer`.
+
+## Auto dark mode, no in-app toggle
+
+`shadcn init` had already generated a full `.dark` OKLCH palette in
+`web/src/index.css` (Nova preset default), but nothing ever added the
+`dark` class anything reads — dark mode was unreachable dead CSS. Fixed
+with `web/src/lib/theme.ts`'s `initSystemTheme()`, called once from
+`main.tsx` before the first render: reads
+`matchMedia('(prefers-color-scheme: dark)')` once at startup and again on
+every change, toggling the `dark` class on `<html>`. No settings toggle in
+the UI — this is a personal, single-operator tool, and following the
+OS/browser preference (live, if it changes mid-session) covers the actual
+need without adding a persisted preference or a settings surface to hold
+one.
+
 ## `auth_info/` is a credential
 
 The `auth_info/` folder holds Signal protocol session keys equivalent to
