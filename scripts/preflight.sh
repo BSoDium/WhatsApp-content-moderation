@@ -14,9 +14,9 @@ cd "$REPO_ROOT" || exit 1
 
 FAILURES=0
 MANUAL=0
-pass() { printf '  [ok]   %s\n' "$1"; }
-fail() { printf '  [FAIL] %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
-info() { printf '  [--]   %s\n' "$1"; MANUAL=$((MANUAL + 1)); }
+pass() { printf '  %s[ok]%s   %s\n' "$C_GREEN" "$C_RESET" "$1"; }
+fail() { printf '  %s[FAIL]%s %s\n' "$C_RED" "$C_RESET" "$1"; FAILURES=$((FAILURES + 1)); }
+info() { printf '  %s[--]   %s%s\n' "$C_DIM" "$1" "$C_RESET"; MANUAL=$((MANUAL + 1)); }
 
 if [ ! -f .env ]; then
   fail ".env not found — run ./scripts/setup.sh first"
@@ -103,10 +103,12 @@ if command -v tailscale >/dev/null 2>&1; then
         fail "this host's Tailscale login ('$DETECTED_LOGIN') does not match ALLOWED_TAILSCALE_LOGIN ('$ALLOWED_TAILSCALE_LOGIN') — this is a common cause of a 403 from the control app. Open it from the '$ALLOWED_TAILSCALE_LOGIN' account, or update ALLOWED_TAILSCALE_LOGIN in .env to '$DETECTED_LOGIN' if that's wrong. (Heuristic: assumes the host and your browser share one tailnet account — the real check is the Tailscale-User-Login header the app logs on rejection.)"
       fi
     else
-      info "ALLOWED_TAILSCALE_LOGIN is not set in .env"
+      fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated (set it to '$DETECTED_LOGIN', if that's your own login and not the host's)"
     fi
+  elif [ -z "${ALLOWED_TAILSCALE_LOGIN:-}" ]; then
+    fail "ALLOWED_TAILSCALE_LOGIN is not set in .env — the app refuses to start the control server unauthenticated. $TAILSCALE_LOGIN_HELP"
   else
-    info "could not detect this host's Tailscale login (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — verify ALLOWED_TAILSCALE_LOGIN manually against 'tailscale status' run from your own device, not this host"
+    info "could not verify ALLOWED_TAILSCALE_LOGIN against this host (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — double check it's still correct: $TAILSCALE_LOGIN_HELP"
   fi
 else
   fail "tailscale not found on PATH"
@@ -115,12 +117,12 @@ fi
 echo
 if [ "$FAILURES" -eq 0 ]; then
   if [ "$MANUAL" -eq 0 ]; then
-    echo "All checks passed."
+    printf '%sAll checks passed.%s\n' "$C_GREEN" "$C_RESET"
   else
-    echo "All automated checks passed, but $MANUAL item(s) marked [--] above could not be checked automatically — review them manually before going live."
+    printf '%sAll automated checks passed%s, but %s item(s) marked [--] above could not be checked automatically — review them manually before going live.\n' "$C_GREEN" "$C_RESET" "$MANUAL"
   fi
   exit 0
 else
-  echo "$FAILURES check(s) failed — see [FAIL] lines above."
+  printf '%s%s check(s) failed%s — see [FAIL] lines above.\n' "$C_RED" "$FAILURES" "$C_RESET"
   exit 1
 fi

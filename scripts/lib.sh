@@ -7,8 +7,29 @@ CONTROL_PORT_DEFAULT=4756
 # Must match src/classifier/classifier.ts's own OLLAMA_MODEL default.
 DEFAULT_OLLAMA_MODEL="llama3.2:3b"
 
-log() { printf '\n==> %s\n' "$1"; }
-warn() { printf '\n!! %s\n' "$1" >&2; }
+# No color on a pipe/redirect (docker compose logs, CI) or when NO_COLOR is set
+# (https://no-color.org) — only decorate an interactive terminal.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'
+  C_RESET=$'\033[0m'
+else
+  C_BOLD=''; C_DIM=''; C_GREEN=''; C_YELLOW=''; C_RED=''; C_RESET=''
+fi
+
+# Where to actually find your Tailscale login when this host can't tell us
+# (no jq, or — the common case — this host is Tailscale-tagged: `tailscale
+# status` run *here* then reports the host's own tag, e.g. tag:server, not a
+# human login). Shared by setup.sh and preflight.sh so the instructions stay
+# in sync between them.
+TAILSCALE_LOGIN_HELP="Run 'tailscale status' on a device YOU sign in with (your phone or laptop, not this server) — your login is the third column. Or open https://login.tailscale.com/admin/machines in a browser and check the 'Owner' column for the device you'll use to open the control app. Then add it to .env: ALLOWED_TAILSCALE_LOGIN=you@example.com"
+
+log() { printf '\n%s==> %s%s\n' "$C_BOLD" "$1" "$C_RESET"; }
+warn() { printf '%s!! %s%s\n' "$C_YELLOW" "$1" "$C_RESET" >&2; }
+# A real change just made — the lines worth reading.
+ok() { printf '%s✓%s %s\n' "$C_GREEN" "$C_RESET" "$1"; }
+# Already in the desired state, nothing done — kept quiet on purpose.
+skip() { printf '%s· %s%s\n' "$C_DIM" "$1" "$C_RESET"; }
 
 owner_uid() {
   stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null || echo unknown
