@@ -178,6 +178,72 @@ test('a name-only update never clears an existing lastMessageAt', () => {
   assert.equal(directory.get('alice@s.whatsapp.net').lastMessageAt, 1_700_000_100_000);
 });
 
+test('a Contact carrying both .id (lid) and .phoneNumber reconciles to one row under the phone number', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('contacts.upsert', [{ id: '111@lid', phoneNumber: '15551234567@s.whatsapp.net', name: 'Alain Négrel' }]);
+
+  assert.deepEqual(directory.list().map((c) => c.id), ['15551234567@s.whatsapp.net']);
+  assert.equal(directory.get('15551234567@s.whatsapp.net').name, 'Alain Négrel');
+});
+
+test('a bare lid-only contacts.update folds into the phone-number row once the pairing is already known', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messaging-history.set', { contacts: [{ id: '15551234567@s.whatsapp.net', name: 'Alain Négrel' }] });
+  sock.emit('contacts.upsert', [{ id: '111@lid', phoneNumber: '15551234567@s.whatsapp.net' }]);
+  // A later event addressed purely by lid, with no phoneNumber field at all (the exact shape a bare pushname sync sends).
+  sock.emit('contacts.update', [{ id: '111@lid', notify: 'Négrel' }]);
+
+  assert.deepEqual(directory.list().map((c) => c.id), ['15551234567@s.whatsapp.net']);
+  assert.equal(directory.get('15551234567@s.whatsapp.net').name, 'Alain Négrel');
+});
+
+test('a lid-only contact seen before its phone-number pairing is learned merges once the pairing arrives, in either order', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  // The lid-addressed pushname arrives first, with no pairing known yet.
+  sock.emit('contacts.update', [{ id: '222@lid', notify: 'Négrel' }]);
+  assert.deepEqual(directory.list().map((c) => c.id), ['222@lid']);
+
+  // The full address-book sync (or a later contacts.upsert) reveals the pairing.
+  sock.emit('contacts.upsert', [{ id: '222@lid', phoneNumber: '15559876543@s.whatsapp.net', name: 'Alain Négrel' }]);
+
+  assert.deepEqual(directory.list().map((c) => c.id), ['15559876543@s.whatsapp.net']);
+  assert.equal(directory.get('15559876543@s.whatsapp.net').name, 'Alain Négrel');
+});
+
+test('a message with remoteJidAlt reconciles a lid-addressed chat to its phone-number contact', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('messaging-history.set', { contacts: [{ id: '15551234567@s.whatsapp.net', name: 'Alice' }] });
+  sock.emit('messages.upsert', {
+    messages: [{ key: { remoteJid: '333@lid', remoteJidAlt: '15551234567@s.whatsapp.net' }, messageTimestamp: 1_700_000_500 }],
+    type: 'notify',
+  });
+
+  assert.deepEqual(directory.list().map((c) => c.id), ['15551234567@s.whatsapp.net']);
+  assert.equal(directory.get('15551234567@s.whatsapp.net').lastMessageAt, 1_700_000_500_000);
+});
+
+test('a lid contact with no phone-number pairing known yet stays as its own row instead of being lost', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+
+  sock.emit('contacts.update', [{ id: '444@lid', notify: 'Unpaired' }]);
+
+  assert.equal(directory.get('444@lid').name, 'Unpaired');
+});
+
 test('contacts persist across separate createContactDirectory() instances (i.e. across restarts)', () => {
   const first = createContactDirectory();
   const sock = fakeSock();
