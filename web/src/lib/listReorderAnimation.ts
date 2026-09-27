@@ -2,6 +2,14 @@
 // export (only its framework subpaths, e.g. ./react, do), so this shape
 // can't be imported from the package itself under this project's module
 // resolution — copied from its index.d.ts, which does document it publicly.
+//
+// Its index.d.ts names these params (newCoordinates, oldCoordinates), but its
+// actual index.mjs calls a 'remain' plugin as
+// `plugin(el, "remain", oldCoords, newCoords)` — the reverse order. Named
+// correctly here to match the real call, not the published (wrong) type —
+// getting this backwards inverts every reorder's translate direction, which
+// is exactly what made a pinned contact appear to move away first before
+// snapping in from the wrong side.
 interface AutoAnimateCoordinates {
   top: number;
   left: number;
@@ -11,8 +19,8 @@ interface AutoAnimateCoordinates {
 type AutoAnimationPlugin = (
   el: Element,
   action: 'add' | 'remove' | 'remain',
-  newCoordinates?: AutoAnimateCoordinates,
   oldCoordinates?: AutoAnimateCoordinates,
+  newCoordinates?: AutoAnimateCoordinates,
 ) => KeyframeEffect;
 
 const DURATION_MS = 250;
@@ -34,7 +42,7 @@ function prefersReducedMotion(): boolean {
 // this list relies on to show a newly-moderated contact moving to the top —
 // is reimplemented here too, matching auto-animate's own default (a plain
 // translate, no scaling) rather than losing it.
-export const fadeAndSlide: AutoAnimationPlugin = (el, action, newCoords, oldCoords) => {
+export const fadeAndSlide: AutoAnimationPlugin = (el, action, oldCoords, newCoords) => {
   const duration = prefersReducedMotion() ? 0 : DURATION_MS;
   if (action === 'add') {
     return new KeyframeEffect(el, [{ opacity: 0 }, { opacity: 1 }], { duration, easing: 'ease-in' });
