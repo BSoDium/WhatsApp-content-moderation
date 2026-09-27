@@ -25,6 +25,14 @@ export function getActiveBlock(contactId: string): BlockRecord | undefined {
 }
 
 /**
+ * Returns how many contacts are currently blocked, for the control app's
+ * activity stats panel.
+ */
+export function countActiveBlocks(): number {
+  return (getDb().prepare('SELECT COUNT(*) AS n FROM blocks WHERE unblocked_at IS NULL').get() as { n: number }).n;
+}
+
+/**
  * Returns every active block whose `unblock_at` has passed, for the
  * jittered unblock scheduler (docs/roadmap.md issue #8) to act on.
  */

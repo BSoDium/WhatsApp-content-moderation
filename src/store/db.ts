@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS audit_log_contact_idx
   ON audit_log (contact_id, created_at);
 
+CREATE INDEX IF NOT EXISTS audit_log_contact_cursor_idx
+  ON audit_log (contact_id, id);
+
 CREATE TABLE IF NOT EXISTS monitored_contacts (
   contact_id TEXT PRIMARY KEY,
   escalation_enabled INTEGER NOT NULL DEFAULT 1,

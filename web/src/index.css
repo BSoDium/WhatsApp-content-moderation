@@ -128,3 +128,17 @@
     @apply font-sans;
     }
 }
+
+/* Radix/tw-animate-css animations and this app's own slide/fade transitions
+   (App.tsx's detail panel) aren't opted out of prefers-reduced-motion on
+   their own — this is the one place that turns all of them off at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

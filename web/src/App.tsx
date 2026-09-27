@@ -1,12 +1,28 @@
+import { useState } from 'react';
+import { Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
 import { ContactDetailPanel } from '@/components/ContactDetailPanel';
+import { ActivityPanel } from '@/components/ActivityPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
+
+interface ActivityRequest {
+  seq: number;
+  contactId: string | null;
+}
 
 function App() {
   const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation } = useControlData();
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityRequest, setActivityRequest] = useState<ActivityRequest>({ seq: 0, contactId: null });
+
+  function openActivity(contactId: string | null = null) {
+    setActivityRequest((prev) => ({ seq: prev.seq + 1, contactId }));
+    setActivityOpen(true);
+  }
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
   const selectedEntry = selectedContact ? roster.find((entry) => entry.id === selectedContact.id) : undefined;
@@ -24,8 +40,16 @@ function App() {
           )}
         >
           <div className="flex-none px-4 pt-4 pb-4 lg:px-8 lg:pt-20">
-            <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
-            <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
+                <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => openActivity(null)} className="mt-1 shrink-0">
+                <Activity data-icon="inline-start" />
+                Activity
+              </Button>
+            </div>
             {error && <ErrorBanner error={error} onDismiss={dismissError} />}
           </div>
           <div className="min-h-0 flex-1 px-4 pb-8 lg:px-8">
@@ -51,8 +75,11 @@ function App() {
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}
             onSetEscalation={setEscalation}
+            onViewHistory={(contactId) => openActivity(contactId)}
           />
         </section>
+
+        <ActivityPanel key={activityRequest.seq} open={activityOpen} onOpenChange={setActivityOpen} initialContactId={activityRequest.contactId} contacts={contacts} />
       </div>
     </TooltipProvider>
   );

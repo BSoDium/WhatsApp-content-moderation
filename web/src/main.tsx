@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { initSystemTheme } from './lib/theme.ts'
 import App from './App.tsx'
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Root element was not found');
+
+initSystemTheme();
 
 createRoot(rootElement).render(
   <StrictMode>
