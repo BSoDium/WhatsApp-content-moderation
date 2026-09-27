@@ -17,8 +17,12 @@ interface ContactRowProps {
 
 export function ContactRow({ contact, monitored, selected, onSelect, onToggle }: ContactRowProps) {
   const [pending, setPending] = useState(false);
-  const selfLocked = contact.isSelf && !contact.allowSelf;
-  const label = selfLocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
+  // Only blocks turning it ON: if it's already monitored (e.g. added while
+  // TEST_ALLOW_SELF=1, then the env var got turned back off), the operator
+  // must still be able to turn it back off — locking that too would strand
+  // them with a switch they can see is on but can never touch.
+  const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
+  const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
@@ -47,7 +51,7 @@ export function ContactRow({ contact, monitored, selected, onSelect, onToggle }:
             size="icon"
             aria-label={label}
             aria-pressed={monitored}
-            disabled={pending || selfLocked}
+            disabled={pending || selfBlocked}
             onClick={handleToggle}
           >
             {monitored ? <ShieldCheck /> : <ShieldOff />}
