@@ -113,7 +113,7 @@ if command -v tailscale >/dev/null 2>&1; then
       info "ALLOWED_TAILSCALE_LOGIN is not set in .env"
     fi
   else
-    info "could not detect this host's Tailscale login (install jq for a more reliable check, or verify manually with 'tailscale status')"
+    info "could not detect this host's Tailscale login (needs jq; also doesn't apply if this host is Tailscale-tagged rather than personal-account-owned, e.g. tag:server) — verify ALLOWED_TAILSCALE_LOGIN manually against 'tailscale status' run from your own device, not this host"
   fi
 else
   fail "tailscale not found on PATH"

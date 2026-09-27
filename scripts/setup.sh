@@ -87,7 +87,7 @@ if ! grep -qE '^ALLOWED_TAILSCALE_LOGIN=.+' .env; then
     upsert_env_var ALLOWED_TAILSCALE_LOGIN "$DETECTED_LOGIN"
     echo "Detected this host's Tailscale login as '$DETECTED_LOGIN' and set ALLOWED_TAILSCALE_LOGIN — double-check this is the account you'll open the control app from."
   else
-    warn "Could not auto-detect your Tailscale login. Run 'tailscale status' and set ALLOWED_TAILSCALE_LOGIN in .env to the exact login it reports for your account."
+    warn "Could not auto-detect your Tailscale login (needs jq, and only applies to a personal, non-tagged node). Run 'tailscale status' and set ALLOWED_TAILSCALE_LOGIN in .env to the exact login it reports for your own account — not the host's, if this host is Tailscale-tagged (e.g. tag:server)."
   fi
 else
   echo "ALLOWED_TAILSCALE_LOGIN already set, leaving it alone"

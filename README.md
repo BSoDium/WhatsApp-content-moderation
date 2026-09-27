@@ -401,10 +401,15 @@ something it couldn't (it never overwrites a value you've already set):
   needed
 - generates `CONTROL_SERVER_TOKEN` with `openssl rand -hex 24` and sets
   `WEB_CONTROL_PORT=4756`
-- auto-detects this host's Tailscale login (via `tailscale status`/`whois`)
-  and fills in `ALLOWED_TAILSCALE_LOGIN` — this assumes a single-user
-  tailnet, where the host and the device you'll open the control app from
-  belong to the same Tailscale account; double-check the value it picks
+- if `jq` is installed and this host isn't Tailscale-tagged, auto-detects
+  its Tailscale login (via `tailscale status --json`) and fills in
+  `ALLOWED_TAILSCALE_LOGIN` — this assumes a single-user tailnet, where the
+  host and the device you'll open the control app from belong to the same
+  Tailscale account; double-check the value it picks. On a Tailscale-tagged
+  host (e.g. `tag:server`, the recommended setup for an always-on server)
+  this deliberately does nothing instead of guessing, since a tagged node's
+  own identity is a machine name, not the operator's login — set
+  `ALLOWED_TAILSCALE_LOGIN` yourself in that case
 
 It won't write your moderation policy for you — edit `config/policy.md`
 before connecting a real account, and leave `SHADOW_MODE=1` (the default)
