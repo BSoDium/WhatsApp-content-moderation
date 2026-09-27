@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
-import { verifyTailscaleWhoIs } from './tailscale-whois-auth.ts';
+import { verifyTailscaleIdentity } from './tailscale-auth.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
@@ -23,8 +23,6 @@ interface ControlServerDependencies {
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
   };
   allowedLogin: string;
-  /** In place of the real tailscaled socket, for tests — see verifyTailscaleWhoIs. */
-  tailscaledSocket?: string;
 }
 
 const logger = pino({ name: 'control-server' });
@@ -229,15 +227,15 @@ async function handleApi(
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: ControlServerDependencies): Promise<void> {
-  const { allowedLogin, tailscaledSocket } = deps;
+  const { allowedLogin } = deps;
   const { pathname } = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
 
   if (req.method === 'GET' && (pathname === '/favicon.svg' || pathname.startsWith('/assets/')) && serveDistFile(res, pathname)) {
     return;
   }
 
-  const authed = await verifyTailscaleWhoIs(req.socket.remoteAddress ?? '', req.socket.remotePort ?? 0, allowedLogin, { socketPath: tailscaledSocket });
-  if (!authed) {
+  if (!verifyTailscaleIdentity(req, allowedLogin)) {
+    logger.warn({ login: req.headers['tailscale-user-login'] ?? null }, 'rejected: no matching Tailscale identity');
     sendJson(res, 403, { error: 'forbidden' });
     return;
   }
@@ -274,20 +272,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  * src/store/monitored-contacts.ts's roster.
  *
  * Auth is a single check, required on `GET /` and every `/api/*` route —
- * see docs/decisions.md "Web control app: replacing the header+token with
- * LocalAPI WhoIs (issue #29 revisited)": `verifyTailscaleWhoIs` asks
- * tailscaled's local API who owns the actual TCP connection this request
- * arrived on (`req.socket.remoteAddress`/`remotePort`) and compares that
- * identity to `allowedLogin`. When `tailscale serve` proxies a real tailnet
- * request to this app, tailscaled itself opens that backend connection and
- * knows which tailnet peer it belongs to; a locally-forged connection (any
- * other process/user on this host connecting to this port directly — the
- * loopback bind in `listen()` stops only *remote* access) gets its own
- * ephemeral port tailscaled has no record of, so the lookup fails closed.
- * No shared secret is needed or stored.
+ * see docs/decisions.md "Web control app: back to trusting the header
+ * (issue #29, twice revisited)": `verifyTailscaleIdentity` trusts the
+ * `Tailscale-User-Login` header `tailscale serve` sets when proxying a
+ * tailnet request to this app, checked against `allowedLogin`. No shared
+ * secret, no cookie, no bootstrap step — a plain visit to the tailnet URL
+ * just works, every time. **Deliberately single-factor**: an earlier
+ * revision tried closing the local-forgery gap (any other process/user on
+ * this host connecting to this port directly, since the loopback bind in
+ * `listen()` stops only *remote* access) via tailscaled's LocalAPI `whois`,
+ * but that doesn't work for a `tailscale serve`-proxied backend — see the
+ * decisions.md entry for why. Accepted for a single-operator host where
+ * the operator is the only account with shell access to the machine.
  *
  * `GET /assets/*` (the Vite-built frontend's JS/CSS/font bundle) is the sole
- * exception, checked before the identity lookup: none of these files
+ * exception, checked before the identity check: none of these files
  * contain anything secret — see docs/decisions.md "Control page styling"
  * for the full reasoning.
  *
@@ -318,7 +317,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
  *   },
  *   allowedLogin: string,
- *   tailscaledSocket?: string,
  * }} deps
  * @returns {{ listen: (port: number) => Promise<number>, close: () => Promise<void> }}
  */

@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { createServer as createFakeSocketServer } from 'node:http';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { createControlServer } from './control-server.ts';
 
 const DIST_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
@@ -64,62 +61,21 @@ function makeMonitoredContacts(initial = []) {
   };
 }
 
-// A stand-in for tailscaled's local API — see tailscale-whois-auth.test.ts
-// for why a canned response (ignoring the queried `addr`) is enough here:
-// this file's job is to verify control-server.ts wires verifyTailscaleWhoIs
-// into the request pipeline correctly, not to reimplement tailscaled's own
-// per-connection tracking.
-function respondWithLogin(login) {
-  return (req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ UserProfile: { LoginName: login } }));
-  };
-}
-
-async function startFakeTailscaled(handler) {
-  const socketDir = mkdtempSync(join(tmpdir(), 'ts-whois-'));
-  const socketPath = join(socketDir, 'tailscaled.sock');
-  const server = createFakeSocketServer(handler);
-  await new Promise((resolve) => server.listen(socketPath, resolve));
-  return {
-    socketPath,
-    close: () =>
-      new Promise((resolve) => {
-        server.close(() => {
-          rmSync(socketDir, { recursive: true, force: true });
-          resolve();
-        });
-      }),
-  };
-}
-
-async function withServer(
-  {
-    manualOverride = makeOverride(),
-    contactDirectory = makeContactDirectory(),
-    monitoredContacts = makeMonitoredContacts(),
-    whoIs = respondWithLogin(ALLOWED),
-  } = {},
-  run,
-) {
-  const fake = await startFakeTailscaled(whoIs);
-  const server = createControlServer({
-    manualOverride,
-    contactDirectory,
-    monitoredContacts,
-    allowedLogin: ALLOWED,
-    tailscaledSocket: fake.socketPath,
-  });
+async function withServer({ manualOverride = makeOverride(), contactDirectory = makeContactDirectory(), monitoredContacts = makeMonitoredContacts() } = {}, run) {
+  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, allowedLogin: ALLOWED });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts });
   } finally {
     await server.close();
-    await fake.close();
   }
 }
 
-test('GET /assets/* (the built frontend bundle) is served with no auth at all', async () => {
+function authHeaders(extra = {}) {
+  return { 'Tailscale-User-Login': ALLOWED, ...extra };
+}
+
+test('GET /assets/* (the built frontend bundle) is served with no auth headers at all', async () => {
   const assetNames = readdirSync(DIST_ASSETS_DIR);
   const jsFile = assetNames.find((name) => name.endsWith('.js'));
   const cssFile = assetNames.find((name) => name.endsWith('.css'));
@@ -135,38 +91,30 @@ test('GET /assets/* (the built frontend bundle) is served with no auth at all', 
   });
 });
 
-test('rejects a request when whois reports a different login', async () => {
-  await withServer({ whoIs: respondWithLogin('mallory@github') }, async (base) => {
+test('rejects a request with no Tailscale-User-Login header', async () => {
+  await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster`);
     assert.equal(res.status, 403);
   });
 });
 
-test('rejects a request when whois is unreachable (e.g. tailscaled not running or socket not mounted)', async () => {
-  const socketDir = mkdtempSync(join(tmpdir(), 'ts-whois-'));
-  try {
-    const server = createControlServer({
-      manualOverride: makeOverride(),
-      contactDirectory: makeContactDirectory(),
-      monitoredContacts: makeMonitoredContacts(),
-      allowedLogin: ALLOWED,
-      tailscaledSocket: join(socketDir, 'no-such-tailscaled.sock'),
-    });
-    const port = await server.listen(0);
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/roster`);
-      assert.equal(res.status, 403);
-    } finally {
-      await server.close();
-    }
-  } finally {
-    rmSync(socketDir, { recursive: true, force: true });
-  }
+test('rejects a request with a mismatched login', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster`, { headers: authHeaders({ 'Tailscale-User-Login': 'mallory@github' }) });
+    assert.equal(res.status, 403);
+  });
+});
+
+test('rejects an empty Tailscale-User-Login header', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster`, { headers: { 'Tailscale-User-Login': '' } });
+    assert.equal(res.status, 403);
+  });
 });
 
 test('GET / serves the static control page with no query param or cookie needed', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(base);
+    const res = await fetch(base, { headers: authHeaders() });
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type'), /text\/html/);
     assert.match(await res.text(), /<html/i);
@@ -175,19 +123,19 @@ test('GET / serves the static control page with no query param or cookie needed'
 
 test('GET / sets no cookie — identity is re-verified on every request, nothing to persist', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(base);
+    const res = await fetch(base, { headers: authHeaders() });
     assert.equal(res.headers.get('set-cookie'), null);
   });
 });
 
 test('no response ever carries Access-Control-Allow-Origin, so a cross-origin preflight can never succeed', async () => {
   await withServer({}, async (base) => {
-    const get = await fetch(base);
+    const get = await fetch(base, { headers: authHeaders() });
     assert.equal(get.headers.get('access-control-allow-origin'), null);
 
     const post = await fetch(`${base}/api/roster`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ contactId: 'cors-check@s.whatsapp.net' }),
     });
     assert.equal(post.headers.get('access-control-allow-origin'), null);
@@ -202,7 +150,7 @@ test('GET /api/contacts merges the directory with the monitored flag', async () 
   const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
 
   await withServer({ contactDirectory, monitoredContacts }, async (base) => {
-    const res = await fetch(`${base}/api/contacts`);
+    const res = await fetch(`${base}/api/contacts`, { headers: authHeaders() });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.deepEqual(
@@ -220,7 +168,7 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
   const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: false, addedAt: 1 }]);
 
   await withServer({ contactDirectory, monitoredContacts }, async (base) => {
-    const res = await fetch(`${base}/api/roster`);
+    const res = await fetch(`${base}/api/roster`, { headers: authHeaders() });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), [
       { id: 'alice@s.whatsapp.net', name: 'Alice', escalationEnabled: false, paused: false, strikeCount: 2, block: null },
@@ -230,7 +178,7 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
 
 test('POST /api/roster without JSON content-type is rejected (CSRF guard)', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster`, { method: 'POST', body: JSON.stringify({ contactId: 'x' }) });
+    const res = await fetch(`${base}/api/roster`, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ contactId: 'x' }) });
     assert.equal(res.status, 415);
   });
 });
@@ -239,7 +187,7 @@ test('POST /api/roster adds a contact and returns its roster entry', async () =>
   await withServer({}, async (base, { monitoredContacts }) => {
     const res = await fetch(`${base}/api/roster`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ contactId: 'new@s.whatsapp.net' }),
     });
     assert.equal(res.status, 201);
@@ -253,7 +201,7 @@ test('POST /api/roster rejects a group JID', async () => {
   await withServer({}, async (base, { monitoredContacts }) => {
     const res = await fetch(`${base}/api/roster`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ contactId: '1203630xxxx@g.us' }),
     });
     assert.equal(res.status, 400);
@@ -265,7 +213,7 @@ test('POST /api/roster rejects a missing/empty contactId', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({}),
     });
     assert.equal(res.status, 400);
@@ -276,7 +224,7 @@ test('POST /api/roster with malformed JSON returns 400', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: 'not json',
     });
     assert.equal(res.status, 400);
@@ -286,7 +234,10 @@ test('POST /api/roster with malformed JSON returns 400', async () => {
 test('DELETE /api/roster/:contactId removes a monitored contact, decoding the JID', async () => {
   const monitoredContacts = makeMonitoredContacts([{ contactId: 'gone@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
   await withServer({ monitoredContacts }, async (base) => {
-    const res = await fetch(`${base}/api/roster/${encodeURIComponent('gone@s.whatsapp.net')}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('gone@s.whatsapp.net')}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
     assert.equal(res.status, 200);
     assert.equal(monitoredContacts.isMonitored('gone@s.whatsapp.net'), false);
   });
@@ -294,7 +245,10 @@ test('DELETE /api/roster/:contactId removes a monitored contact, decoding the JI
 
 test('DELETE /api/roster/:contactId on an unmonitored contact returns 404', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
     assert.equal(res.status, 404);
   });
 });
@@ -304,7 +258,7 @@ test('POST /api/roster/:contactId/pause|resume|unblock route to the right contac
   await withServer({ monitoredContacts }, async (base, { manualOverride }) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/pause`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
     });
     assert.equal(res.status, 200);
@@ -317,7 +271,10 @@ test('POST /api/roster/:contactId/pause|resume|unblock route to the right contac
 test('POST /api/roster/:contactId/pause without JSON content-type is rejected', async () => {
   const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
   await withServer({ monitoredContacts }, async (base) => {
-    const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/pause`, { method: 'POST' });
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/pause`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
     assert.equal(res.status, 415);
   });
 });
@@ -326,7 +283,7 @@ test('POST /api/roster/:contactId/pause|resume|unblock on an unmonitored contact
   await withServer({}, async (base, { manualOverride }) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/unblock`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
     });
     assert.equal(res.status, 404);
@@ -339,7 +296,7 @@ test('POST /api/roster/:contactId/escalation toggles the flag', async () => {
   await withServer({ monitoredContacts }, async (base) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/escalation`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ enabled: false }),
     });
     assert.equal(res.status, 200);
@@ -351,7 +308,7 @@ test('POST /api/roster/:contactId/escalation rejects a non-boolean enabled', asy
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/escalation`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ enabled: 'yes' }),
     });
     assert.equal(res.status, 400);
@@ -362,7 +319,7 @@ test('POST /api/roster/:contactId/escalation on an unmonitored contact returns 4
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/escalation`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ enabled: false }),
     });
     assert.equal(res.status, 404);
@@ -373,7 +330,7 @@ test('a malformed percent-encoded path segment returns 400, not a 500', async ()
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/roster/%E0%A4%A/pause`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
     });
     assert.equal(res.status, 400);
@@ -382,14 +339,14 @@ test('a malformed percent-encoded path segment returns 400, not a 500', async ()
 
 test('an unknown nested route returns 404', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/api/roster/x/nonsense`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const res = await fetch(`${base}/api/roster/x/nonsense`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }) });
     assert.equal(res.status, 404);
   });
 });
 
 test('an unknown top-level route returns 404', async () => {
   await withServer({}, async (base) => {
-    const res = await fetch(`${base}/nope`);
+    const res = await fetch(`${base}/nope`, { headers: authHeaders() });
     assert.equal(res.status, 404);
   });
 });
@@ -405,19 +362,17 @@ test('close() resolves promptly even with a request in flight', async () => {
       return 'done';
     },
   };
-  const fake = await startFakeTailscaled(respondWithLogin(ALLOWED));
   const server = createControlServer({
     manualOverride,
     contactDirectory: makeContactDirectory(),
     monitoredContacts: makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]),
     allowedLogin: ALLOWED,
-    tailscaledSocket: fake.socketPath,
   });
   const port = await server.listen(0);
 
   const inFlight = fetch(`http://127.0.0.1:${port}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/pause`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: '{}',
   }).catch(() => {});
 
@@ -429,5 +384,4 @@ test('close() resolves promptly even with a request in flight', async () => {
 
   releaseCommand();
   await inFlight;
-  await fake.close();
 });
