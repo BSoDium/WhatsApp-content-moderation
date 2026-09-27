@@ -32,22 +32,23 @@ fi
 log "Setting up config files"
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "Created .env from .env.example"
+  ok "created .env"
 else
-  echo ".env already exists, leaving it alone"
+  skip ".env already exists"
 fi
 
 if [ ! -f config/policy.md ]; then
   cp config/policy.example.md config/policy.md
-  echo "Created config/policy.md from the template — fill in your real moderation policy before going live"
+  ok "created config/policy.md — fill in your real moderation policy before going live"
 else
-  echo "config/policy.md already exists, leaving it alone"
+  skip "config/policy.md already exists"
 fi
 
 log "Creating persistent data directories"
 mkdir -p auth_info data
 chmod 600 .env
 
+ALREADY_OWNED=()
 for path in auth_info data config/policy.md; do
   case "$path" in
     config/policy.md) chmod 600 "$path" ;;
@@ -55,36 +56,42 @@ for path in auth_info data config/policy.md; do
   esac
   owner="$(owner_uid "$path")"
   if [ "$owner" = "$CONTAINER_UID" ]; then
-    echo "$path is already owned by UID $CONTAINER_UID, leaving it alone"
+    ALREADY_OWNED+=("$path")
     continue
   fi
   if [ "$(id -u)" -eq 0 ]; then
     chown -R "$CONTAINER_UID:$CONTAINER_UID" "$path"
+    ok "chowned $path to UID $CONTAINER_UID"
   elif command -v sudo >/dev/null 2>&1; then
     echo "The app container runs as UID $CONTAINER_UID — requesting sudo to chown $path"
     sudo chown -R "$CONTAINER_UID:$CONTAINER_UID" "$path"
+    ok "chowned $path to UID $CONTAINER_UID"
   else
     warn "Could not chown $path to UID $CONTAINER_UID (no sudo available). Do this manually before starting the app: sudo chown -R $CONTAINER_UID:$CONTAINER_UID $path"
   fi
 done
+if [ "${#ALREADY_OWNED[@]}" -gt 0 ]; then
+  owned_list="$(printf ', %s' "${ALREADY_OWNED[@]}")"
+  skip "${owned_list#, } already owned by UID $CONTAINER_UID"
+fi
 
 log "Configuring the web control app"
 if ! grep -qE '^[[:space:]]*WEB_CONTROL_PORT=.+' .env; then
   upsert_env_var WEB_CONTROL_PORT "$CONTROL_PORT_DEFAULT"
-  echo "Set WEB_CONTROL_PORT=$CONTROL_PORT_DEFAULT"
+  ok "set WEB_CONTROL_PORT=$CONTROL_PORT_DEFAULT"
 else
-  echo "WEB_CONTROL_PORT already set, leaving it alone"
+  skip "WEB_CONTROL_PORT already set"
 fi
 
 if ! grep -qE '^[[:space:]]*ALLOWED_TAILSCALE_LOGIN=.+' .env; then
   if DETECTED_LOGIN="$(detect_tailscale_login)"; then
     upsert_env_var ALLOWED_TAILSCALE_LOGIN "$DETECTED_LOGIN"
-    echo "Detected this host's Tailscale login as '$DETECTED_LOGIN' and set ALLOWED_TAILSCALE_LOGIN — double-check this is the account you'll open the control app from."
+    ok "detected Tailscale login '$DETECTED_LOGIN' and set ALLOWED_TAILSCALE_LOGIN — double-check this is the account you'll open the control app from"
   else
     warn "Could not auto-detect your Tailscale login (needs jq, and only applies to a personal, non-tagged node). Run 'tailscale status' and set ALLOWED_TAILSCALE_LOGIN in .env to the exact login it reports for your own account — not the host's, if this host is Tailscale-tagged (e.g. tag:server)."
   fi
 else
-  echo "ALLOWED_TAILSCALE_LOGIN already set, leaving it alone"
+  skip "ALLOWED_TAILSCALE_LOGIN already set"
 fi
 
 CONFIGURED_PORT="$(read_env_var WEB_CONTROL_PORT)"
@@ -93,16 +100,19 @@ CONFIGURED_MODEL="$(read_env_var OLLAMA_MODEL)"
 CONFIGURED_MODEL="${CONFIGURED_MODEL:-$DEFAULT_OLLAMA_MODEL}"
 
 log "Setup complete"
+printf '%sBefore starting:%s\n' "$C_YELLOW" "$C_RESET"
 cat <<EOF
-Before starting:
   - Review config/policy.md — it still has placeholder text.
-  - SHADOW_MODE defaults to 1 in .env: the app will classify and log but
-    take no action until you flip it to 0.
+  - SHADOW_MODE=1 by default: classifies and logs, takes no action.
 
 Next steps:
+EOF
+printf '%s' "$C_BOLD"
+cat <<EOF
   docker compose up -d --build
   docker compose exec ollama ollama pull $CONFIGURED_MODEL
   docker compose logs -f app        # scan the QR code shown here
-  ./scripts/preflight.sh            # verify everything before pairing/going live
+  ./scripts/preflight.sh            # verify before pairing/going live
   sudo tailscale serve --bg $CONFIGURED_PORT
 EOF
+printf '%s\n' "$C_RESET"

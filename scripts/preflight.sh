@@ -14,9 +14,9 @@ cd "$REPO_ROOT" || exit 1
 
 FAILURES=0
 MANUAL=0
-pass() { printf '  [ok]   %s\n' "$1"; }
-fail() { printf '  [FAIL] %s\n' "$1"; FAILURES=$((FAILURES + 1)); }
-info() { printf '  [--]   %s\n' "$1"; MANUAL=$((MANUAL + 1)); }
+pass() { printf '  %s[ok]%s   %s\n' "$C_GREEN" "$C_RESET" "$1"; }
+fail() { printf '  %s[FAIL]%s %s\n' "$C_RED" "$C_RESET" "$1"; FAILURES=$((FAILURES + 1)); }
+info() { printf '  %s[--]   %s%s\n' "$C_DIM" "$1" "$C_RESET"; MANUAL=$((MANUAL + 1)); }
 
 if [ ! -f .env ]; then
   fail ".env not found — run ./scripts/setup.sh first"
@@ -115,12 +115,12 @@ fi
 echo
 if [ "$FAILURES" -eq 0 ]; then
   if [ "$MANUAL" -eq 0 ]; then
-    echo "All checks passed."
+    printf '%sAll checks passed.%s\n' "$C_GREEN" "$C_RESET"
   else
-    echo "All automated checks passed, but $MANUAL item(s) marked [--] above could not be checked automatically — review them manually before going live."
+    printf '%sAll automated checks passed%s, but %s item(s) marked [--] above could not be checked automatically — review them manually before going live.\n' "$C_GREEN" "$C_RESET" "$MANUAL"
   fi
   exit 0
 else
-  echo "$FAILURES check(s) failed — see [FAIL] lines above."
+  printf '%s%s check(s) failed%s — see [FAIL] lines above.\n' "$C_RED" "$FAILURES" "$C_RESET"
   exit 1
 fi
