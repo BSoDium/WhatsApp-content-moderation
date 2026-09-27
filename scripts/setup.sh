@@ -18,7 +18,6 @@ require_cmd() {
 
 log "Checking prerequisites"
 require_cmd docker
-require_cmd openssl
 if ! docker compose version >/dev/null 2>&1; then
   warn "'docker compose' (the Compose v2 plugin) is required but not found."
   exit 1
@@ -70,14 +69,6 @@ for path in auth_info data config/policy.md; do
 done
 
 log "Configuring the web control app"
-if ! grep -qE '^[[:space:]]*CONTROL_SERVER_TOKEN=.+' .env; then
-  TOKEN="$(openssl rand -hex 24)"
-  upsert_env_var CONTROL_SERVER_TOKEN "$TOKEN"
-  echo "Generated a new CONTROL_SERVER_TOKEN"
-else
-  echo "CONTROL_SERVER_TOKEN already set, leaving it alone"
-fi
-
 if ! grep -qE '^[[:space:]]*WEB_CONTROL_PORT=.+' .env; then
   upsert_env_var WEB_CONTROL_PORT "$CONTROL_PORT_DEFAULT"
   echo "Set WEB_CONTROL_PORT=$CONTROL_PORT_DEFAULT"

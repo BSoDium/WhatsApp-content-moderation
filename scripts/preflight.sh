@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Read-only checklist that verifies Compose, the model, bind-mount
 # permissions, the loopback port, and Tailscale Serve before you pair
-# WhatsApp or open the control app. Never prints CONTROL_SERVER_TOKEN.
+# WhatsApp or open the control app.
 #
 # Intentionally no `set -e`: every check should run and report, even if an
 # earlier one fails.
@@ -25,7 +25,6 @@ PORT="$(read_env_var WEB_CONTROL_PORT)"
 PORT="${PORT:-$CONTROL_PORT_DEFAULT}"
 MODEL="$(read_env_var OLLAMA_MODEL)"
 MODEL="${MODEL:-$DEFAULT_OLLAMA_MODEL}"
-CONTROL_SERVER_TOKEN="$(read_env_var CONTROL_SERVER_TOKEN)"
 ALLOWED_TAILSCALE_LOGIN="$(read_env_var ALLOWED_TAILSCALE_LOGIN)"
 
 log "Docker"
@@ -85,13 +84,6 @@ if command -v curl >/dev/null 2>&1; then
   fi
 else
   info "curl not found, skipping port check"
-fi
-
-log "Control token"
-if [ -n "${CONTROL_SERVER_TOKEN:-}" ]; then
-  pass "CONTROL_SERVER_TOKEN is set (value not shown)"
-else
-  fail "CONTROL_SERVER_TOKEN is not set in .env"
 fi
 
 log "Tailscale Serve"

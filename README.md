@@ -38,8 +38,22 @@ auto-unblock — see the PR #21 history for detail, not repeated here.
 pause/status/unblock routines (`src/override/manual-override.ts`) are
 driven by issue #29's Tailscale-authenticated web app (`src/web/`), not
 WhatsApp chat commands — see "Manual override routines" and "Web control
-app" below. Not yet validated against a live `tailscale serve` — see "Web
-control app"'s own callout.
+app" below.
+
+**Control-app auth simplified to the Tailscale identity header alone, no
+token (2026-09-27).** The original header+token design worked once
+confirmed live (see
+[`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)),
+but the mandatory first-visit `?token=...` step was confusing enough in
+practice to look for something with no login step at all. A LocalAPI
+`whois`-based redesign was built and then reverted after live testing showed
+`tailscaled` doesn't track identity for a `tailscale serve`-proxied backend
+connection the way that needed (a confirmed gap in `tailscaled` itself, not
+a config issue — see `docs/decisions.md`). The control app now trusts the
+`Tailscale-User-Login` header alone: no token, no bootstrap link, no cookie,
+and an explicit single-operator-host assumption in place of the token's
+local-forgery defense — see "Web control app" below and
+[`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited).
 
 **Multi-contact roster + redesigned control app built (2026-09-26).** Issue
 #32: `TARGET_CONTACT_JID` is gone — moderated contacts are now an
@@ -60,7 +74,7 @@ Not yet run against a real account — see issue #15. Requires `config/policy.md
 
 ```
 npm install
-WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com CONTROL_SERVER_TOKEN=... npm start
+WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com npm start
 ```
 
 The backend uses Node 24's built-in TypeScript stripping at runtime. Run
@@ -76,7 +90,7 @@ Your own "Message yourself" chat isn't always addressed by your phone-number JID
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port — not against a live `tailscale serve`, see "Web control app")
+- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port, with a synthetic `Tailscale-User-Login` header — not against a live `tailscale serve`, see "Web control app")
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
 - **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
@@ -177,16 +191,20 @@ monitored contact never affects another:
 
 Issues #29 and #32. A small web app hosted by the same process
 (`src/web/`), authenticated via Tailscale identity rather than any
-password/OAuth login — see [`docs/decisions.md`](docs/decisions.md#web-control-app-tailscale-identity-headers-issue-29)
-for the full reasoning. Two factors, both required on the page (`GET /`)
-and every `/api/*` route: the `Tailscale-User-Login` header `tailscale
-serve` sets when proxying a request from the tailnet, checked against a
-single allow-listed login; and a `CONTROL_SERVER_TOKEN` shared secret,
-because the header alone isn't proof a request actually came through
-`tailscale serve` rather than some other local process on the same machine
-setting it directly. `GET /assets/*` (the built frontend's JS/CSS/font
-bundle) is the only unauthenticated route — none of it contains a secret,
-and a stylesheet/script tag can't attach the token header anyway — see
+password/OAuth login or shared secret — see
+[`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited)
+for the full reasoning, including a rejected LocalAPI-`whois` design and why
+it doesn't work for this architecture. On the page (`GET /`) and every
+`/api/*` route, the server checks the `Tailscale-User-Login` header that
+`tailscale serve` sets when proxying a request from the tailnet, against a
+single allow-listed login. **This is deliberately single-factor**, accepted
+for a host where the operator is the only account with shell access to the
+machine: the loopback bind stops remote access, but any *local* process on
+the same host could still set that header directly — see `docs/decisions.md`
+if that assumption doesn't hold for your setup (e.g. a shared or
+multi-user server). `GET /assets/*` (the built frontend's JS/CSS/font
+bundle) is the only unauthenticated route — none of it contains anything
+secret — see
 [`docs/decisions.md`](docs/decisions.md#control-page-styling-three-files-two-of-them-unauthenticated).
 
 This is where contacts actually get moderated: a scrollable list shows
@@ -205,13 +223,12 @@ audit history is kept.
 ```
 WEB_CONTROL_PORT=4756
 ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
-CONTROL_SERVER_TOKEN=                     # generate: node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
 ```
 
-The process refuses to start if `WEB_CONTROL_PORT` is set without both of
-the other two — fail closed rather than run unauthenticated or with a
-mistyped port silently disabling the whole thing. The server binds to
-`127.0.0.1` only, on purpose: it must be reachable *only* through
+The process refuses to start if `WEB_CONTROL_PORT` is set without
+`ALLOWED_TAILSCALE_LOGIN` — fail closed rather than run unauthenticated or
+with a mistyped port silently disabling the whole thing. The server binds
+to `127.0.0.1` only, on purpose: it must be reachable *only* through
 `tailscale serve`'s local proxy hop, never directly.
 
 **Running it**, on the same machine:
@@ -220,14 +237,10 @@ mistyped port silently disabling the whole thing. The server binds to
 tailscale serve --bg 4756
 ```
 
-Then open `https://<tailscale-hostname>/?token=<CONTROL_SERVER_TOKEN>` (the
-hostname is whatever `tailscale serve status` prints) from a device signed
-in as the allow-listed login. The page moves the token out of the URL and
-into `localStorage` on load, so it isn't left sitting in the address bar or
-browser history after that first open, and a `controlToken` cookie is also
-set on that same response so a later plain reload (no `?token=...` in the
-URL) still authenticates — see `docs/decisions.md`'s "Web control app:
-Tailscale identity headers" for why only `GET /` accepts that cookie.
+Then open `https://<tailscale-hostname>/` (the hostname is whatever
+`tailscale serve status` prints) from a device signed in as the
+allow-listed login — no query param, no first-visit special case. A visit
+from anyone else gets a 403 on every request, not just the first one.
 
 **Developing the frontend**: the page is a Vite + React + TypeScript app in
 [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) components
@@ -245,19 +258,13 @@ a one-off production build; `npm test` runs it automatically first
 (`pretest`), since `control-server.test.js` serves real files out of
 `web/dist/`.
 
-That link carries the token in cleartext until the page's own script strips
-it, so treat it as a one-time credential: don't paste it into chat, a shared
-note, or shell history you'd keep around. If it ever is, regenerate
-`CONTROL_SERVER_TOKEN` and restart.
-
-**Not yet validated against a live `tailscale serve`.** Automated tests
-(`src/web/control-server.test.ts`, `src/web/tailscale-auth.test.ts`) cover
-the HTTP/auth logic against a synthetic header, but not that
-`tailscale serve` actually sets/sanitizes `Tailscale-User-Login` the way
-this relies on. Before trusting this: open the page from the allow-listed
-device and confirm it works, then from a different tailnet device/login
-and confirm you're rejected. A request from any device that isn't on the
-tailnet shouldn't even reach the port at all, since it's bound to loopback.
+**Confirmed live**: the identity header itself has been checked against a
+real `tailscale serve` — `Tailscale-User-Login` matched the operator's
+actual login on a real request. What's still worth re-confirming after any
+change to this auth logic: open the page from the allow-listed device and
+confirm it works, then from a different tailnet device/login and confirm
+you're rejected. A request from any device that isn't on the tailnet
+shouldn't even reach the port at all, since it's bound to loopback.
 
 ## Classifier
 
@@ -399,8 +406,7 @@ something it couldn't (it never overwrites a value you've already set):
 - creates `auth_info/` and `data/`, and chowns those plus `config/policy.md`
   to UID 1000 (the container's user) via `sudo`, prompting for it only if
   needed
-- generates `CONTROL_SERVER_TOKEN` with `openssl rand -hex 24` and sets
-  `WEB_CONTROL_PORT=4756`
+- sets `WEB_CONTROL_PORT=4756`
 - if `jq` is installed and this host isn't Tailscale-tagged, auto-detects
   its Tailscale login (via `tailscale status --json`) and fills in
   `ALLOWED_TAILSCALE_LOGIN` — this assumes a single-user tailnet, where the
@@ -433,12 +439,10 @@ pulled model, bind-mount ownership, the control port, and `tailscale serve`
 in one pass, including whether this host's Tailscale login matches
 `ALLOWED_TAILSCALE_LOGIN` (a mismatch there is the most common cause of a
 403 from the control app). Fix anything it flags, then open the URL from
-`sudo tailscale serve status` with `?token=<CONTROL_SERVER_TOKEN>` appended
-(get the token with `grep CONTROL_SERVER_TOKEN .env` — don't paste it into
-chat, a shared note, or shell history you'd keep around). preflight.sh's
-login check is only a same-host heuristic, not a substitute for the real
-test: confirm the page actually works from your allowed Tailscale login and
-is rejected from a different login or device — see "Web control app" below.
+`sudo tailscale serve status` — no query param needed. preflight.sh's login
+check is only a same-host heuristic, not a substitute for the real test:
+confirm the page actually works from your allowed Tailscale login and is
+rejected from a different login or device — see "Web control app" below.
 Add a contact in the control app and review shadow-mode logs before setting
 `SHADOW_MODE=0`.
 
@@ -472,9 +476,8 @@ sudo chown -R 1000:1000 auth_info data config/policy.md
 The container runs as UID 1000. If your Debian login has a different UID,
 use `sudoedit config/policy.md` to edit the private, container-owned policy.
 
-Edit `.env`: set `WEB_CONTROL_PORT=4756`, your exact Tailscale login in
+Edit `.env`: set `WEB_CONTROL_PORT=4756` and your exact Tailscale login in
 `ALLOWED_TAILSCALE_LOGIN` (run `tailscale status` and use exactly what it
-reports for your account), generate `CONTROL_SERVER_TOKEN` with
-`openssl rand -hex 24`. Leave `SHADOW_MODE=1` until you've reviewed how it
-behaves against real traffic, and keep `.env`, `config/policy.md`,
+reports for your account). Leave `SHADOW_MODE=1` until you've reviewed how
+it behaves against real traffic, and keep `.env`, `config/policy.md`,
 `auth_info/`, and `data/` private and backed up.
