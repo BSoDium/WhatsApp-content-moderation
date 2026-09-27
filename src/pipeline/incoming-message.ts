@@ -35,7 +35,13 @@ export function extractIncomingMessage(
   const text = msg.message.conversation ?? msg.message.extendedTextMessage?.text;
   if (!text) return null;
 
-  return { text, key: msg.key, timestamp: Number(msg.messageTimestamp) * 1000 };
+  // Baileys types messageTimestamp as optional; falling back to "now" rather
+  // than letting a missing value through as NaN, which would otherwise flow
+  // into deleteForMe's sock.chatModify call and likely make it throw.
+  const rawTimestamp = Number(msg.messageTimestamp);
+  const timestamp = Number.isFinite(rawTimestamp) ? rawTimestamp * 1000 : Date.now();
+
+  return { text, key: msg.key, timestamp };
 }
 import type { WAMessage } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from '../types.ts';

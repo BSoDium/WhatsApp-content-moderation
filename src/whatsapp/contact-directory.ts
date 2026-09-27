@@ -13,7 +13,9 @@ interface ContactEntry extends Omit<Partial<Contact>, 'lid' | 'name' | 'notify' 
   lastMessageAt?: number | null;
 }
 
-export const NON_INDIVIDUAL_JID_SUFFIXES = ['@g.us', '@broadcast'];
+// @newsletter is WhatsApp Channels — not a DM, and not something the
+// delete/warn/block pipeline (built around a real two-way chat) supports.
+export const NON_INDIVIDUAL_JID_SUFFIXES = ['@g.us', '@broadcast', '@newsletter'];
 
 function formatJid(jid: string): string {
   const [user] = jid.split('@');

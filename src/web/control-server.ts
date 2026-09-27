@@ -96,10 +96,26 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+// Every body this server actually accepts is a handful of fields
+// (a contactId string, an `enabled` boolean) — this is a generous ceiling
+// against a request (from any other local process; this port is
+// loopback-only but not restricted to this app — see createControlServer's
+// doc comment) that never stops sending data, not a real payload budget.
+const MAX_JSON_BODY_BYTES = 65_536;
+
+class PayloadTooLargeError extends Error {}
+
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk) => {
+    let bytes = 0;
+    req.on('data', (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > MAX_JSON_BODY_BYTES) {
+        req.destroy();
+        reject(new PayloadTooLargeError(`request body exceeded ${MAX_JSON_BODY_BYTES} bytes`));
+        return;
+      }
       data += chunk;
     });
     req.on('end', () => {
@@ -141,6 +157,11 @@ async function readValidatedJsonBody(req: IncomingMessage, res: ServerResponse):
   try {
     return await readJsonBody(req);
   } catch (err) {
+    if (err instanceof PayloadTooLargeError) {
+      logger.warn({ error: err.message }, 'rejected: request body too large');
+      sendJson(res, 413, { error: 'request body too large' });
+      return undefined;
+    }
     logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'rejected: invalid JSON body');
     sendJson(res, 400, { error: 'invalid JSON body' });
     return undefined;
