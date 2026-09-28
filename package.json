@@ -16,6 +16,7 @@
     "update": "bash scripts/update.sh",
     "prototype:delete-for-me": "node --experimental-strip-types src/prototype/test-delete-for-me.ts",
     "prototype:block-unblock": "node --experimental-strip-types src/prototype/test-block-unblock.ts",
+    "prototype:nuisance-calls": "node --experimental-strip-types src/prototype/test-nuisance-calls.ts",
     "classifier:test": "node --experimental-strip-types src/classifier/test-classifier.ts",
     "store:test": "node --experimental-strip-types src/store/test-store.ts",
     "buffer:test": "node --experimental-strip-types src/buffer/test-buffer.ts",
