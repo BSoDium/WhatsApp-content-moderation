@@ -85,6 +85,10 @@ function SettingField({ setting, pending, onSave, onValidationChange }: SettingF
   useEffect(() => () => clearTimeout(savedConfirmationTimeout.current), []);
 
   async function commit(next: string) {
+    // Cleared here, not just below on success — otherwise a still-pending
+    // timer from an earlier save on this same field can fire mid-flight and
+    // reset saveState to 'idle' while this newer save is still in progress.
+    clearTimeout(savedConfirmationTimeout.current);
     setSaveState('saving');
     const ok = await onSave(setting.key, next);
     // A value the server rejected was never actually applied — revert so
@@ -98,7 +102,6 @@ function SettingField({ setting, pending, onSave, onValidationChange }: SettingF
       return;
     }
     setSaveState('saved');
-    clearTimeout(savedConfirmationTimeout.current);
     savedConfirmationTimeout.current = setTimeout(() => setSaveState('idle'), SAVED_CONFIRMATION_MS);
   }
 
