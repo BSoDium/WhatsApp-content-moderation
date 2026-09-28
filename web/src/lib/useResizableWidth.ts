@@ -149,13 +149,7 @@ export function useResizableWidth(
         if (moveEvent.pointerId !== pointerId) return;
         pendingWidth = widthAtClientX(moveEvent.clientX);
         if (rafId !== null) return;
-        // Coalesce to at most one commitWidth per animation frame: a trackpad
-        // or high-poll-rate mouse fires pointermove well past 100/s, and each
-        // commitWidth is a React re-render plus a synchronous sessionStorage
-        // write. Unlike the resize listener's settle-then-fire debounce
-        // (fine there, since viewport size rarely changes mid-gesture), a
-        // drag has to keep tracking the pointer in real time, so this bounds
-        // the rate instead of waiting for movement to pause.
+        // Coalesced to one commit per frame: each commit is a re-render plus a sessionStorage write, and pointermove can exceed 100/s.
         rafId = requestAnimationFrame(() => {
           rafId = null;
           if (pendingWidth !== null) {
@@ -168,18 +162,14 @@ export function useResizableWidth(
       const handleEnd = (endEvent: PointerEvent, commitFinal: boolean) => {
         if (endEvent.pointerId !== pointerId) return;
         if (commitFinal) {
-          // Bypass any pending coalesced frame so the committed width always
-          // matches the pointer's true final position, never a stale rAF
-          // value from a frame that got dropped or hadn't fired yet.
+          // Bypasses a pending coalesced frame so the final width matches the pointer's true position.
           commitWidth(widthAtClientX(endEvent.clientX));
         }
         stopDrag();
       };
 
       const handleUp = (upEvent: PointerEvent) => handleEnd(upEvent, true);
-      // A cancel means the gesture was aborted (touch reinterpreted as a
-      // scroll/back gesture, a dialog stealing focus, ...), not completed —
-      // clean up the same as pointerup, but never commit a final width.
+      // A cancel is an aborted gesture, so clean up without committing a width.
       const handleCancel = (cancelEvent: PointerEvent) => handleEnd(cancelEvent, false);
 
       window.addEventListener("pointermove", handleMove);

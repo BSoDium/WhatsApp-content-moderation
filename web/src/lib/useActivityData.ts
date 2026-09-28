@@ -33,10 +33,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Bumped by every fetch-initiating call (refresh, loadPage, or loadMore) and checked
-  // before applying a response — filter changes fire requests faster than they can be
-  // guaranteed to resolve in order, and an older response landing after a newer
-  // one must never clobber it.
+  // Bumped by every fetch and checked before applying a response, so an older response never clobbers a newer one.
   const requestSeq = useRef(0);
   const opened = useRef(false);
 
@@ -110,9 +107,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     else refresh();
   }, [open, loadPage, refresh]);
 
-  // Live audit-log entries while the panel is open (src/web/control-server.ts's
-  // GET /api/events) — a page already displaying old entries otherwise looks
-  // stale until the operator manually reopens it.
+  // Live audit-log entries while the panel is open.
   useEffect(() => {
     if (!open) return;
     const events = new EventSource('/api/events');

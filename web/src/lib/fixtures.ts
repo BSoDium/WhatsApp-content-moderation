@@ -1,5 +1,4 @@
-// Sample data for Storybook stories — nothing under src/ imports this at
-// runtime; it exists so stories don't each invent their own ad-hoc contacts.
+// Sample data for Storybook stories only; nothing under src/ imports this at runtime.
 import type { AuditLogEntry, Contact, RosterEntry, Setting, Stats } from './types';
 
 const MINUTE_MS = 60_000;

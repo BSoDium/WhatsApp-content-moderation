@@ -2,17 +2,12 @@ export interface Contact {
   id: string;
   name: string;
   lastMessageAt: number | null;
-  // The account's own contact, and whether TEST_ALLOW_SELF is enabled —
-  // together these mean "moderating this contact would either do nothing or
-  // moderate the operator's own messages", so the UI disables it rather
-  // than exposing a switch that's silently a no-op.
+  // The account's own contact, and whether TEST_ALLOW_SELF is on; moderating it would be a no-op, so the UI disables the switch.
   isSelf: boolean;
   allowSelf: boolean;
   strikeCount?: number;
   block?: { unblockAt: number } | null;
-  // A same-origin proxy path (GET /api/contacts/:id/photo), never a raw
-  // WhatsApp CDN URL. Null/absent once the server knows there's no photo;
-  // the route can still 404 otherwise, which the avatar falls back from.
+  // A same-origin proxy path, never a raw WhatsApp CDN URL; the route can still 404, which the avatar falls back from.
   photoUrl?: string | null;
 }
 
@@ -36,8 +31,7 @@ export interface Setting {
   type: 'string' | 'int' | 'float' | 'bool';
   value: string;
   default: string;
-  // Mirrors src/store/settings.ts's SettingDef — lets the field validate
-  // client-side before submitting, not just after the server rejects it.
+  // Mirrors SettingDef in src/store/settings.ts, for client-side validation.
   min?: number;
   required?: boolean;
 }

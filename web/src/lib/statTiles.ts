@@ -7,20 +7,20 @@ export interface StatTileDef {
   key: StatKey;
   label: string;
   icon: LucideIcon;
-  emptyText: string;
   // A rising count is a bad sign (errors) rather than the system doing its job.
   upIsBad?: boolean;
   // Only classifier errors are flagged red — a block/deletion is the system working as intended.
   warnWhenNonZero?: boolean;
+  allClearText?: string;
 }
 
 export const STAT_TILES: Record<StatKey, StatTileDef> = {
-  monitoredCount: { key: 'monitoredCount', label: 'Monitored', icon: ShieldCheck, emptyText: 'None yet' },
-  activeBlocks: { key: 'activeBlocks', label: 'Blocked', icon: Ban, emptyText: 'No one is blocked' },
-  totalFlaggedDeleted: { key: 'totalFlaggedDeleted', label: 'Deleted', icon: Trash2, emptyText: 'Nothing removed yet' },
-  totalWarningsSent: { key: 'totalWarningsSent', label: 'Warnings', icon: TriangleAlert, emptyText: 'No warnings sent' },
-  totalClassifierErrors: { key: 'totalClassifierErrors', label: 'Errors', icon: CircleAlert, emptyText: 'All clear', upIsBad: true, warnWhenNonZero: true },
-  totalLogged: { key: 'totalLogged', label: 'Logged', icon: ScrollText, emptyText: 'Waiting for messages' },
+  monitoredCount: { key: 'monitoredCount', label: 'Monitored', icon: ShieldCheck },
+  activeBlocks: { key: 'activeBlocks', label: 'Blocked', icon: Ban },
+  totalFlaggedDeleted: { key: 'totalFlaggedDeleted', label: 'Deleted', icon: Trash2 },
+  totalWarningsSent: { key: 'totalWarningsSent', label: 'Warnings', icon: TriangleAlert },
+  totalClassifierErrors: { key: 'totalClassifierErrors', label: 'Errors', icon: CircleAlert, upIsBad: true, warnWhenNonZero: true, allClearText: 'All clear' },
+  totalLogged: { key: 'totalLogged', label: 'Logged', icon: ScrollText },
 };
 
 export function tileValue(stats: Stats, key: StatKey): number {

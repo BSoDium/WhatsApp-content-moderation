@@ -16,9 +16,6 @@ interface ContactListProps {
   initialLoadComplete: boolean;
 }
 
-// Most-recently-active first, then name as a stable tiebreaker. Moderated
-// contacts are split into their own section below rather than sorted to the
-// top of one flat list.
 function sortedFiltered(contacts: Contact[], query: string): Contact[] {
   return contacts
     .filter((contact) => matchesQuery(contact, query))
@@ -35,12 +32,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
   const others = useMemo(() => filtered.filter((contact) => !monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const [listRef, setAnimationsEnabled] = useAutoAnimate(fadeAndSlide);
 
-  // The list mounts empty and contacts/roster arrive later over the network
-  // (useControlData's initial fetch), so auto-animate — already watching the
-  // container by the time that data lands — would otherwise play its
-  // add/reorder animation for the whole list on every page load. Animations
-  // stay off until that first fetch settles, then turn on (after a frame, so
-  // the settled list paints in place first) for genuine later changes.
+  // Animations stay off until the first fetch settles, or auto-animate would play add/reorder for the whole list on every load.
   useEffect(() => {
     if (!initialLoadComplete) {
       setAnimationsEnabled(false);

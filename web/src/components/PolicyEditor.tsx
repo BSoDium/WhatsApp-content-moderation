@@ -11,20 +11,13 @@ interface PolicyEditorProps {
   skipInitialAnimation?: boolean;
 }
 
-// Remounted via a `key` in App.tsx (same pattern as ActivityPanel) so a
-// discarded draft never carries over to the next time this opens.
 export function PolicyEditor({ open, onOpenChange, skipInitialAnimation }: PolicyEditorProps) {
   const { text, loading, saving, error, refresh, save } = usePolicy({ open });
   const [draft, setDraft] = useState(text);
-  // The last server text this draft was synced from — lets the effect below
-  // tell "no local edit since the last sync" apart from "an unsaved edit is
-  // in progress," instead of unconditionally overwriting the textarea.
+  // The last server text this draft synced from, to tell "no local edit" from "edit in progress".
   const lastSyncedText = useRef(text);
 
-  // Applies a live update (first load, or an SSE-driven refresh from
-  // another tab/operator) only when there's no unsaved local edit —
-  // otherwise a policy change landing elsewhere would silently discard
-  // whatever the operator is still typing here.
+  // A live update only applies when there's no unsaved local edit.
   useEffect(() => {
     if (draft === lastSyncedText.current) setDraft(text);
     lastSyncedText.current = text;

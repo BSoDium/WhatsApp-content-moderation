@@ -77,20 +77,26 @@ export function usePolicy({ open }: UseOpenOptions) {
   return { text, loading, saving, error, refresh, save };
 }
 
-// Same shape as usePolicy above, but for the tunables list — save() takes
-// the specific key being edited, and pendingKeys tracks in-flight saves
-// per-row so one field's save state never disables another.
+const SAVED_CONFIRMATION_MS = 2500;
+
+export type SaveStatus = 'idle' | 'saving' | 'saved';
+
 export function useSettingsList({ open }: UseOpenOptions) {
   const [settings, setSettings] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<SettingsError | null>(null);
   const [pendingKeys, setPendingKeys] = useState(() => new Set<string>());
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const opened = useRef(false);
+  const hasLoaded = useRef(false);
 
   const refresh = useCallback(async function refresh() {
-    setLoading(true);
+    // Only the first load swaps the list for a loading state; a background refresh would unmount every section and reset the scroll position.
+    if (!hasLoaded.current) setLoading(true);
     try {
       setSettings(await apiFetch<Setting[]>('/api/settings'));
+      hasLoaded.current = true;
       setError(null);
     } catch (err: unknown) {
       setError({ title: 'Could not load settings', description: errorMessage(err) });
@@ -101,6 +107,8 @@ export function useSettingsList({ open }: UseOpenOptions) {
 
   const save = useCallback(
     async function save(key: string, value: string): Promise<boolean> {
+      clearTimeout(savedTimeout.current);
+      setSavedVisible(false);
       setPendingKeys((prev) => new Set(prev).add(key));
       try {
         await apiFetch(`/api/settings/${encodeURIComponent(key)}`, {
@@ -110,6 +118,8 @@ export function useSettingsList({ open }: UseOpenOptions) {
         });
         setError(null);
         await refresh();
+        setSavedVisible(true);
+        savedTimeout.current = setTimeout(() => setSavedVisible(false), SAVED_CONFIRMATION_MS);
         return true;
       } catch (err: unknown) {
         const label = settings.find((s) => s.key === key)?.label ?? key;
@@ -126,6 +136,8 @@ export function useSettingsList({ open }: UseOpenOptions) {
     [refresh, settings],
   );
 
+  useEffect(() => () => clearTimeout(savedTimeout.current), []);
+
   useEffect(() => {
     if (!open || opened.current) return;
     opened.current = true;
@@ -141,5 +153,7 @@ export function useSettingsList({ open }: UseOpenOptions) {
     return () => events.close();
   }, [open, refresh]);
 
-  return { settings, loading, error, pendingKeys, refresh, save };
+  const saveStatus: SaveStatus = pendingKeys.size > 0 ? 'saving' : savedVisible ? 'saved' : 'idle';
+
+  return { settings, loading, error, pendingKeys, saveStatus, refresh, save };
 }

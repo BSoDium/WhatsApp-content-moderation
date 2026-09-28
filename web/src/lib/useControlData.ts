@@ -2,27 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from './api';
 import type { Contact, ControlError, OverrideCommand, RosterEntry } from './types';
 
-// Belt-and-suspenders fallback for whatever the SSE connection below misses
-// (a dropped connection between EventSource's own reconnect attempts) — the
-// stream is the primary path, so this can be far slower than a real poll.
+// Fallback for what the SSE stream misses, so it can be far slower than a real poll.
 const FALLBACK_POLL_MS = 30_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// Controlled Switch/inputs read straight from contacts/roster state, so a failed mutation never applies the optimistic change React already rendered.
-// `initialSelectedId` seeds the selection from the URL (App.tsx) so a page
-// refresh reopens the same contact instead of landing back on the bare list.
+// Controlled inputs read straight from state, so a failed mutation never applies the optimistic change.
 export function useControlData(initialSelectedId: string | null = null) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoaded, setContactsLoaded] = useState(false);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [error, setError] = useState<ControlError | null>(null);
-  // Flips once after the first fetch of both contacts and roster settles, so
-  // ContactList can skip its reorder animation for that initial population
-  // and only animate moderation changes that happen afterwards.
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
@@ -45,14 +38,9 @@ export function useControlData(initialSelectedId: string | null = null) {
   }, []);
 
   useEffect(() => {
-    // refreshContacts/refreshRoster catch their own errors, so this always
-    // resolves — an initial fetch failure still counts as "settled" and
-    // unblocks the list's animations rather than leaving them off forever.
+    // Both refreshes catch their own errors, so an initial fetch failure still counts as settled.
     Promise.all([refreshContacts(), refreshRoster()]).then(() => setInitialLoadComplete(true));
 
-    // Server push (src/web/control-server.ts's GET /api/events) so a change
-    // made from another tab, or a live incoming message, shows up without
-    // waiting on a poll — EventSource reconnects on its own on drop.
     const events = new EventSource('/api/events');
     events.onmessage = (event) => {
       if (event.data === 'contacts') refreshContacts();
@@ -127,12 +115,7 @@ export function useControlData(initialSelectedId: string | null = null) {
     [refreshRoster],
   );
 
-  // Resolves true on success or rejects with a message, rather than
-  // swallowing the failure into just the shared banner (like
-  // setMonitored/runCommand/setEscalation above) — ContactDetailPanel's
-  // explicit Save button needs the failure itself to drive its own
-  // dirty/saving/saved/failed state and show an actionable, field-local
-  // error instead of a panel-wide banner unrelated fields also see.
+  // Rejects with a message instead of only feeding the shared banner, so the Save button can show a field-local error.
   const setContext = useCallback(
     async function setContext(contactId: string, context: string): Promise<true> {
       try {

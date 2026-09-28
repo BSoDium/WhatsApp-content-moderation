@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { History, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { relativeTime } from '@/lib/contact';
@@ -19,10 +20,7 @@ interface ContactRowProps {
 
 export function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
   const [pending, setPending] = useState(false);
-  // Only blocks turning it ON: if it's already monitored (e.g. added while
-  // TEST_ALLOW_SELF=1, then the env var got turned back off), the operator
-  // must still be able to turn it back off — locking that too would strand
-  // them with a switch they can see is on but can never touch.
+  // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
   const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
   const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
@@ -48,8 +46,14 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
         <p className="truncate font-medium">{contact.name}</p>
         <div className="flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
           <span className="min-w-0 truncate">{relativeTime(contact.lastMessageAt)}</span>
-          <span className="hidden shrink-0 @lg:inline">· {strikeCount} {strikeCount === 1 ? 'strike' : 'strikes'}</span>
-          <span className="hidden shrink-0 @lg:inline">· {block ? 'Blocked' : 'Not blocked'}</span>
+          <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
+            <Separator orientation="vertical" className="h-3" />
+            {strikeCount} {strikeCount === 1 ? 'strike' : 'strikes'}
+          </span>
+          <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
+            <Separator orientation="vertical" className="h-3" />
+            {block ? 'Blocked' : 'Not blocked'}
+          </span>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -69,21 +73,19 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
           </TooltipTrigger>
           <TooltipContent>Message history</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-          <Button
-            variant={monitored ? 'default' : 'outline'}
-            size="icon-lg"
-            aria-label={label}
-            aria-pressed={monitored}
-            disabled={pending || selfBlocked}
-            onClick={handleToggle}
-          >
-            {monitored ? <ShieldCheck /> : <ShieldOff />}
-          </Button>
-          </TooltipTrigger>
-          <TooltipContent>{label}</TooltipContent>
-        </Tooltip>
+        <Button
+          variant={monitored ? 'default' : 'outline'}
+          size="lg"
+          className="w-32 justify-between"
+          title={selfBlocked ? label : undefined}
+          aria-label={label}
+          aria-pressed={monitored}
+          disabled={pending || selfBlocked}
+          onClick={handleToggle}
+        >
+          {monitored ? 'Moderated' : 'Moderate'}
+          {monitored ? <ShieldCheck data-icon="inline-end" /> : <ShieldOff data-icon="inline-end" />}
+        </Button>
       </div>
     </li>
   );
