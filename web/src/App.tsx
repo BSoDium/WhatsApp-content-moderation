@@ -27,12 +27,26 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 // flush-left once a contact is open — chosen so opening a contact both
 // moves (the centering margin collapses to 0) and resizes (60% -> 50%) the
 // pane at once. Centered so the two margins are equal (100 - 60) / 2 = 20.
-const LIST_PANE_WIDTH_BROWSING = '60%';
-const LIST_PANE_MARGIN_BROWSING = '20%';
-const LIST_PANE_WIDTH_OPEN = '50%';
-const LIST_PANE_MARGIN_OPEN = '0%';
-const DETAIL_PANE_WIDTH_OPEN = '50%';
-const DETAIL_PANE_WIDTH_CLOSED = '0%';
+const LIST_PANE_WIDTH_BROWSING_PCT = 60;
+const LIST_PANE_MARGIN_BROWSING_PCT = 20;
+const LIST_PANE_WIDTH_OPEN_PCT = 50;
+const LIST_PANE_MARGIN_OPEN_PCT = 0;
+const LIST_PANE_WIDTH_BROWSING = `${LIST_PANE_WIDTH_BROWSING_PCT}%`;
+const LIST_PANE_MARGIN_BROWSING = `${LIST_PANE_MARGIN_BROWSING_PCT}%`;
+const LIST_PANE_WIDTH_OPEN = `${LIST_PANE_WIDTH_OPEN_PCT}%`;
+const LIST_PANE_MARGIN_OPEN = `${LIST_PANE_MARGIN_OPEN_PCT}%`;
+// Must match the detail pane's `lg:w-[50%]` className below — there's no
+// way to share one literal between a Tailwind arbitrary-value class and
+// this arithmetic without breaking Tailwind's static class-name scanning.
+const DETAIL_PANE_WIDTH_PCT = 50;
+// The detail pane's closed `x`, as a fraction of its *own* width (Framer
+// Motion's `x` percentages resolve against the element's own box, same as
+// CSS transform percentages) — not fully off-screen, but exactly far
+// enough that its left edge starts where the list pane's own right edge
+// sits while browsing (margin + width). That makes the two panes' visible
+// edges travel the same distance over the same transition and arrive
+// together, instead of the detail pane racing in from further away.
+const DETAIL_PANE_CLOSED_X = `${(((LIST_PANE_MARGIN_BROWSING_PCT + LIST_PANE_WIDTH_BROWSING_PCT) - DETAIL_PANE_WIDTH_PCT) / DETAIL_PANE_WIDTH_PCT) * 100}%`;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -45,11 +59,11 @@ const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
 
 // The contact-detail pane's open/close choreography: the list pane's
-// move/resize and the detail pane's width/fade-in all animate from the same
-// `panelOpen` boolean, over the same transition, so they run concurrently
-// instead of staging one after the other (list moves, *then* detail fades
-// in). Only meaningful at `lg:` — below that the detail pane is a
-// full-screen overlay (existing translate-x behavior, untouched).
+// move/resize and the detail pane's slide/fade-in all animate from the
+// same `panelOpen` boolean, over the same transition, so they run
+// concurrently instead of staging one after the other (list moves, *then*
+// detail fades in). Only meaningful at `lg:` — below that the detail pane
+// is a full-screen overlay (existing translate-x behavior, untouched).
 function listPaneTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { width: '100%', marginLeft: '0%' };
   return {
@@ -58,10 +72,15 @@ function listPaneTarget(isDesktop: boolean, expanded: boolean) {
   };
 }
 
+// The detail pane never resizes — at `lg:` it's always the layout's fixed
+// right-hand width (see its `lg:w-[50%]` className below) and only ever
+// slides (`x`) and fades (`opacity`) into or out of that fixed position,
+// so it arrives already at its final size instead of growing into it. See
+// DETAIL_PANE_CLOSED_X for why the closed `x` isn't simply '100%'.
 function detailPaneTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { width: '100%', opacity: 1 };
   return {
-    width: expanded ? DETAIL_PANE_WIDTH_OPEN : DETAIL_PANE_WIDTH_CLOSED,
+    x: expanded ? '0%' : DETAIL_PANE_CLOSED_X,
     opacity: expanded ? 1 : 0,
   };
 }
@@ -86,13 +105,12 @@ function App() {
   const [panelSeq, setPanelSeq] = useState({ activity: 0, policy: 0, settings: 0 });
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
-  const selectedEntry = selectedContact ? roster.find((entry) => entry.id === selectedContact.id) : undefined;
   const panelOpen = Boolean(selectedContact);
 
   // Guards every path that would discard the open contact-detail panel
   // (its own Back button, picking a different contact from the list) so an
   // unsaved moderation-context draft is never silently lost to a remount —
-  // see ContactDetailPanel's `key={selectedContact?.id}` below.
+  // see ContactDetailPanel's `key={displayedContact?.id}` below.
   const detailPanelRef = useRef<ContactDetailPanelHandle>(null);
   // `undefined` = no confirmation pending; `null`/a contact id = the
   // selection change waiting on the user's save/discard/stay choice.
@@ -179,56 +197,86 @@ function App() {
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
 
+  // ContactDetailPanel renders nothing once its `contact` prop is null, but
+  // `selectedContact` goes null in the same render `panelOpen` does — so
+  // passing it straight through would empty the panel instantly instead of
+  // letting it fade/slide away with its content still visible. Keep showing
+  // the last contact until the close transition's own duration has actually
+  // elapsed, matching whichever one is active (desktop's Framer Motion
+  // transition, or mobile's `duration-[250ms]` CSS one).
+  const [displayedContact, setDisplayedContact] = useState(selectedContact);
+  useEffect(() => {
+    if (selectedContact) {
+      setDisplayedContact(selectedContact);
+      return;
+    }
+    const closeMs = (isDesktop ? moveTransition.duration : 0.25) * 1000;
+    const timeoutId = setTimeout(() => setDisplayedContact(null), closeMs);
+    return () => clearTimeout(timeoutId);
+  }, [selectedContact, isDesktop, moveTransition]);
+  const displayedEntry = displayedContact ? roster.find((entry) => entry.id === displayedContact.id) : undefined;
+
   return (
     <TooltipProvider>
-      <div className="flex min-h-screen overflow-x-hidden bg-background text-foreground">
-        <motion.section
-          initial={false}
-          animate={listPaneTarget(isDesktop, panelOpen)}
-          transition={moveTransition}
-          className="flex h-screen w-full flex-col lg:min-w-[500px]"
-        >
-          <motion.div
+      <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+        {/*
+          The detail pane below is a sibling of this flex row, not a flex
+          item inside it — an absolutely positioned flex item with a
+          percentage `right`/width resolves against the wrong containing
+          block under Chrome once combined with this row's overflow-hidden
+          (confirmed live: it rests one full pane-width further right than
+          it should). Keeping it out of the flex row entirely sidesteps
+          that rather than fighting it.
+        */}
+        <div className="flex min-h-screen">
+          <motion.section
             initial={false}
-            animate={headerPaddingTarget(isDesktop, panelOpen)}
+            animate={listPaneTarget(isDesktop, panelOpen)}
             transition={moveTransition}
-            className="flex-none px-4 pb-4 lg:px-8 @container"
+            className="flex h-screen w-full flex-col lg:min-w-[500px]"
           >
-            <div className="flex flex-col items-stretch gap-3 @lg:flex-row @lg:items-start @lg:justify-between @lg:gap-4">
-              <div className="min-w-0">
-                <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
-                <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+            <motion.div
+              initial={false}
+              animate={headerPaddingTarget(isDesktop, panelOpen)}
+              transition={moveTransition}
+              className="flex-none px-4 pb-4 lg:px-8 @container"
+            >
+              <div className="flex flex-col items-stretch gap-3 @lg:flex-row @lg:items-start @lg:justify-between @lg:gap-4">
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
+                  <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end @lg:mt-1 @lg:self-auto">
+                  <Button variant="outline" size="sm" onClick={() => showPanel('settings')}>
+                    <Settings data-icon="inline-start" />
+                    Settings
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => showPanel('policy')}>
+                    <FileText data-icon="inline-start" />
+                    Policy
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => showPanel('activity')}>
+                    <Activity data-icon="inline-start" />
+                    Activity
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end @lg:mt-1 @lg:self-auto">
-                <Button variant="outline" size="sm" onClick={() => showPanel('settings')}>
-                  <Settings data-icon="inline-start" />
-                  Settings
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => showPanel('policy')}>
-                  <FileText data-icon="inline-start" />
-                  Policy
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => showPanel('activity')}>
-                  <Activity data-icon="inline-start" />
-                  Activity
-                </Button>
-              </div>
+              {meta && !meta.authRequired && <OpenAccessBanner />}
+              {error && <ErrorBanner error={error} onDismiss={dismissError} />}
+            </motion.div>
+            <div className="flex-none px-4 pb-4 lg:px-8">
+              <OverviewStats />
             </div>
-            {meta && !meta.authRequired && <OpenAccessBanner />}
-            {error && <ErrorBanner error={error} onDismiss={dismissError} />}
-          </motion.div>
-          <div className="flex-none px-4 pb-4 lg:px-8">
-            <OverviewStats />
-          </div>
-          <div className="min-h-0 flex-1 px-4 lg:px-8">
-            <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={requestSelectContact} onToggle={setMonitored} />
-          </div>
-        </motion.section>
+            <div className="min-h-0 flex-1 px-4 lg:px-8">
+              <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={requestSelectContact} onToggle={setMonitored} />
+            </div>
+          </motion.section>
+        </div>
 
         <motion.section
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen)}
-          transition={{ width: moveTransition, opacity: fadeTransition }}
+          transition={{ x: moveTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
@@ -236,17 +284,26 @@ function App() {
           aria-hidden={!detailInteractive}
           inert={!detailInteractive}
           className={cn(
-            'fixed inset-0 h-screen bg-background transition-transform duration-[250ms] ease-in-out',
+            'fixed top-0 right-0 bottom-0 left-0 h-screen bg-background transition-transform duration-[250ms] ease-in-out',
             panelOpen ? 'translate-x-0' : 'translate-x-full',
-            'lg:relative lg:inset-auto lg:translate-x-0 lg:overflow-hidden lg:border-l lg:border-transparent lg:transition-colors lg:duration-200 lg:ease-in-out',
+            // Taken out of the flex row entirely (absolute, not relative)
+            // so its width is never part of the layout's own resize math —
+            // it's always exactly half the viewport, never 0, and only
+            // ever slides via the `x` motion value above. `lg:translate-x-0`
+            // cancels the mobile translate-x-full/0 toggle's own CSS
+            // `translate` property at desktop — left active alongside the
+            // `x` motion value's `transform: translateX()`, the two stack
+            // (translate and transform compose independently), doubling
+            // the slide distance.
+            'lg:absolute lg:left-auto lg:bottom-auto lg:w-[50%] lg:translate-x-0 lg:overflow-hidden lg:border-l lg:border-transparent lg:transition-colors lg:duration-200 lg:ease-in-out',
             detailInteractive && 'lg:border-border',
           )}
         >
           <ContactDetailPanel
             ref={detailPanelRef}
-            key={selectedContact?.id}
-            contact={selectedContact}
-            entry={selectedEntry}
+            key={displayedContact?.id}
+            contact={displayedContact}
+            entry={displayedEntry}
             onClose={() => requestSelectContact(null)}
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}
