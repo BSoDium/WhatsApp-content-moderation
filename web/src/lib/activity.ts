@@ -15,10 +15,31 @@ export const ACTION_META: Record<AuditAction, ActionMeta> = {
   classifier_error: { label: 'Classifier error', badgeVariant: 'destructive' },
   action_failed: { label: 'Action failed', badgeVariant: 'destructive' },
   shadow: { label: 'Shadow mode', badgeVariant: 'secondary' },
+  call_received: { label: 'Call received', badgeVariant: 'outline' },
+  call_unanswered: { label: 'Call unanswered', badgeVariant: 'outline' },
+  call_answered: { label: 'Call answered', badgeVariant: 'outline' },
+  call_nuisance_warned: { label: 'Nuisance call warned', badgeVariant: 'secondary' },
+  call_reject_failed: { label: 'Call reject failed', badgeVariant: 'destructive' },
+  call_warn_failed: { label: 'Call warning failed', badgeVariant: 'destructive' },
+  call_shadow: { label: 'Shadow mode (call)', badgeVariant: 'secondary' },
 };
 
 // Every value the filter's Select offers — the order they're listed in.
-export const ACTION_FILTER_OPTIONS: AuditAction[] = ['delete+warn', 'warning_sent', 'none', 'classifier_error', 'action_failed', 'shadow'];
+export const ACTION_FILTER_OPTIONS: AuditAction[] = [
+  'delete+warn',
+  'warning_sent',
+  'none',
+  'classifier_error',
+  'action_failed',
+  'shadow',
+  'call_received',
+  'call_unanswered',
+  'call_answered',
+  'call_nuisance_warned',
+  'call_reject_failed',
+  'call_warn_failed',
+  'call_shadow',
+];
 
 export function actionMeta(action: string): ActionMeta {
   return (ACTION_META as Record<string, ActionMeta>)[action] ?? { label: action, badgeVariant: 'outline' };
