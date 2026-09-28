@@ -7,7 +7,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 // this is a standing fact about the deployment, not a one-off event.
 export function OpenAccessBanner() {
   return (
-    <Alert variant="destructive" className="mt-4">
+    <Alert variant="destructive">
       <AlertTitle>This control app is not access-restricted</AlertTitle>
       <AlertDescription>
         No ALLOWED_TAILSCALE_LOGIN is set, so anyone who can reach this device on your local network can open this page and change moderation settings. Set ALLOWED_TAILSCALE_LOGIN and proxy this app through{' '}

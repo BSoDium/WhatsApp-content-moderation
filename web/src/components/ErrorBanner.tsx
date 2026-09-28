@@ -11,7 +11,7 @@ export function ErrorBanner({ error, onDismiss }: ErrorBannerProps) {
   const retry = error.retry;
 
   return (
-    <Alert variant="destructive" className="mt-4">
+    <Alert variant="destructive">
       <AlertTitle>{error.title}</AlertTitle>
       <AlertDescription>{error.description}</AlertDescription>
       {retry && (

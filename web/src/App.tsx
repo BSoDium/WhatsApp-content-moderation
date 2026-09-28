@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
@@ -274,8 +274,32 @@ function App() {
                   </Button>
                 </div>
               </div>
-              {meta && !meta.authRequired && <OpenAccessBanner />}
-              {error && <ErrorBanner error={error} onDismiss={dismissError} />}
+              <AnimatePresence initial={false}>
+                {meta && !meta.authRequired && (
+                  <motion.div
+                    key="open-access-banner"
+                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
+                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
+                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
+                    transition={fadeTransition}
+                    className="overflow-hidden"
+                  >
+                    <OpenAccessBanner />
+                  </motion.div>
+                )}
+                {error && (
+                  <motion.div
+                    key="error-banner"
+                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
+                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
+                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
+                    transition={fadeTransition}
+                    className="overflow-hidden"
+                  >
+                    <ErrorBanner error={error} onDismiss={dismissError} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
             <div className="flex-none px-4 pb-4 lg:px-8">
               <OverviewStats />
