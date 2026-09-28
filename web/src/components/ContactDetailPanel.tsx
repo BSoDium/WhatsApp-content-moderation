@@ -38,6 +38,11 @@ type ContextSaveState = 'idle' | 'saving' | 'saved' | 'error';
 // long enough to register, short enough not to linger and look stuck.
 const SAVED_CONFIRMATION_MS = 2500;
 
+// Mirrors setContext in src/store/monitored-contacts.ts, which stores the trimmed value (all-whitespace as null, surfaced here as '').
+function normalizeContext(context: string): string {
+  return context.trim();
+}
+
 // The caller mounts this with `key={contact.id}` so `message` resets by
 // remounting on a new selection, rather than needing an effect to reset it.
 export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
@@ -56,10 +61,10 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
   const savedConfirmationTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const savedContext = entry?.context ?? '';
-  const contextDirty = contextDraft !== savedContext;
+  const contextDirty = normalizeContext(contextDraft) !== savedContext;
 
   useEffect(() => {
-    if (contextDraft === lastSyncedContext.current) setContextDraft(savedContext);
+    if (normalizeContext(contextDraft) === lastSyncedContext.current) setContextDraft(savedContext);
     lastSyncedContext.current = savedContext;
   }, [savedContext]);
 
