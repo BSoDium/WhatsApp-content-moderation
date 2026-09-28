@@ -8,6 +8,10 @@ export interface Contact {
   // than exposing a switch that's silently a no-op.
   isSelf: boolean;
   allowSelf: boolean;
+  // A same-origin proxy path (GET /api/contacts/:id/photo), never a raw
+  // WhatsApp CDN URL. Null/absent once the server knows there's no photo;
+  // the route can still 404 otherwise, which the avatar falls back from.
+  photoUrl?: string | null;
 }
 
 export interface RosterEntry {

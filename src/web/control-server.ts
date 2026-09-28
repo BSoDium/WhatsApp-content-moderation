@@ -10,6 +10,7 @@ import { onControlEvent } from '../store/events.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
 import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
+import type { createProfilePhotos } from '../whatsapp/profile-photos.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
 import type { AuditLogRecord } from '../types.ts';
@@ -19,6 +20,7 @@ import { listSettings, setSetting } from '../store/settings.ts';
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
   contactDirectory: ReturnType<typeof createContactDirectory>;
+  profilePhotos: ReturnType<typeof createProfilePhotos>;
   monitoredContacts: {
     list: typeof listMonitored;
     isMonitored: (contactId: string) => boolean;
@@ -75,6 +77,10 @@ const MAX_POLICY_LENGTH = 50_000;
 // timeout on the Tailscale Serve proxy in front of this server, well under
 // any reasonable such timeout.
 const SSE_HEARTBEAT_MS = 25_000;
+// Short relative to profile-photos.ts's refresh window: the photo URL's
+// `?v=` already busts this on every server-side refresh, so this only
+// bounds how long a photo changed without one can linger in the browser.
+const PHOTO_BROWSER_CACHE_SECONDS = 3600;
 
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
 const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock']);
@@ -105,6 +111,18 @@ function serveDistFile(res: ServerResponse, pathname: string): boolean {
   res.writeHead(200, { 'Content-Type': ASSET_CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream' });
   res.end(body);
   return true;
+}
+
+// Only the image bytes and a content type WhatsApp's CDN response was
+// already checked against (photo-download.ts) — never its URL or headers.
+function sendPhoto(res: ServerResponse, { body, contentType }: { body: Buffer; contentType: string }): void {
+  res.writeHead(200, {
+    'Content-Type': contentType,
+    'Content-Length': body.length,
+    'Cache-Control': `private, max-age=${PHOTO_BROWSER_CACHE_SECONDS}`,
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.end(body);
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -243,7 +261,7 @@ async function handleApi(
   searchParams: URLSearchParams,
   deps: ControlServerDependencies,
 ): Promise<boolean> {
-  const { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks } = deps;
+  const { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks } = deps;
 
   // Server-Sent Events: pushes a `data: <topic>` line whenever contacts,
   // the roster, or the audit log changes (see src/store/events.ts), so the
@@ -271,8 +289,28 @@ async function handleApi(
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
     const selfId = deps.getSelfId();
-    const contacts = contactDirectory.list().map((c) => ({ ...c, monitored: monitoredContacts.isMonitored(c.id), isSelf: c.id === selfId, allowSelf: deps.allowSelf }));
+    const contacts = contactDirectory.list().map((c) => ({
+      ...c,
+      monitored: monitoredContacts.isMonitored(c.id),
+      isSelf: c.id === selfId,
+      allowSelf: deps.allowSelf,
+      photoUrl: profilePhotos.photoPath(c.id),
+    }));
     sendJson(res, 200, contacts);
+    return true;
+  }
+
+  // A failed lookup/download is a 404 too, not a 5xx: either way the
+  // frontend's only move is falling back to initials, and profile-photos.ts
+  // has already logged why.
+  if (req.method === 'GET' && segments.length === 3 && segments[0] === 'contacts' && segments[2] === 'photo') {
+    const contactId = segments[1];
+    const result = isIndividualJid(contactId) ? await profilePhotos.getPhoto(contactId) : { ok: true as const, photo: null };
+    if (!result.ok || !result.photo) {
+      sendJson(res, 404, { error: 'no photo' });
+      return true;
+    }
+    sendPhoto(res, result.photo);
     return true;
   }
 
@@ -559,6 +597,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     runCommand: (contactId: string, command: string) => Promise<string | null>,
  *   },
  *   contactDirectory: { list: () => object[], get: (contactId: string) => object },
+ *   profilePhotos: {
+ *     photoPath: (contactId: string) => string | null,
+ *     getPhoto: (contactId: string) => Promise<{ ok: true, photo: { body: Buffer, contentType: string } | null } | { ok: false, error: string }>,
+ *   },
  *   monitoredContacts: {
  *     list: () => { contactId: string, escalationEnabled: boolean, context: string | null }[],
  *     isMonitored: (contactId: string) => boolean,

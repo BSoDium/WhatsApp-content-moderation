@@ -88,6 +88,17 @@ function migrateContactsTable(database: Database): void {
   // a second one — see contact-directory.ts's reconcileJid().
   const hasLid = database.prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'lid'").get();
   if (!hasLid) database.exec('ALTER TABLE contacts ADD COLUMN lid TEXT');
+
+  // Cached result of Baileys' profilePictureUrl() (a signed WhatsApp CDN
+  // URL, or NULL for "no photo") and when it was looked up, so the photo
+  // proxy route doesn't re-query WhatsApp on every request — see
+  // src/whatsapp/profile-photos.ts. A NULL photo_fetched_at means "never
+  // looked up (or invalidated)", distinct from a fresh NULL photo_url.
+  const hasPhotoUrl = database.prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'photo_url'").get();
+  if (!hasPhotoUrl) database.exec('ALTER TABLE contacts ADD COLUMN photo_url TEXT');
+
+  const hasPhotoFetchedAt = database.prepare("SELECT 1 FROM pragma_table_info('contacts') WHERE name = 'photo_fetched_at'").get();
+  if (!hasPhotoFetchedAt) database.exec('ALTER TABLE contacts ADD COLUMN photo_fetched_at INTEGER');
 }
 
 // Same exception as migrateContactsTable above: an existing monitored_contacts

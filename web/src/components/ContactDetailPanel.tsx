@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, History } from 'lucide-react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { ArrowLeft, CircleAlert, History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -17,17 +17,86 @@ interface ContactDetailPanelProps {
   onToggleMonitor: (contactId: string, monitored: boolean) => Promise<void>;
   onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
   onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
-  onSetContext: (contactId: string, context: string) => Promise<void>;
+  onSetContext: (contactId: string, context: string) => Promise<true>;
   onViewHistory: (contactId: string) => void;
 }
 
-// The caller mounts this with `key={contact.id}` so `message`/`contextDraft`
-// reset by remounting on a new selection, rather than needing an effect to
-// reset them.
-export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onViewHistory }: ContactDetailPanelProps) {
+// Lets the parent (App.tsx) ask "is it safe to switch away from this
+// contact / close this panel right now" before it discards this component
+// by remounting it with a different `key` — the moderation-context draft
+// below is the one field here with unsaved state that a silent remount
+// would otherwise lose.
+export interface ContactDetailPanelHandle {
+  hasUnsavedChanges: () => boolean;
+  save: () => Promise<boolean>;
+  discard: () => void;
+}
+
+type ContextSaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+// How long the "Saved" confirmation stays up before fading back to idle —
+// long enough to register, short enough not to linger and look stuck.
+const SAVED_CONFIRMATION_MS = 2500;
+
+// The caller mounts this with `key={contact.id}` so `message` resets by
+// remounting on a new selection, rather than needing an effect to reset it.
+export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
+  { contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onViewHistory },
+  ref,
+) {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(() => new Set());
   const [contextDraft, setContextDraft] = useState(entry?.context ?? '');
+  const [contextSaveState, setContextSaveState] = useState<ContextSaveState>('idle');
+  const [contextError, setContextError] = useState<string | null>(null);
+  // The last server value this draft was synced from — same "no unsaved
+  // edit in progress" check SettingsPanel/PolicyEditor use, so a live
+  // update from another tab never clobbers a draft in progress here.
+  const lastSyncedContext = useRef(entry?.context ?? '');
+  const savedConfirmationTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const savedContext = entry?.context ?? '';
+  const contextDirty = contextDraft !== savedContext;
+
+  useEffect(() => {
+    if (contextDraft === lastSyncedContext.current) setContextDraft(savedContext);
+    lastSyncedContext.current = savedContext;
+  }, [savedContext]);
+
+  useEffect(() => () => clearTimeout(savedConfirmationTimeout.current), []);
+
+  async function saveContext(): Promise<boolean> {
+    if (!contact) return false;
+    setContextSaveState('saving');
+    setContextError(null);
+    try {
+      await onSetContext(contact.id, contextDraft);
+      setContextSaveState('saved');
+      clearTimeout(savedConfirmationTimeout.current);
+      savedConfirmationTimeout.current = setTimeout(() => setContextSaveState('idle'), SAVED_CONFIRMATION_MS);
+      return true;
+    } catch (err) {
+      setContextSaveState('error');
+      setContextError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hasUnsavedChanges: () => contextDirty,
+      save: saveContext,
+      discard: () => {
+        clearTimeout(savedConfirmationTimeout.current);
+        setContextDraft(savedContext);
+        setContextSaveState('idle');
+        setContextError(null);
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- saveContext closes over contact/contextDraft, which are already covered by contact/contextDirty below
+    [contextDirty, savedContext, contact, contextDraft],
+  );
 
   if (!contact) return null;
 
@@ -156,16 +225,39 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
               Extra guidance folded into the classifier prompt for this contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes."
             </p>
             <Textarea
+              id="moderation-context"
               className="mt-3"
               rows={3}
               placeholder="No extra context for this contact."
               value={contextDraft}
-              disabled={pending.has('context')}
-              onChange={(e) => setContextDraft(e.target.value)}
-              onBlur={() => {
-                if (contextDraft !== (entry?.context ?? '')) withPending('context', () => onSetContext(contact.id, contextDraft));
+              disabled={contextSaveState === 'saving'}
+              aria-describedby="moderation-context-status"
+              onChange={(e) => {
+                setContextDraft(e.target.value);
+                if (contextSaveState === 'saved' || contextSaveState === 'error') setContextSaveState('idle');
               }}
             />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p id="moderation-context-status" aria-live="polite" className="flex min-h-[1.25em] items-center gap-1.5 text-sm text-muted-foreground">
+                {contextSaveState === 'saving' && (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    Saving…
+                  </>
+                )}
+                {contextSaveState === 'saved' && 'Saved'}
+                {contextSaveState === 'error' && (
+                  <span className="flex items-center gap-1.5 text-destructive">
+                    <CircleAlert className="size-3.5" aria-hidden="true" />
+                    Couldn't save{contextError ? `: ${contextError}` : ''}
+                  </span>
+                )}
+                {contextSaveState === 'idle' && contextDirty && 'Unsaved changes'}
+              </p>
+              <Button size="sm" onClick={saveContext} disabled={!contextDirty || contextSaveState === 'saving'} aria-busy={contextSaveState === 'saving'}>
+                {contextSaveState === 'saving' ? 'Saving…' : contextSaveState === 'error' ? 'Retry save' : 'Save'}
+              </Button>
+            </div>
           </section>
         )}
       </div>
@@ -173,4 +265,4 @@ export function ContactDetailPanel({ contact, entry, onClose, onToggleMonitor, o
       <p className="mt-4 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>
     </div>
   );
-}
+});

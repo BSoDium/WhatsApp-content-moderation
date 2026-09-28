@@ -55,6 +55,22 @@ function makeContactDirectory(entries = []) {
   };
 }
 
+const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+function makeProfilePhotos(photos = {}) {
+  const calls = [];
+  return {
+    calls,
+    photoPath: (contactId) => (contactId in photos ? `/api/contacts/${encodeURIComponent(contactId)}/photo?v=1` : null),
+    getPhoto: async (contactId) => {
+      calls.push(contactId);
+      const entry = photos[contactId];
+      if (entry instanceof Error) return { ok: false, error: entry.message };
+      return { ok: true, photo: entry ?? null };
+    },
+  };
+}
+
 function makeMonitoredContacts(initial = []) {
   const roster = new Map(initial.map((row) => [row.contactId, { context: null, ...row }]));
   return {
@@ -106,6 +122,7 @@ async function withServer(
   {
     manualOverride = makeOverride(),
     contactDirectory = makeContactDirectory(),
+    profilePhotos = makeProfilePhotos(),
     monitoredContacts = makeMonitoredContacts(),
     auditLog = makeAuditLog(),
     blocks = makeBlocks(),
@@ -119,10 +136,10 @@ async function withServer(
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, allowSelf });
+  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, allowSelf });
   const port = await server.listen(0);
   try {
-    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, monitoredContacts, auditLog, blocks });
+    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks });
   } finally {
     await server.close();
   }
@@ -235,8 +252,8 @@ test('GET /api/contacts merges the directory with the monitored flag', async () 
     assert.deepEqual(
       body.sort((a, b) => a.id.localeCompare(b.id)),
       [
-        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true, isSelf: false, allowSelf: false },
-        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false, isSelf: false, allowSelf: false },
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true, isSelf: false, allowSelf: false, photoUrl: null },
+        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false, isSelf: false, allowSelf: false, photoUrl: null },
       ],
     );
   });
@@ -254,10 +271,79 @@ test('GET /api/contacts marks the self contact via isSelf and reports the allowS
     assert.deepEqual(
       body.sort((a, b) => a.id.localeCompare(b.id)),
       [
-        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: false, isSelf: false, allowSelf: true },
-        { id: 'me@s.whatsapp.net', name: 'Me', monitored: false, isSelf: true, allowSelf: true },
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: false, isSelf: false, allowSelf: true, photoUrl: null },
+        { id: 'me@s.whatsapp.net', name: 'Me', monitored: false, isSelf: true, allowSelf: true, photoUrl: null },
       ],
     );
+  });
+});
+
+test('GET /api/contacts includes a same-origin photo proxy path, never a CDN URL, for contacts that may have a photo', async () => {
+  const contactDirectory = makeContactDirectory([
+    { id: 'alice@s.whatsapp.net', name: 'Alice' },
+    { id: 'bob@s.whatsapp.net', name: 'Bob' },
+  ]);
+  const profilePhotos = makeProfilePhotos({ 'alice@s.whatsapp.net': { body: JPEG_BYTES, contentType: 'image/jpeg' } });
+
+  await withServer({ contactDirectory, profilePhotos }, async (base) => {
+    const body = await (await fetch(`${base}/api/contacts`, { headers: authHeaders() })).json();
+    const byId = Object.fromEntries(body.map((c) => [c.id, c.photoUrl]));
+    assert.deepEqual(byId, {
+      'alice@s.whatsapp.net': '/api/contacts/alice%40s.whatsapp.net/photo?v=1',
+      'bob@s.whatsapp.net': null,
+    });
+  });
+});
+
+test('GET /api/contacts/:id/photo proxies the image bytes with an image content type and private caching', async () => {
+  const profilePhotos = makeProfilePhotos({ 'alice@s.whatsapp.net': { body: JPEG_BYTES, contentType: 'image/jpeg' } });
+
+  await withServer({ profilePhotos }, async (base) => {
+    const res = await fetch(`${base}/api/contacts/alice%40s.whatsapp.net/photo?v=1`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/jpeg');
+    assert.match(res.headers.get('cache-control'), /^private, max-age=\d+$/);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+    assert.deepEqual(Buffer.from(await res.arrayBuffer()), JPEG_BYTES);
+    assert.deepEqual(profilePhotos.calls, ['alice@s.whatsapp.net']);
+  });
+});
+
+test('GET /api/contacts/:id/photo is a clean 404 when the contact has no photo', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/contacts/bob%40s.whatsapp.net/photo`, { headers: authHeaders() });
+    assert.equal(res.status, 404);
+    assert.deepEqual(await res.json(), { error: 'no photo' });
+  });
+});
+
+test('GET /api/contacts/:id/photo is a 404, not a 5xx, when the lookup failed (fail open to initials)', async () => {
+  const profilePhotos = makeProfilePhotos({ 'alice@s.whatsapp.net': new Error('socket timed out') });
+
+  await withServer({ profilePhotos }, async (base) => {
+    const res = await fetch(`${base}/api/contacts/alice%40s.whatsapp.net/photo`, { headers: authHeaders() });
+    assert.equal(res.status, 404);
+    assert.doesNotMatch(await res.text(), /socket timed out/);
+  });
+});
+
+test('GET /api/contacts/:id/photo never looks up a group or broadcast JID', async () => {
+  const profilePhotos = makeProfilePhotos({ '123-456@g.us': { body: JPEG_BYTES, contentType: 'image/jpeg' } });
+
+  await withServer({ profilePhotos }, async (base) => {
+    const res = await fetch(`${base}/api/contacts/123-456%40g.us/photo`, { headers: authHeaders() });
+    assert.equal(res.status, 404);
+    assert.deepEqual(profilePhotos.calls, []);
+  });
+});
+
+test('GET /api/contacts/:id/photo requires the Tailscale identity like every other /api route', async () => {
+  const profilePhotos = makeProfilePhotos({ 'alice@s.whatsapp.net': { body: JPEG_BYTES, contentType: 'image/jpeg' } });
+
+  await withServer({ profilePhotos }, async (base) => {
+    const res = await fetch(`${base}/api/contacts/alice%40s.whatsapp.net/photo`);
+    assert.equal(res.status, 403);
+    assert.deepEqual(profilePhotos.calls, []);
   });
 });
 

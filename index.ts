@@ -6,6 +6,7 @@ import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
+import { createProfilePhotos } from './src/whatsapp/profile-photos.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
 import { ensureDefaultsSeeded, migrateShadowModeFromEnv } from './src/store/settings.ts';
@@ -99,6 +100,9 @@ const buffer = createMessageBuffer<IncomingMessage>(async (contactId, messages) 
 
 const manualOverride = createManualOverride({ unblock: (jid) => unblock(currentSocket(), jid) });
 const contactDirectory = createContactDirectory();
+// A getter, not the socket itself — like currentSocket(), it must follow
+// reconnects, and a lookup while disconnected fails open instead of throwing.
+const profilePhotos = createProfilePhotos({ getSocket: () => sock });
 const monitoredContacts = {
   list: listMonitored,
   isMonitored,
@@ -124,6 +128,7 @@ async function start() {
   controlServer = createControlServer({
     manualOverride,
     contactDirectory,
+    profilePhotos,
     monitoredContacts,
     auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
     blocks: { countActive: countActiveBlocks },

@@ -260,7 +260,9 @@ styled after WhatsApp's own chat list:
   meaningfully more backend work than this redesign's scope. The avatar
   markup is isolated in its own `renderAvatar()` function specifically so a
   later photo feature can swap its internals without touching row/panel
-  layout.
+  layout. **Since implemented** — see "Real WhatsApp profile photos: lazy,
+  bounded, proxied" below; initials remain the fallback whenever there's no
+  photo or its lookup fails.
 - **The subtitle is a timestamp only, never a message preview** — showing
   what someone actually said, for a contact that isn't even being
   moderated yet, is a bigger privacy footprint than this app should default
@@ -1212,3 +1214,72 @@ they existed for are no longer things an operator can get wrong. `data/`
 (SQLite) is now the only place operator-entered state lives outside the
 image, which already had to be backed up for the audit log and settings —
 the moderation policy just joined it.
+
+## Real WhatsApp profile photos: lazy, bounded, proxied
+
+Picks up the photo feature "Control panel: full contact list + slide-in
+detail panel" above deliberately deferred. The avatar isolation it set up
+held: the frontend change is one `AvatarImage` inside `ContactAvatar.tsx`,
+plus an optional `photoUrl` on `Contact`. Radix's `Avatar` only swaps the
+image in once it has actually loaded, so any 404 or broken image leaves
+the initials in place without extra handling.
+
+**Lookups are lazy, on a request for that contact's photo — never eager on
+connect.** `GET /api/contacts` does no WhatsApp I/O. It only adds each
+contact's `photoUrl`: a same-origin path, `/api/contacts/:id/photo?v=<fetchedAt>`,
+or `null` once a fresh lookup has confirmed there's no photo, so the
+frontend skips asking. `GET /api/contacts/:id/photo` is what triggers
+`profilePictureUrl(jid, 'preview')` (`src/whatsapp/profile-photos.ts`). An
+eager sweep over a 200+ contact list on every connect would put a burst of
+IQ queries on the linked-device socket for photos nobody may ever look at,
+the same kind of unusual traffic "The block/unblock cycle is itself a ban
+signal" is wary of.
+
+**Every lookup, whatever triggered it, goes through one process-wide
+concurrency limiter capped at 3** (`PHOTO_LOOKUP_CONCURRENCY`, a small
+hand-rolled FIFO queue in `src/whatsapp/concurrency-limiter.ts`; a
+dependency wasn't worth it for ~20 lines). Concurrent requests for the same
+contact share one in-flight lookup. CDN downloads get their own limiter
+(4): they don't touch the socket, but they still shouldn't fan out to one
+request per contact at once. The trade-off is first-load latency: the
+avatars of a never-seen list fill in gradually, not all at once. That's
+acceptable because the result is cached.
+
+**The cache is two columns on `contacts`, `photo_url` and
+`photo_fetched_at`, added with the same one-off `pragma_table_info` +
+`ALTER TABLE` pattern as `last_message_at`/`lid`.** The contacts table is
+real user data, so a schema change can't recreate it. Results, including
+"no photo", stay fresh for 24h (`PHOTO_REFRESH_MS`). That mostly bounds how
+stale a signed CDN URL can get, because an actual photo change arrives
+sooner: Baileys turns WhatsApp's `picture` notification into a
+`contacts.update` with `imgUrl: 'changed' | 'removed'`, and the directory
+clears that contact's `photo_fetched_at` on it. A CDN URL that expires
+early anyway (403/404/410 on download) triggers exactly one forced
+re-lookup, never a loop.
+
+**It fails open, like the classifier.** A missing photo isn't an error:
+`undefined`, or Baileys' `item-not-found`/`not-authorized` IQ errors
+(thrown as a `Boom` with the code in `.data`). It's cached as "no photo".
+A real failure is returned as `{ ok: false }` and never thrown: a
+disconnected socket, a timeout (15s, well under Baileys' 60s default, so a
+stalled query can't pin a limiter slot), or a CDN error. It's logged via
+`pino`, left uncached, and backed off for 15 minutes so a flaky contact
+doesn't re-query WhatsApp on every page load. The route answers a failure
+with the same plain 404 as "no photo". Either way the frontend's only move
+is falling back to initials, and a 5xx would just add console noise.
+
+**The route is a least-privilege proxy.** It gets the same auth as every
+other `/api/*` route, not the static-asset exceptions: the
+`verifyTailscaleIdentity` check when `allowedLogin` is set, none in the
+open-access mode described in "Dropping `.env`, `config/policy.md`, and
+first-boot file imports" above. The server fetches the image bytes itself and
+returns only those: the signed CDN URL and WhatsApp's response headers
+never reach the browser. Before fetching, it checks that the URL is https
+on `*.whatsapp.net` and sets `redirect: 'error'`. The URL comes from
+WhatsApp, but this server fetches it with its own network access (next to
+a loopback-only Ollama), so it isn't trusted as an arbitrary URL. The
+response must be JPEG/PNG/WebP (never SVG, which could carry script once
+re-served from this app's own origin) and at most 1 MiB, and it goes
+out with `nosniff` and `Cache-Control: private, max-age=3600`. It only looks
+up individual JIDs already in the contact directory, so it can't be used
+to probe photos for arbitrary numbers.

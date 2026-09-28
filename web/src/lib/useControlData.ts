@@ -118,18 +118,24 @@ export function useControlData(initialSelectedId: string | null = null) {
     [refreshRoster],
   );
 
+  // Resolves true on success or rejects with a message, rather than
+  // swallowing the failure into just the shared banner (like
+  // setMonitored/runCommand/setEscalation above) — ContactDetailPanel's
+  // explicit Save button needs the failure itself to drive its own
+  // dirty/saving/saved/failed state and show an actionable, field-local
+  // error instead of a panel-wide banner unrelated fields also see.
   const setContext = useCallback(
-    async function setContext(contactId: string, context: string): Promise<void> {
+    async function setContext(contactId: string, context: string): Promise<true> {
       try {
         await apiFetch(`/api/roster/${encodeURIComponent(contactId)}/context`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ context }),
         });
-        setError(null);
         await refreshRoster();
+        return true;
       } catch (error: unknown) {
-        setError({ title: 'Could not update moderation context', description: errorMessage(error), retry: () => setContext(contactId, context) });
+        throw new Error(errorMessage(error));
       }
     },
     [refreshRoster],
