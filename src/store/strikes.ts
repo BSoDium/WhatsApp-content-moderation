@@ -1,14 +1,14 @@
-import { getDb } from './db.ts';
+import { eq, sql } from 'drizzle-orm';
+import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
-import type { StrikeRecord } from '../types.ts';
+import { excluded } from './excluded.ts';
+import { strikes } from './schema.ts';
 
 /**
  * Returns a contact's current strike count (0 if they have no row yet).
  */
 export function getStrikeCount(contactId: string): number {
-  const row = getDb()
-    .prepare('SELECT count FROM strikes WHERE contact_id = ?')
-    .get(contactId) as StrikeRecord | undefined;
+  const row = getOrm().select({ count: strikes.count }).from(strikes).where(eq(strikes.contact_id, contactId)).get();
   return row?.count ?? 0;
 }
 
@@ -16,11 +16,14 @@ export function getStrikeCount(contactId: string): number {
  * Records a flagged message: increments the contact's strike count by one.
  */
 export function recordStrike(contactId: string): number {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO strikes (contact_id, count, updated_at) VALUES (?, 1, ?)
-     ON CONFLICT (contact_id) DO UPDATE SET count = count + 1, updated_at = excluded.updated_at`,
-  ).run(contactId, Date.now());
+  getOrm()
+    .insert(strikes)
+    .values({ contact_id: contactId, count: 1, updated_at: Date.now() })
+    .onConflictDoUpdate({
+      target: strikes.contact_id,
+      set: { count: sql`${strikes.count} + 1`, updated_at: excluded(strikes.updated_at) },
+    })
+    .run();
   emitControlEvent('roster');
   return getStrikeCount(contactId);
 }
@@ -30,11 +33,14 @@ export function recordStrike(contactId: string): number {
  * by one, floored at zero — see docs/roadmap.md issue #5.
  */
 export function decayStrike(contactId: string): number {
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO strikes (contact_id, count, updated_at) VALUES (?, 0, ?)
-     ON CONFLICT (contact_id) DO UPDATE SET count = MAX(count - 1, 0), updated_at = excluded.updated_at`,
-  ).run(contactId, Date.now());
+  getOrm()
+    .insert(strikes)
+    .values({ contact_id: contactId, count: 0, updated_at: Date.now() })
+    .onConflictDoUpdate({
+      target: strikes.contact_id,
+      set: { count: sql`MAX(${strikes.count} - 1, 0)`, updated_at: excluded(strikes.updated_at) },
+    })
+    .run();
   emitControlEvent('roster');
   return getStrikeCount(contactId);
 }

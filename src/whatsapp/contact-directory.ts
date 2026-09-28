@@ -1,8 +1,13 @@
 import { jidNormalizedUser } from '@whiskeysockets/baileys';
-import { getDb } from '../store/db.ts';
+import { eq, sql } from 'drizzle-orm';
+import { getOrm } from '../store/db.ts';
 import { emitControlEvent } from '../store/events.ts';
+import { excluded } from '../store/excluded.ts';
 import { invalidatePhotoCache } from '../store/contact-photos.ts';
+import { contacts } from '../store/schema.ts';
 import type { Chat, Contact, WAMessage, WASocket } from '@whiskeysockets/baileys';
+import type { SQL } from 'drizzle-orm';
+import type { SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import type { ContactRecord } from '../types.ts';
 
 interface ContactEntry extends Omit<Partial<Contact>, 'lid' | 'name' | 'notify' | 'verifiedName'> {
@@ -12,11 +17,22 @@ interface ContactEntry extends Omit<Partial<Contact>, 'lid' | 'name' | 'notify' 
   verifiedName?: string | null;
   lid?: string | null;
   lastMessageAt?: number | null;
+  photoUrl?: string | null;
+  photoFetchedAt?: number | null;
 }
 
 // @newsletter is WhatsApp Channels — not a DM, and not something the
 // delete/warn/block pipeline (built around a real two-way chat) supports.
 export const NON_INDIVIDUAL_JID_SUFFIXES = ['@g.us', '@broadcast', '@newsletter'];
+
+const CONTACT_RECORD_COLUMNS = {
+  contact_id: contacts.contact_id,
+  name: contacts.name,
+  notify: contacts.notify,
+  verified_name: contacts.verified_name,
+  lid: contacts.lid,
+  last_message_at: contacts.last_message_at,
+};
 
 function formatJid(jid: string): string {
   const [user] = jid.split('@');
@@ -63,7 +79,7 @@ function reconcileJid(id: string, altId?: string | null): { canonicalId: string;
 // contacts.update, which never carries the phoneNumber counterpart itself —
 // still resolve to the same canonical row instead of creating a second one.
 function lookupCanonicalForLid(lid: string): string | undefined {
-  const row = getDb().prepare('SELECT contact_id FROM contacts WHERE lid = ?').get(lid) as { contact_id: string } | undefined;
+  const row = getOrm().select({ contact_id: contacts.contact_id }).from(contacts).where(eq(contacts.lid, lid)).get();
   return row?.contact_id;
 }
 
@@ -103,42 +119,63 @@ export function canonicalMessageContactId(key: { remoteJid?: string | null; remo
   return reconcileJid(id, resolveAltId(id, key.remoteJidAlt || undefined)).canonicalId;
 }
 
+function coalesceExisting(column: SQLiteColumn): SQL {
+  return sql`COALESCE(${excluded(column)}, ${column})`;
+}
+
+// A cached photo lookup is one (url, fetched_at) pair (a null url means "no photo" only alongside its fetched_at), so both columns take the incoming folded alias's pair only when it's newer, never mixing two lookups.
+function newerPhotoLookup(column: SQLiteColumn): SQL {
+  return sql`CASE
+    WHEN ${excluded(contacts.photo_fetched_at)} IS NOT NULL
+      AND (${contacts.photo_fetched_at} IS NULL OR ${excluded(contacts.photo_fetched_at)} > ${contacts.photo_fetched_at})
+    THEN ${excluded(column)}
+    ELSE ${column}
+  END`;
+}
+
 // COALESCE against the existing name/notify/verifiedName/lid columns, not a
 // full overwrite, so a later partial (e.g. {id, notify} on every incoming
 // message) never erases a fuller name an earlier event already found.
 // last_message_at instead takes the MAX of old vs incoming, since two real
 // timestamps should keep the more recent one regardless of event order,
 // and a touch that doesn't know a timestamp (a pure name-sync event) must
-// leave it untouched rather than clearing it.
+// leave it untouched rather than clearing it. Only foldAlias() ever passes a
+// photo lookup; every other ingest leaves the cached one alone.
 function upsert(entry: ContactEntry): void {
-  getDb()
-    .prepare(
-      `INSERT INTO contacts (contact_id, name, notify, verified_name, lid, last_message_at, updated_at)
-       VALUES (@contactId, @name, @notify, @verifiedName, @lid, @lastMessageAt, @updatedAt)
-       ON CONFLICT (contact_id) DO UPDATE SET
-         name = COALESCE(excluded.name, name),
-         notify = COALESCE(excluded.notify, notify),
-         verified_name = COALESCE(excluded.verified_name, verified_name),
-         lid = COALESCE(excluded.lid, lid),
-         last_message_at = CASE
-           WHEN excluded.last_message_at IS NULL THEN last_message_at
-           WHEN last_message_at IS NULL THEN excluded.last_message_at
-           ELSE MAX(last_message_at, excluded.last_message_at)
-         END,
-         updated_at = excluded.updated_at`,
-    )
-    .run({
-      contactId: entry.id,
+  getOrm()
+    .insert(contacts)
+    .values({
+      contact_id: entry.id,
       // `|| null`, not `?? null`: an empty string must COALESCE the same as
       // a missing field (SQLite's COALESCE treats '' as non-null and would
       // otherwise let it erase a previously-found name).
       name: entry.name || null,
       notify: entry.notify || null,
-      verifiedName: entry.verifiedName || null,
+      verified_name: entry.verifiedName || null,
       lid: entry.lid || null,
-      lastMessageAt: entry.lastMessageAt ?? null,
-      updatedAt: Date.now(),
-    });
+      last_message_at: entry.lastMessageAt ?? null,
+      photo_url: entry.photoUrl ?? null,
+      photo_fetched_at: entry.photoFetchedAt ?? null,
+      updated_at: Date.now(),
+    })
+    .onConflictDoUpdate({
+      target: contacts.contact_id,
+      set: {
+        name: coalesceExisting(contacts.name),
+        notify: coalesceExisting(contacts.notify),
+        verified_name: coalesceExisting(contacts.verified_name),
+        lid: coalesceExisting(contacts.lid),
+        last_message_at: sql`CASE
+          WHEN ${excluded(contacts.last_message_at)} IS NULL THEN ${contacts.last_message_at}
+          WHEN ${contacts.last_message_at} IS NULL THEN ${excluded(contacts.last_message_at)}
+          ELSE MAX(${contacts.last_message_at}, ${excluded(contacts.last_message_at)})
+        END`,
+        photo_url: newerPhotoLookup(contacts.photo_url),
+        photo_fetched_at: newerPhotoLookup(contacts.photo_fetched_at),
+        updated_at: excluded(contacts.updated_at),
+      },
+    })
+    .run();
   emitControlEvent('contacts');
 }
 
@@ -148,10 +185,29 @@ function upsert(entry: ContactEntry): void {
 // pairing arrives.
 function foldAlias(canonicalId: string, aliasId: string | null | undefined): void {
   if (!aliasId || aliasId === canonicalId) return;
-  const stale = getDb().prepare('SELECT name, notify, verified_name, last_message_at FROM contacts WHERE contact_id = ?').get(aliasId) as ContactRecord | undefined;
+  const stale = getOrm()
+    .select({
+      name: contacts.name,
+      notify: contacts.notify,
+      verified_name: contacts.verified_name,
+      last_message_at: contacts.last_message_at,
+      photo_url: contacts.photo_url,
+      photo_fetched_at: contacts.photo_fetched_at,
+    })
+    .from(contacts)
+    .where(eq(contacts.contact_id, aliasId))
+    .get();
   if (!stale) return;
-  upsert({ id: canonicalId, name: stale.name, notify: stale.notify, verifiedName: stale.verified_name, lastMessageAt: stale.last_message_at });
-  getDb().prepare('DELETE FROM contacts WHERE contact_id = ?').run(aliasId);
+  upsert({
+    id: canonicalId,
+    name: stale.name,
+    notify: stale.notify,
+    verifiedName: stale.verified_name,
+    lastMessageAt: stale.last_message_at,
+    photoUrl: stale.photo_url,
+    photoFetchedAt: stale.photo_fetched_at,
+  });
+  getOrm().delete(contacts).where(eq(contacts.contact_id, aliasId)).run();
 }
 
 function ingestOne(rawId: string, rawAltId: string | undefined, rest: Partial<Contact> & { lastMessageAt?: number | null }): string | null {
@@ -257,14 +313,14 @@ export function createContactDirectory() {
   }
 
   function get(contactId: string) {
-    const row = getDb().prepare('SELECT contact_id, name, notify, verified_name, lid, last_message_at FROM contacts WHERE contact_id = ?').get(contactId) as ContactRecord | undefined;
-    return toContact(contactId, row);
+    return toContact(contactId, getOrm().select(CONTACT_RECORD_COLUMNS).from(contacts).where(eq(contacts.contact_id, contactId)).get());
   }
 
   function list(): ReturnType<typeof toContact>[] {
-    return (getDb()
-      .prepare('SELECT contact_id, name, notify, verified_name, lid, last_message_at FROM contacts')
-      .all() as unknown as ContactRecord[])
+    return getOrm()
+      .select(CONTACT_RECORD_COLUMNS)
+      .from(contacts)
+      .all()
       .map((row) => toContact(row.contact_id, row));
   }
 

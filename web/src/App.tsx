@@ -37,7 +37,12 @@ const LIST_PANE_MARGIN_OPEN = '0%';
 const DETAIL_PANE_WIDTH_OPEN = '50%';
 const DETAIL_PANE_WIDTH_CLOSED = '0%';
 const DETAIL_PANEL_MIN_WIDTH = 500;
-const DETAIL_PANEL_MAX_WIDTH = 960;
+// Comfortably covers the 50%-of-row width Motion animates to (the
+// choreography's own target, uncapped) on anything up to a ~2800px-wide
+// display — past that a resize-mode handoff can still visibly snap, but a
+// fixed cap has to end somewhere, and screens beyond this are rare enough
+// not to hold the common case's max hostage.
+const DETAIL_PANEL_MAX_WIDTH = 1400;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -114,6 +119,11 @@ function App() {
   const [confirmSaving, setConfirmSaving] = useState(false);
 
   function requestSelectContact(nextId: string | null) {
+    // Re-selecting the contact that's already open isn't a navigation —
+    // without this, reflexively clicking the open contact's own row while
+    // its context edit is dirty pops the unsaved-changes dialog for a
+    // no-op, and a reflexive "Discard" there would wipe a live edit.
+    if (nextId === selectedId) return;
     if (detailPanelRef.current?.hasUnsavedChanges()) {
       setPendingSelection(nextId);
       return;
@@ -122,11 +132,15 @@ function App() {
   }
 
   async function confirmSaveAndContinue() {
+    // Captured now, not read from state after the await: the dialog can be
+    // dismissed (Escape, overlay click) while the save is in flight, which
+    // would otherwise leave this closure navigating to a stale target.
+    const target = pendingSelection;
     setConfirmSaving(true);
     const ok = await detailPanelRef.current?.save();
     setConfirmSaving(false);
     if (ok) {
-      setSelectedId(pendingSelection ?? null);
+      setSelectedId(target ?? null);
       setPendingSelection(undefined);
     }
   }
@@ -166,6 +180,14 @@ function App() {
     }
     setPhase((current) => {
       if (panelOpen && current === 'closed') return 'opening';
+      // A contact was reselected while the previous one was still fading
+      // out (the list pane hasn't moved yet during 'closing' — only the
+      // detail's opacity has). Recovering to 'open' directly (rather than
+      // falling through to the 'return current' default below) lets the
+      // still-pending 'closing' onAnimationComplete fire harmlessly against
+      // the new phase value instead of leaving this stuck at 'closing'
+      // forever once that callback's `phase === 'closing'` check is stale.
+      if (panelOpen && current === 'closing') return 'open';
       if (!panelOpen && (current === 'open' || current === 'opening')) return 'closing';
       return current;
     });
@@ -195,9 +217,6 @@ function App() {
   // width:50%-but-invisible mid-choreography.
   const detailInteractive = phase === 'open';
 
-  // Only takes over from the choreographed percentage width once the panel
-  // is fully open and settled — mid-animation, Motion owns the width.
-  const detailResizeActive = isDesktop && phase === 'open';
   const detailWidth = useResizableWidth({
     id: 'contact-detail-panel',
     defaultWidth: estimateHalfViewportWidth(),
@@ -206,6 +225,20 @@ function App() {
     side: 'left',
     label: 'Resize contact details panel',
   });
+  // Only takes over from the choreographed percentage width once the panel
+  // is fully open and settled — mid-animation, Motion owns the width. Held
+  // one render behind `phase === 'open'` (via the effect below) rather than
+  // computed inline: dropping `width` from Motion's `animate` object and
+  // adding it to `style` in the exact same commit leaves Motion holding its
+  // last-animated percentage indefinitely instead of picking up the style
+  // value — reproduced against the pinned Motion version. The extra
+  // render/commit this effect introduces before resize mode engages gives
+  // Motion a chance to settle on the current `animate` target first.
+  const [resizeReady, setResizeReady] = useState(false);
+  useEffect(() => {
+    setResizeReady(isDesktop && phase === 'open');
+  }, [isDesktop, phase]);
+  const detailResizeActive = resizeReady;
   const detailAnimate = detailResizeActive ? { opacity: 1 } : detailPaneTarget(isDesktop, phase);
   const detailStyle = detailResizeActive ? { width: detailWidth.width, maxWidth: 'none' } : undefined;
 
@@ -303,7 +336,17 @@ function App() {
         <PolicyEditor key={panelSeq.policy} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} />
         <SettingsPanel key={panelSeq.settings} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} />
 
-        <AlertDialog open={pendingSelection !== undefined} onOpenChange={(open) => { if (!open) setPendingSelection(undefined); }}>
+        <AlertDialog
+          open={pendingSelection !== undefined}
+          onOpenChange={(open) => {
+            // Ignore a dismiss attempt (Escape, overlay click) while the
+            // save is in flight — closing here can't cancel the in-flight
+            // request, and confirmSaveAndContinue's captured target would
+            // still navigate once it resolves, contradicting the "stay"
+            // the user just asked for.
+            if (!open && !confirmSaving) setPendingSelection(undefined);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Unsaved moderation context</AlertDialogTitle>
@@ -312,8 +355,8 @@ function App() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Stay</AlertDialogCancel>
-              <Button variant="outline" onClick={confirmDiscardAndContinue}>
+              <AlertDialogCancel disabled={confirmSaving}>Stay</AlertDialogCancel>
+              <Button variant="outline" onClick={confirmDiscardAndContinue} disabled={confirmSaving}>
                 Discard
               </Button>
               <Button onClick={confirmSaveAndContinue} disabled={confirmSaving} aria-busy={confirmSaving}>

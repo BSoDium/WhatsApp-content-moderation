@@ -38,6 +38,7 @@ const logger = pino({ name: 'profile-photos' });
 
 export type PhotoLookup = { ok: true; url: string | null } | { ok: false; error: string };
 export type PhotoFetch = { ok: true; photo: { body: Buffer; contentType: string } | null } | { ok: false; error: string };
+type CacheAccess<T> = { ok: true; value: T } | { ok: false; error: string };
 
 interface ProfilePhotoDependencies {
   getSocket: () => Pick<WASocket, 'profilePictureUrl'> | undefined;
@@ -53,6 +54,17 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// Reports the node:sqlite error Drizzle wraps rather than its "Failed query: <sql> params: <values>" message: that's the actual reason, and it keeps the signed CDN URL out of the log.
+function tryCache<T>(contactId: string, operation: string, access: () => T): CacheAccess<T> {
+  try {
+    return { ok: true, value: access() };
+  } catch (err) {
+    const error = errorMessage(err instanceof Error && err.cause !== undefined ? err.cause : err);
+    logger.error({ contactId, operation, error }, 'profile photo cache access failed; falling back to initials');
+    return { ok: false, error };
+  }
+}
+
 /**
  * Creates the profile-photo cache: lazily resolves a contact's WhatsApp
  * profile photo through Baileys' `profilePictureUrl`, caches the result
@@ -65,10 +77,11 @@ function errorMessage(err: unknown): string {
  * same contact sharing one lookup. Only contacts already in the directory
  * are looked up.
  *
- * Fails open: nothing here throws on a WhatsApp/CDN failure. A failed
- * lookup or download comes back as `{ ok: false }` (logged, then retried
- * no sooner than FAILURE_BACKOFF_MS later), which the caller treats the
- * same as "no photo" — the frontend falls back to initials.
+ * Fails open: nothing here throws on a WhatsApp/CDN or database failure. A
+ * failed lookup, download, or cache read/write comes back as `{ ok: false }`
+ * (logged; a failed lookup or cache write is retried no sooner than
+ * FAILURE_BACKOFF_MS later), which the caller treats the same as "no photo"
+ * — the frontend falls back to initials.
  */
 export function createProfilePhotos({ getSocket, fetchImpl = fetch, now = Date.now }: ProfilePhotoDependencies) {
   const lookupLimiter = createConcurrencyLimiter(PHOTO_LOOKUP_CONCURRENCY);
@@ -94,18 +107,25 @@ export function createProfilePhotos({ getSocket, fetchImpl = fetch, now = Date.n
 
   async function refresh(contactId: string): Promise<PhotoLookup> {
     const result = await lookupLimiter.run(() => queryWhatsApp(contactId));
-    if (result.ok) {
-      setPhotoCache(contactId, result.url, now());
-      lastFailureAt.delete(contactId);
-    } else {
+    if (!result.ok) {
       lastFailureAt.set(contactId, now());
       logger.warn({ contactId, error: result.error }, 'profile photo lookup failed; falling back to initials');
+      return result;
     }
+    // Backs off like a failed lookup, or every page load would re-query WhatsApp for as long as cache writes keep failing.
+    const cached = tryCache(contactId, 'setPhotoCache', () => setPhotoCache(contactId, result.url, now()));
+    if (!cached.ok) {
+      lastFailureAt.set(contactId, now());
+      return cached;
+    }
+    lastFailureAt.delete(contactId);
     return result;
   }
 
   async function lookupPhotoUrl(contactId: string): Promise<PhotoLookup> {
-    const cache = getPhotoCache(contactId);
+    const read = tryCache(contactId, 'getPhotoCache', () => getPhotoCache(contactId));
+    if (!read.ok) return read;
+    const cache = read.value;
     if (!cache) return { ok: true, url: null };
     if (isFresh(cache)) return { ok: true, url: cache.url };
 
@@ -137,7 +157,8 @@ export function createProfilePhotos({ getSocket, fetchImpl = fetch, now = Date.n
     // re-lookup recovers without waiting out the refresh window. Only once,
     // so a CDN that keeps rejecting fresh URLs can't loop.
     if (!result.ok && result.expired) {
-      invalidatePhotoCache(contactId);
+      const invalidated = tryCache(contactId, 'invalidatePhotoCache', () => invalidatePhotoCache(contactId));
+      if (!invalidated.ok) return invalidated;
       const retry = await lookupPhotoUrl(contactId);
       if (!retry.ok) return retry;
       if (!retry.url) return { ok: true, photo: null };
@@ -152,9 +173,12 @@ export function createProfilePhotos({ getSocket, fetchImpl = fetch, now = Date.n
   // frontend skips requesting it. `v` changes on every refresh, busting the
   // browser's cached copy whenever the server may have a newer photo.
   function photoPath(contactId: string): string | null {
-    const cache = getPhotoCache(contactId);
-    if (!cache || (isFresh(cache) && !cache.url)) return null;
     const path = `/api/contacts/${encodeURIComponent(contactId)}/photo`;
+    const read = tryCache(contactId, 'getPhotoCache', () => getPhotoCache(contactId));
+    // Unknown, like a never-looked-up contact: getPhoto() re-reads the cache and fails open itself.
+    if (!read.ok) return path;
+    const cache = read.value;
+    if (!cache || (isFresh(cache) && !cache.url)) return null;
     return cache.fetchedAt ? `${path}?v=${cache.fetchedAt}` : path;
   }
 

@@ -132,23 +132,60 @@ export function useResizableWidth(
       const startX = event.clientX;
       const startWidth = widthRef.current;
 
-      const handleMove = (moveEvent: PointerEvent) => {
-        if (moveEvent.pointerId !== pointerId) return;
-        const delta = moveEvent.clientX - startX;
+      const widthAtClientX = (clientX: number) => {
+        const delta = clientX - startX;
         const signedDelta = side === "left" ? -delta : delta;
-        commitWidth(startWidth + signedDelta);
+        return startWidth + signedDelta;
       };
 
-      const handleUp = (upEvent: PointerEvent) => {
-        if (upEvent.pointerId !== pointerId) return;
+      let rafId: number | null = null;
+      let pendingWidth: number | null = null;
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        if (moveEvent.pointerId !== pointerId) return;
+        pendingWidth = widthAtClientX(moveEvent.clientX);
+        if (rafId !== null) return;
+        // Coalesce to at most one commitWidth per animation frame: a trackpad
+        // or high-poll-rate mouse fires pointermove well past 100/s, and each
+        // commitWidth is a React re-render plus a synchronous sessionStorage
+        // write. Unlike the resize listener's settle-then-fire debounce
+        // (fine there, since viewport size rarely changes mid-gesture), a
+        // drag has to keep tracking the pointer in real time, so this bounds
+        // the rate instead of waiting for movement to pause.
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingWidth !== null) {
+            commitWidth(pendingWidth);
+            pendingWidth = null;
+          }
+        });
+      };
+
+      const handleEnd = (endEvent: PointerEvent, commitFinal: boolean) => {
+        if (endEvent.pointerId !== pointerId) return;
+        if (commitFinal) {
+          // Bypass any pending coalesced frame so the committed width always
+          // matches the pointer's true final position, never a stale rAF
+          // value from a frame that got dropped or hadn't fired yet.
+          commitWidth(widthAtClientX(endEvent.clientX));
+        }
         stopDrag();
       };
 
+      const handleUp = (upEvent: PointerEvent) => handleEnd(upEvent, true);
+      // A cancel means the gesture was aborted (touch reinterpreted as a
+      // scroll/back gesture, a dialog stealing focus, ...), not completed —
+      // clean up the same as pointerup, but never commit a final width.
+      const handleCancel = (cancelEvent: PointerEvent) => handleEnd(cancelEvent, false);
+
       window.addEventListener("pointermove", handleMove);
       window.addEventListener("pointerup", handleUp);
+      window.addEventListener("pointercancel", handleCancel);
       dragCleanupRef.current = () => {
+        if (rafId !== null) cancelAnimationFrame(rafId);
         window.removeEventListener("pointermove", handleMove);
         window.removeEventListener("pointerup", handleUp);
+        window.removeEventListener("pointercancel", handleCancel);
       };
 
       document.body.style.cursor = "col-resize";

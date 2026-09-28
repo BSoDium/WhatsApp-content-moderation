@@ -97,6 +97,12 @@ diff in this repo.
   port to the LAN.
 - The app image needs the built `web/dist` bundle. Keep the frontend build
   stage and copy in `Dockerfile` in sync with `src/web/control-server.ts`.
+- The app image needs the `drizzle/` migrations folder at runtime, not just
+  build time — `src/store/db.ts` resolves it relative to its own file, so a
+  missing `COPY drizzle ./drizzle` in `Dockerfile` fails at startup, not
+  build. Regenerate it (`npx drizzle-kit generate`) and commit the result
+  whenever `src/store/schema.ts` changes; don't hand-edit anything under
+  `drizzle/`.
 - The runtime container drops from root to UID 1000 (`node`) via
   `docker-entrypoint.sh`, which also `chown -R`s `auth_info/`/`data/` first
   — this is what makes a bind mount Docker creates (owned by root) usable

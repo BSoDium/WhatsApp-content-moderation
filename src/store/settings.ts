@@ -1,6 +1,9 @@
 import pino from 'pino';
-import { getDb } from './db.ts';
+import { eq } from 'drizzle-orm';
+import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
+import { excluded } from './excluded.ts';
+import { settings } from './schema.ts';
 import type { SettingRecord } from '../types.ts';
 
 const logger = pino({ name: 'settings' });
@@ -183,7 +186,7 @@ function validateValue(def: SettingDef, raw: string): string | undefined {
 // uncaught exception that aborts the rest of a burst mid-processing.
 function readRow(key: string): SettingRecord | undefined {
   try {
-    return getDb().prepare('SELECT key, value, updated_at FROM settings WHERE key = ?').get(key) as SettingRecord | undefined;
+    return getOrm().select().from(settings).where(eq(settings.key, key)).get();
   } catch (err) {
     logger.error({ key, error: err instanceof Error ? err.message : String(err) }, 'settings read failed; falling back to default');
     return undefined;
@@ -200,12 +203,11 @@ export function getRawValue(key: string): string | undefined {
 }
 
 export function setRawValue(key: string, value: string): void {
-  getDb()
-    .prepare(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-    )
-    .run(key, value, Date.now());
+  getOrm()
+    .insert(settings)
+    .values({ key, value, updated_at: Date.now() })
+    .onConflictDoUpdate({ target: settings.key, set: { value: excluded(settings.value), updated_at: excluded(settings.updated_at) } })
+    .run();
 }
 
 /**
@@ -239,7 +241,7 @@ export interface SettingView {
 }
 
 export function listSettings(): SettingView[] {
-  const rows = getDb().prepare('SELECT key, value FROM settings').all() as Pick<SettingRecord, 'key' | 'value'>[];
+  const rows = getOrm().select({ key: settings.key, value: settings.value }).from(settings).all();
   const values = new Map(rows.map((row) => [row.key, row.value]));
   return SETTINGS.map((def) => ({
     key: def.key,
@@ -298,7 +300,10 @@ export function migrateShadowModeFromEnv(): void {
  * own hardcoded default for that same key.
  */
 export function ensureDefaultsSeeded(): void {
-  const insert = getDb().prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING');
   const now = Date.now();
-  for (const def of SETTINGS) insert.run(def.key, def.default, now);
+  getOrm()
+    .insert(settings)
+    .values(SETTINGS.map((def) => ({ key: def.key, value: def.default, updated_at: now })))
+    .onConflictDoNothing({ target: settings.key })
+    .run();
 }

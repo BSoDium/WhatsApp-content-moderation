@@ -19,6 +19,7 @@ RUN npm ci --omit=dev
 
 COPY index.ts ./
 COPY src ./src
+COPY drizzle ./drizzle
 COPY --from=web-build /web/dist ./web/dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

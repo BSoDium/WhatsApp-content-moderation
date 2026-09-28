@@ -1,4 +1,6 @@
-import { getDb } from './db.ts';
+import { and, count, eq, isNull, lte } from 'drizzle-orm';
+import { getOrm } from './db.ts';
+import { blocks } from './schema.ts';
 import type { BlockRecord } from '../types.ts';
 
 /**
@@ -7,10 +9,10 @@ import type { BlockRecord } from '../types.ts';
  * itself a ban signal").
  */
 export function createBlock(contactId: string, unblockAt: number): number {
-  const db = getDb();
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO blocks (contact_id, blocked_at, unblock_at) VALUES (?, ?, ?)')
-    .run(contactId, Date.now(), unblockAt);
+  const { lastInsertRowid } = getOrm()
+    .insert(blocks)
+    .values({ contact_id: contactId, blocked_at: Date.now(), unblock_at: unblockAt })
+    .run();
   return Number(lastInsertRowid);
 }
 
@@ -19,9 +21,11 @@ export function createBlock(contactId: string, unblockAt: number): number {
  * currently blocked.
  */
 export function getActiveBlock(contactId: string): BlockRecord | undefined {
-  return getDb()
-    .prepare('SELECT * FROM blocks WHERE contact_id = ? AND unblocked_at IS NULL')
-    .get(contactId) as BlockRecord | undefined;
+  return getOrm()
+    .select()
+    .from(blocks)
+    .where(and(eq(blocks.contact_id, contactId), isNull(blocks.unblocked_at)))
+    .get();
 }
 
 /**
@@ -29,7 +33,8 @@ export function getActiveBlock(contactId: string): BlockRecord | undefined {
  * activity stats panel.
  */
 export function countActiveBlocks(): number {
-  return (getDb().prepare('SELECT COUNT(*) AS n FROM blocks WHERE unblocked_at IS NULL').get() as { n: number }).n;
+  const row = getOrm().select({ n: count() }).from(blocks).where(isNull(blocks.unblocked_at)).get();
+  return row?.n ?? 0;
 }
 
 /**
@@ -37,9 +42,11 @@ export function countActiveBlocks(): number {
  * jittered unblock scheduler (docs/roadmap.md issue #8) to act on.
  */
 export function getExpiredBlocks(now = Date.now()): BlockRecord[] {
-  return getDb()
-    .prepare('SELECT * FROM blocks WHERE unblocked_at IS NULL AND unblock_at <= ?')
-    .all(now) as unknown as BlockRecord[];
+  return getOrm()
+    .select()
+    .from(blocks)
+    .where(and(isNull(blocks.unblocked_at), lte(blocks.unblock_at, now)))
+    .all();
 }
 
 /**
@@ -50,8 +57,10 @@ export function getExpiredBlocks(now = Date.now()): BlockRecord[] {
  * that resolved it.
  */
 export function markUnblocked(blockId: number): boolean {
-  const { changes } = getDb()
-    .prepare('UPDATE blocks SET unblocked_at = ? WHERE id = ? AND unblocked_at IS NULL')
-    .run(Date.now(), blockId);
+  const { changes } = getOrm()
+    .update(blocks)
+    .set({ unblocked_at: Date.now() })
+    .where(and(eq(blocks.id, blockId), isNull(blocks.unblocked_at)))
+    .run();
   return changes > 0;
 }

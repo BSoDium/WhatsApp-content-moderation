@@ -40,8 +40,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint frontend
+        run: npm run --prefix web lint
+
       - name: Run tests
         run: npm test
+
+      - name: Run frontend tests
+        run: npm run --prefix web test
 
   docker-build:
     name: Docker build
