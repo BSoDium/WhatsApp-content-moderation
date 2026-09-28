@@ -20,14 +20,13 @@ import { OpenAccessBanner } from '@/components/OpenAccessBanner';
 
 // Matches Tailwind's `lg:` breakpoint — the width at which the list/detail
 // panes split side by side instead of the detail becoming a full-screen
-// overlay (see PanelPhase below).
+// overlay.
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
 // Desktop list-pane sizing: wider and centered while browsing, narrower and
 // flush-left once a contact is open — chosen so opening a contact both
 // moves (the centering margin collapses to 0) and resizes (60% -> 50%) the
-// pane at once, matching the two-stage choreography below. Centered so the
-// two margins are equal (100 - 60) / 2 = 20.
+// pane at once. Centered so the two margins are equal (100 - 60) / 2 = 20.
 const LIST_PANE_WIDTH_BROWSING = '60%';
 const LIST_PANE_MARGIN_BROWSING = '20%';
 const LIST_PANE_WIDTH_OPEN = '50%';
@@ -45,35 +44,31 @@ const MOVE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
 
-// The contact-detail pane's two-stage open/close choreography:
-// closed -> opening (list pane moves + resizes, detail hidden but already
-// at its final width) -> open (detail fades in, no further movement) ->
-// closing (detail fades out in place) -> closed (list pane moves back).
-// Only meaningful at `lg:` — below that the detail pane is a full-screen
-// overlay (existing translate-x behavior, untouched) and phase just
-// mirrors panelOpen directly with no intermediate stages.
-type PanelPhase = 'closed' | 'opening' | 'open' | 'closing';
-
-function listPaneTarget(isDesktop: boolean, phase: PanelPhase) {
+// The contact-detail pane's open/close choreography: the list pane's
+// move/resize and the detail pane's width/fade-in all animate from the same
+// `panelOpen` boolean, over the same transition, so they run concurrently
+// instead of staging one after the other (list moves, *then* detail fades
+// in). Only meaningful at `lg:` — below that the detail pane is a
+// full-screen overlay (existing translate-x behavior, untouched).
+function listPaneTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { width: '100%', marginLeft: '0%' };
-  const expanded = phase !== 'closed';
   return {
     width: expanded ? LIST_PANE_WIDTH_OPEN : LIST_PANE_WIDTH_BROWSING,
     marginLeft: expanded ? LIST_PANE_MARGIN_OPEN : LIST_PANE_MARGIN_BROWSING,
   };
 }
 
-function detailPaneTarget(isDesktop: boolean, phase: PanelPhase) {
+function detailPaneTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { width: '100%', opacity: 1 };
   return {
-    width: phase === 'closed' ? DETAIL_PANE_WIDTH_CLOSED : DETAIL_PANE_WIDTH_OPEN,
-    opacity: phase === 'open' ? 1 : 0,
+    width: expanded ? DETAIL_PANE_WIDTH_OPEN : DETAIL_PANE_WIDTH_CLOSED,
+    opacity: expanded ? 1 : 0,
   };
 }
 
-function headerPaddingTarget(isDesktop: boolean, phase: PanelPhase) {
+function headerPaddingTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { paddingTop: HEADER_PT_MOBILE };
-  return { paddingTop: phase === 'closed' ? HEADER_PT_BROWSING : HEADER_PT_OPEN };
+  return { paddingTop: expanded ? HEADER_PT_OPEN : HEADER_PT_BROWSING };
 }
 
 function App() {
@@ -150,34 +145,19 @@ function App() {
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reduceMotion = useReducedMotion();
-  const [phase, setPhase] = useState<PanelPhase>(panelOpen ? 'open' : 'closed');
-  // Distinguishes "the desktop/mobile breakpoint just changed" (snap
-  // straight to the final state, no animation — an in-progress fade/slide
-  // makes no sense to resume under a different layout mode) from "the
-  // selected contact changed" (run the staged animation).
-  const prevIsDesktopRef = useRef(isDesktop);
-
+  // Gates focus/screen-reader reachability separately from the visual
+  // animation: on desktop the detail pane only becomes interactive once its
+  // open transition's onAnimationComplete fires below, so a keyboard or
+  // screen-reader user can never reach it while it's still fading/resizing
+  // in. Closing drops this immediately, not on a delay — only "fully open"
+  // is interactive, same as before. Mobile has no such transition to wait
+  // on (the full-screen overlay is a plain CSS transform), so it mirrors
+  // `panelOpen` directly there.
+  const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
   useEffect(() => {
-    const breakpointChanged = prevIsDesktopRef.current !== isDesktop;
-    prevIsDesktopRef.current = isDesktop;
-    if (!isDesktop || breakpointChanged || reduceMotion) {
-      setPhase(panelOpen ? 'open' : 'closed');
-      return;
-    }
-    setPhase((current) => {
-      if (panelOpen && current === 'closed') return 'opening';
-      // A contact was reselected while the previous one was still fading
-      // out (the list pane hasn't moved yet during 'closing' — only the
-      // detail's opacity has). Recovering to 'open' directly (rather than
-      // falling through to the 'return current' default below) lets the
-      // still-pending 'closing' onAnimationComplete fire harmlessly against
-      // the new phase value instead of leaving this stuck at 'closing'
-      // forever once that callback's `phase === 'closing'` check is stale.
-      if (panelOpen && current === 'closing') return 'open';
-      if (!panelOpen && (current === 'open' || current === 'opening')) return 'closing';
-      return current;
-    });
-  }, [panelOpen, isDesktop, reduceMotion]);
+    if (!panelOpen) setDesktopDetailReady(false);
+  }, [panelOpen]);
+  const detailInteractive = isDesktop ? desktopDetailReady : panelOpen;
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
     setPanelSeq((prev) => ({ ...prev, [panel]: prev[panel] + 1 }));
@@ -198,26 +178,19 @@ function App() {
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
-  // Fully open only once the fade-in has actually completed — a keyboard
-  // or screen-reader user must never be able to reach content that's still
-  // width:50%-but-invisible mid-choreography.
-  const detailInteractive = phase === 'open';
 
   return (
     <TooltipProvider>
       <div className="flex min-h-screen overflow-x-hidden bg-background text-foreground">
         <motion.section
           initial={false}
-          animate={listPaneTarget(isDesktop, phase)}
+          animate={listPaneTarget(isDesktop, panelOpen)}
           transition={moveTransition}
-          onAnimationComplete={() => {
-            if (isDesktop && phase === 'opening') setPhase('open');
-          }}
           className="flex h-screen w-full flex-col lg:min-w-[500px]"
         >
           <motion.div
             initial={false}
-            animate={headerPaddingTarget(isDesktop, phase)}
+            animate={headerPaddingTarget(isDesktop, panelOpen)}
             transition={moveTransition}
             className="flex-none px-4 pb-4 lg:px-8 @container"
           >
@@ -254,10 +227,10 @@ function App() {
 
         <motion.section
           initial={false}
-          animate={detailPaneTarget(isDesktop, phase)}
+          animate={detailPaneTarget(isDesktop, panelOpen)}
           transition={{ width: moveTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
-            if (isDesktop && phase === 'closing') setPhase('closed');
+            if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
           aria-label="Contact details"
           aria-hidden={!detailInteractive}
