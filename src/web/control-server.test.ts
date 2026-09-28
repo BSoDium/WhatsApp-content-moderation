@@ -264,8 +264,8 @@ test('GET /api/contacts merges the directory with the monitored flag', async () 
     assert.deepEqual(
       body.sort((a, b) => a.id.localeCompare(b.id)),
       [
-        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true, isSelf: false, allowSelf: false, photoUrl: null },
-        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false, isSelf: false, allowSelf: false, photoUrl: null },
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: true, isSelf: false, allowSelf: false, strikeCount: 2, block: null, photoUrl: null },
+        { id: 'bob@s.whatsapp.net', name: 'Bob', monitored: false, isSelf: false, allowSelf: false, strikeCount: 2, block: null, photoUrl: null },
       ],
     );
   });
@@ -283,8 +283,8 @@ test('GET /api/contacts marks the self contact via isSelf and reports the allowS
     assert.deepEqual(
       body.sort((a, b) => a.id.localeCompare(b.id)),
       [
-        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: false, isSelf: false, allowSelf: true, photoUrl: null },
-        { id: 'me@s.whatsapp.net', name: 'Me', monitored: false, isSelf: true, allowSelf: true, photoUrl: null },
+        { id: 'alice@s.whatsapp.net', name: 'Alice', monitored: false, isSelf: false, allowSelf: true, strikeCount: 2, block: null, photoUrl: null },
+        { id: 'me@s.whatsapp.net', name: 'Me', monitored: false, isSelf: true, allowSelf: true, strikeCount: 2, block: null, photoUrl: null },
       ],
     );
   });

@@ -16,6 +16,7 @@ function errorMessage(error: unknown): string {
 // refresh reopens the same contact instead of landing back on the bare list.
 export function useControlData(initialSelectedId: string | null = null) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [error, setError] = useState<ControlError | null>(null);
@@ -30,6 +31,8 @@ export function useControlData(initialSelectedId: string | null = null) {
       setContacts(await apiFetch<Contact[]>('/api/contacts'));
     } catch (error: unknown) {
       setError({ title: 'Could not load contacts', description: errorMessage(error), retry: refreshContacts });
+    } finally {
+      setContactsLoaded(true);
     }
   }, []);
 
@@ -169,6 +172,7 @@ export function useControlData(initialSelectedId: string | null = null) {
 
   return {
     contacts,
+    contactsLoaded,
     roster,
     selectedId,
     setSelectedId,
