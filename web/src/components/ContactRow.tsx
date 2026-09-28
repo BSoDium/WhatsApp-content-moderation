@@ -38,7 +38,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
 
   return (
     <li
-      className={cn('group flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent', selected && 'bg-accent')}
+      className={cn('group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
