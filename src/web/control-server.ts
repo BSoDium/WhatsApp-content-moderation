@@ -573,11 +573,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *   Tailscale login; `GET /api/meta`'s `authRequired: false` is what the
  *   frontend uses to show a standing warning banner about it.
  *
-
- * `GET /assets/*` (the Vite-built frontend's JS/CSS/font bundle) is the sole
- * exception, checked before the identity check: none of these files
- * contain anything secret — see docs/decisions.md "Control page styling"
- * for the full reasoning.
+ * `GET /favicon.svg` and `GET /assets/*` (the Vite-built frontend's JS/CSS/
+ * font bundle) are the only exceptions, checked before the identity check:
+ * none of these files contain anything secret — see docs/decisions.md
+ * "Control page styling" for the full reasoning.
  *
  * State-changing POSTs additionally require `Content-Type: application/json`
  * (a CSRF defense — see the inline comments at each check). `DELETE` doesn't
