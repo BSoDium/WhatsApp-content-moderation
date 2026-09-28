@@ -78,12 +78,13 @@ function SheetContent({
   const canResize = useMediaQuery(RESIZABLE_QUERY) && (side === "left" || side === "right")
   // A handle on a right-anchored panel sits on its LEFT edge (dragging
   // left grows it); on a left-anchored panel it's the mirror image.
+  const handleEdge = side === "right" ? "left" : "right"
   const { width, handleProps } = useResizableWidth({
     id: resizable?.id ?? `sheet-${side}`,
     defaultWidth: resizable?.defaultWidth ?? 640,
     min: resizable?.min ?? 420,
     max: resizable?.max ?? 1100,
-    side: side === "right" ? "left" : "right",
+    side: handleEdge,
     label: resizable?.label ?? "Resize panel",
   })
   const isResizable = size === "wide" && resizable !== undefined
@@ -111,7 +112,7 @@ function SheetContent({
         {...props}
       >
         {resizeActive && (
-          <ResizeHandle {...handleProps} className={cn("absolute inset-y-0", side === "right" ? "left-0" : "right-0")} />
+          <ResizeHandle {...handleProps} edge={handleEdge} className={cn("absolute inset-y-0", side === "right" ? "left-0" : "right-0")} />
         )}
         {children}
         {showCloseButton && (
