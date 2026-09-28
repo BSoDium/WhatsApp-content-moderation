@@ -260,15 +260,15 @@ function App() {
                   <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
                 </div>
                 <div className="grid shrink-0 grid-cols-3 gap-2 xl:flex xl:justify-end">
-                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('settings')}>
+                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     Settings
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('policy')}>
+                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
                     Policy
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('activity')}>
+                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
                     Activity
                   </Button>
