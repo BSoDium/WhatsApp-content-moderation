@@ -112,7 +112,7 @@ function SheetContent({
         {...props}
       >
         {resizeActive && (
-          <ResizeHandle {...handleProps} edge={handleEdge} className={cn("absolute inset-y-0", side === "right" ? "left-0" : "right-0")} />
+          <ResizeHandle {...handleProps} edge={handleEdge} className={cn("absolute inset-y-0", handleEdge === "left" ? "left-0" : "right-0")} />
         )}
         {children}
         {showCloseButton && (

@@ -26,8 +26,7 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 // Desktop list-pane sizing: wider and centered while browsing, narrower and
 // flush-left once a contact is open — chosen so opening a contact both
 // moves (the centering margin collapses to 0) and resizes (60% -> 50%) the
-// pane at once, matching the two-stage choreography below. Centered so the
-// two margins are equal (100 - 60) / 2 = 20.
+// pane at once. Centered so the two margins are equal (100 - 60) / 2 = 20.
 const LIST_PANE_WIDTH_BROWSING = '60%';
 const LIST_PANE_MARGIN_BROWSING = '20%';
 const LIST_PANE_WIDTH_OPEN = '50%';
@@ -146,6 +145,19 @@ function App() {
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const reduceMotion = useReducedMotion();
+  // Gates focus/screen-reader reachability separately from the visual
+  // animation: on desktop the detail pane only becomes interactive once its
+  // open transition's onAnimationComplete fires below, so a keyboard or
+  // screen-reader user can never reach it while it's still fading/resizing
+  // in. Closing drops this immediately, not on a delay — only "fully open"
+  // is interactive, same as before. Mobile has no such transition to wait
+  // on (the full-screen overlay is a plain CSS transform), so it mirrors
+  // `panelOpen` directly there.
+  const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
+  useEffect(() => {
+    if (!panelOpen) setDesktopDetailReady(false);
+  }, [panelOpen]);
+  const detailInteractive = isDesktop ? desktopDetailReady : panelOpen;
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
     setPanelSeq((prev) => ({ ...prev, [panel]: prev[panel] + 1 }));
@@ -166,7 +178,6 @@ function App() {
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
-  const detailInteractive = panelOpen;
 
   return (
     <TooltipProvider>
@@ -218,6 +229,9 @@ function App() {
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen)}
           transition={{ width: moveTransition, opacity: fadeTransition }}
+          onAnimationComplete={() => {
+            if (isDesktop && panelOpen) setDesktopDetailReady(true);
+          }}
           aria-label="Contact details"
           aria-hidden={!detailInteractive}
           inert={!detailInteractive}
