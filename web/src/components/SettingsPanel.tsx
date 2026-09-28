@@ -12,6 +12,7 @@ import type { Setting } from '@/lib/types';
 interface SettingsPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  skipInitialAnimation?: boolean;
 }
 
 const SECTION_TITLES: Record<Setting['section'], string> = {
@@ -154,7 +155,7 @@ function SettingField({ setting, pending, onSave, onValidationChange }: SettingF
 }
 
 // Remounted via a `key` in App.tsx (same pattern as ActivityPanel).
-export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
+export function SettingsPanel({ open, onOpenChange, skipInitialAnimation }: SettingsPanelProps) {
   const { settings, loading, error, pendingKeys, refresh, save } = useSettingsList({ open });
   const [validationErrors, setValidationErrors] = useState<Record<string, string | undefined>>({});
 
@@ -169,6 +170,7 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
         className="gap-0"
         aria-describedby="settings-panel-description"
         resizable={{ id: 'settings-panel', defaultWidth: 640, min: 420, max: 900, label: 'Resize settings panel' }}
+        skipInitialAnimation={skipInitialAnimation}
       >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Settings</SheetTitle>

@@ -8,11 +8,12 @@ import { usePolicy } from '@/lib/useSettings';
 interface PolicyEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  skipInitialAnimation?: boolean;
 }
 
 // Remounted via a `key` in App.tsx (same pattern as ActivityPanel) so a
 // discarded draft never carries over to the next time this opens.
-export function PolicyEditor({ open, onOpenChange }: PolicyEditorProps) {
+export function PolicyEditor({ open, onOpenChange, skipInitialAnimation }: PolicyEditorProps) {
   const { text, loading, saving, error, refresh, save } = usePolicy({ open });
   const [draft, setDraft] = useState(text);
   // The last server text this draft was synced from — lets the effect below
@@ -45,6 +46,7 @@ export function PolicyEditor({ open, onOpenChange }: PolicyEditorProps) {
         className="gap-0"
         aria-describedby="policy-editor-description"
         resizable={{ id: 'policy-editor', defaultWidth: 640, min: 420, max: 1000, label: 'Resize policy editor' }}
+        skipInitialAnimation={skipInitialAnimation}
       >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Moderation policy</SheetTitle>

@@ -10,10 +10,11 @@ interface ActivityPanelProps {
   onOpenChange: (open: boolean) => void;
   initialContactId: string | null;
   contacts: Contact[];
+  skipInitialAnimation?: boolean;
 }
 
 // Remounted via a `key` in App.tsx (same pattern as ContactDetailPanel) so filters and scroll position always start fresh.
-export function ActivityPanel({ open, onOpenChange, initialContactId, contacts }: ActivityPanelProps) {
+export function ActivityPanel({ open, onOpenChange, initialContactId, contacts, skipInitialAnimation }: ActivityPanelProps) {
   const { stats, entries, nextBefore, loading, loadingMore, error, contactId, setContactId, action, setAction, searchInput, setSearchInput, refresh, loadMore } =
     useActivityData({ open, initialContactId });
 
@@ -24,6 +25,7 @@ export function ActivityPanel({ open, onOpenChange, initialContactId, contacts }
         className="gap-0"
         aria-describedby="activity-panel-description"
         resizable={{ id: 'activity-panel', defaultWidth: 768, min: 480, max: 1200, label: 'Resize activity panel' }}
+        skipInitialAnimation={skipInitialAnimation}
       >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Moderation activity</SheetTitle>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -111,6 +111,7 @@ function App() {
   } = useControlData(initialUrlState.contactId);
   const meta = useMeta();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
+  const [skipInitialPanelAnimation, setSkipInitialPanelAnimation] = useState(initialUrlState.openPanel !== null);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
   // Bumped every time a panel opens (not just on the boolean flipping to
   // true) so each of the three Sheets below remounts via its `key` — a
@@ -129,6 +130,7 @@ function App() {
   // selection change waiting on the user's save/discard/stay choice.
   const [pendingSelection, setPendingSelection] = useState<string | null | undefined>(undefined);
   const [confirmSaving, setConfirmSaving] = useState(false);
+  const [displayedContact, setDisplayedContact] = useState(selectedContact);
 
   function requestSelectContact(nextId: string | null) {
     // Re-selecting the contact that's already open isn't a navigation —
@@ -185,18 +187,26 @@ function App() {
   // on (the full-screen overlay is a plain CSS transform), so it mirrors
   // `panelOpen` directly there.
   const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
+  const [initialLayoutSettled, setInitialLayoutSettled] = useState(false);
+  useLayoutEffect(() => {
+    if (!contactsLoaded) return;
+    setInitialLayoutSettled(true);
+    if (panelOpen) setDesktopDetailReady(true);
+  }, [contactsLoaded, panelOpen, selectedContact]);
   useEffect(() => {
     if (!panelOpen) setDesktopDetailReady(false);
   }, [panelOpen]);
-  const detailInteractive = isDesktop ? desktopDetailReady : panelOpen;
+  const detailInteractive = isDesktop ? (initialLayoutSettled ? desktopDetailReady : panelOpen) : panelOpen;
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
+    setSkipInitialPanelAnimation(false);
     setPanelSeq((prev) => ({ ...prev, [panel]: prev[panel] + 1 }));
     if (panel === 'activity') setActivityContactId(contactId);
     setOpenPanel(panel);
   }
 
   function closePanel() {
+    setSkipInitialPanelAnimation(false);
     setOpenPanel(null);
   }
 
@@ -207,7 +217,7 @@ function App() {
     writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
   }, [selectedId, openPanel, activityContactId]);
 
-  const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
+  const moveTransition = reduceMotion || !initialLayoutSettled ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
 
   // ContactDetailPanel renders nothing once its `contact` prop is null, but
@@ -217,8 +227,7 @@ function App() {
   // the last contact until the close transition's own duration has actually
   // elapsed, matching whichever one is active (desktop's Framer Motion
   // transition, or mobile's `duration-[250ms]` CSS one).
-  const [displayedContact, setDisplayedContact] = useState(selectedContact);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedContact) {
       setDisplayedContact(selectedContact);
       return;
@@ -330,6 +339,7 @@ function App() {
           inert={!detailInteractive}
           className={cn(
             'fixed top-0 right-0 bottom-0 left-0 h-screen bg-background transition-transform duration-[250ms] ease-in-out',
+            !initialLayoutSettled && 'transition-none',
             panelOpen ? 'translate-x-0' : 'translate-x-full',
             // Taken out of the flex row entirely (absolute, not relative)
             // so its width is never part of the layout's own resize math —
@@ -365,9 +375,10 @@ function App() {
           onOpenChange={(next) => (next ? showPanel('activity', activityContactId) : closePanel())}
           initialContactId={activityContactId}
           contacts={contacts}
+          skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'activity'}
         />
-        <PolicyEditor key={panelSeq.policy} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} />
-        <SettingsPanel key={panelSeq.settings} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} />
+        <PolicyEditor key={panelSeq.policy} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'policy'} />
+        <SettingsPanel key={panelSeq.settings} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'settings'} />
 
         <AlertDialog
           open={pendingSelection !== undefined}
