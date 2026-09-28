@@ -649,23 +649,46 @@ but it's a real prerequisite for anyone following this from a fresh
 personal-login setup: tag the device (`tagOwners` + `tailscale up
 --advertise-tags=tag:...`) before trying to advertise a Service from it.
 
-**Not yet verified live, unlike the entry above it replaces.** The header+
-token design, the `whois` attempt, and the final header-trust design were
-each confirmed (or refuted) against a real tailnet before being trusted —
-see the two entries above this one for exactly that pattern, including one
-case where the documented behavior turned out to be wrong. This entry
-hasn't had that pass yet: this codebase has no live tailnet to test
-against, and the exact CLI syntax and ACL grant shape here (`--service=
-svc:<name>`, the `grants`/`autoApprovers` snippets in the README) were
-written from Tailscale's published Services documentation, not confirmed
-against a running `tailscale serve --service=...` proxy. **Specifically
-unconfirmed:** whether `Tailscale-User-Login` is set on a Service-proxied
-request the same way it is on a plain-hostname one — if a Service adds any
-different proxy path (the way `serve`'s reverse-proxy path already turned
-out to not support `whois`, see above), `src/web/tailscale-auth.ts` could
-silently stop matching real logins. Verify this against a real Service
-before relying on it for anything sensitive, the same way this project
-already insists on for every other Tailscale-dependent behavior here.
+**Verified live, same as the entry above it replaces — and it took a real
+tailnet to find what the documentation alone didn't say.** `--service=
+svc:<name>` and the `grants` shape were correct as written. Two things
+weren't, both about the *admin console* side, which the CLI's own output
+gives no hint of:
+
+- **The Service has to be defined in the console before a host can
+  advertise it, not after.** `tailscale serve --service=svc:whatsapp-
+  moderation --bg 4756` run against an undefined Service reports "approval
+  from an admin is required" and prints the eventual URL, but nothing
+  shows up anywhere in the console to actually approve — not the Services
+  page, not Access Controls. It's silently stuck. Defining the Service
+  first (Services page → Define Service), *then* running the same `serve`
+  command, is what actually produces a pending host under that Service
+  ready to approve. This matches two open upstream reports of the same
+  rough edge — [tailscale/tailscale#18821](https://github.com/tailscale/tailscale/issues/18821)
+  (a service host's approval status not being picked up by the local
+  daemon without a clear + re-advertise) and
+  [#17692](https://github.com/tailscale/tailscale/issues/17692) (the
+  console showing "needs configuration" with no indication of what) — this
+  is evidently a real rough edge in a newer Tailscale feature, not
+  something specific to this app's setup.
+- **A defined Service's "Ports" field is the port *tailnet clients*
+  connect to `svc:<name>` on — not the app's own port.** Entering `4756`
+  (this app's port, the one `tailscale serve`'s target argument names)
+  instead of `443` (what `tailscale serve --service=... --bg 4756`
+  actually advertises externally — the `4756` there is only the local
+  backend `tailscale serve` proxies *to*, never seen by a tailnet peer)
+  is what produced a "needs configuration" warning on the approved host:
+  the Service's declared port and what the host actually advertises
+  didn't match. Fixing the Ports field to `443` resolved it immediately.
+
+`Tailscale-User-Login` is set the same way on a Service-proxied request as
+on a plain-hostname one — confirmed by the app loading correctly, header
+check included, once the port mismatch above was fixed. The clear +
+re-advertise workaround from #18821 (`tailscale serve clear svc:<name>`,
+wait ~2s, re-run `serve --service=...`) wasn't actually needed once the
+Service was defined before advertising — kept in the README as a fallback
+for a host that advertised before the Service existed and is stuck, not
+as a required step.
 
 ## Control page styling: three files, two of them unauthenticated
 

@@ -70,17 +70,21 @@ Add a grant in your tailnet's ACL policy so your login can reach the service (me
 }
 ```
 
-Then continue the quick start (`docker compose up -d`, pulling the model, scanning the QR code) and, once the app is running, advertise it as a named Service instead of under the host's own hostname:
+**Define the Service in the [Tailscale admin console](https://console.tailscale.com/admin/services) before advertising it from the host** — a `tailscale serve --service=...` advertisement with no matching Service already defined has nowhere to attach to, and never shows up anywhere to approve (see [`docs/decisions.md`](docs/decisions.md#restricting-access-with-a-tailscale-service-replacing-the-hosts-own-hostname) for what that looked like, and for the other gotcha below). Click **Define Service** and fill in:
+
+- **Service name**: `whatsapp-moderation` (must match the `svc:whatsapp-moderation` used everywhere else here)
+- **Ports**: `443` — this is the port *tailnet clients* connect to `svc:whatsapp-moderation` on, not the app's own port. Getting this wrong (e.g. entering `4756`, the backend port) is what actually causes the "needs configuration" warning on the host once approved, not the approval itself.
+- **Service tags**: leave blank — it's for grouping Services in ACL grants by tag, unrelated to which host is allowed to serve this one (that's the approval step below)
+
+Then continue the quick start (`docker compose up -d`, pulling the model, scanning the QR code) and, once the app is running, advertise it as that Service:
 
 ```sh
 sudo tailscale serve --service=svc:whatsapp-moderation --bg 4756
 ```
 
-The first time a device advertises a new Service, Tailscale needs it approved once — either approve it in the admin console's Access Controls page, or add an `autoApprovers` entry for `svc:whatsapp-moderation` under your host's tag so it's approved automatically on every future restart (see [Tailscale Services](https://tailscale.com/docs/features/tailscale-services)).
+Back in the console, open the Service you defined — the host now shows up pending approval. Approve it there (not the Access Controls page). If a host was ever advertised *before* the Service existed and looks stuck, clear and re-advertise with a short delay so the daemon re-checks its approval status: `sudo tailscale serve clear svc:whatsapp-moderation`, wait a couple of seconds, then the `serve --service=...` command above again.
 
-Open `https://whatsapp-moderation.<your-tailnet>.ts.net/` (`tailscale serve get-config --all` prints the exact name it was assigned) from a device signed in as the login the grant above allows. A visit from anyone else gets a 403 on every request. `src/web/control-server.ts` binds to `127.0.0.1` only in this mode, on purpose — it's reachable *only* through this proxy hop, now addressed by a stable service name instead of the host's own hostname, so the URL survives a host rename or a migration to different hardware. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for what to do if that assumption doesn't hold for your setup (e.g. a shared or multi-user server).
-
-**Not yet verified live**, unlike the plain-hostname `tailscale serve` path this replaces (which was, twice — see `docs/decisions.md`): confirm `Tailscale-User-Login` is still set the same way when `tailscale serve` proxies through a named Service before relying on this for anything sensitive — see [`docs/decisions.md`](docs/decisions.md#restricting-access-with-a-tailscale-service-replacing-the-hosts-own-hostname) for exactly what to check and why.
+Open `https://whatsapp-moderation.<your-tailnet>.ts.net/` (the console's Services page shows the exact address) from a device signed in as the login the grant above allows. A visit from anyone else gets a 403 on every request. `src/web/control-server.ts` binds to `127.0.0.1` only in this mode, on purpose — it's reachable *only* through this proxy hop, now addressed by a stable service name instead of the host's own hostname, so the URL survives a host rename or a migration to different hardware. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for what to do if that assumption doesn't hold for your setup (e.g. a shared or multi-user server).
 
 ## How it works
 
