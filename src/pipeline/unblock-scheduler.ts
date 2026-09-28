@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { getExpiredBlocks } from '../store/blocks.ts';
 import { resolveUnblock } from './unblock-resolution.ts';
 import { getNumberSetting } from '../store/settings.ts';
@@ -7,7 +7,7 @@ interface UnblockActions {
   unblock: (contactId: string) => Promise<void>;
 }
 
-const logger = pino({ name: 'unblock-scheduler' });
+const logger = createLogger('unblock-scheduler');
 
 /**
  * Runs one poll pass: unblocks every expired block via actions.unblock,

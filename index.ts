@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from './src/cli/logger.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.ts';
@@ -62,7 +62,7 @@ if (!ALLOWED_TAILSCALE_LOGIN) {
   ]);
 }
 
-const logger = pino({ name: 'index' });
+const logger = createLogger('index');
 
 let sock: WASocket | undefined;
 

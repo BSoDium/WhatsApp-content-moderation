@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import type { MigrationMeta } from 'drizzle-orm/migrator';
 import type { DatabaseSync } from 'node:sqlite';
 
-const logger = pino({ name: 'migration-baseline' });
+const logger = createLogger('migration-baseline');
 
 // Must match the table name and DDL drizzle-orm's SQLiteSyncDialect.migrate() uses (pinned 0.45.3), so its migrator reads a seeded row exactly like one it wrote itself.
 const MIGRATIONS_TABLE = '__drizzle_migrations';

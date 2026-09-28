@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { eq } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
@@ -6,7 +6,7 @@ import { excluded } from './excluded.ts';
 import { settings } from './schema.ts';
 import type { SettingRecord } from '../types.ts';
 
-const logger = pino({ name: 'settings' });
+const logger = createLogger('settings');
 
 export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';

@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { classifyMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
@@ -34,7 +34,7 @@ type ConversationMessage = { from: 'me' | 'them'; text: string };
 // Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
 const MIN_BLOCK_MS = 60 * 1000;
 
-const logger = pino({ name: 'pipeline' });
+const logger = createLogger('pipeline');
 
 function loadHistory(contactId: string): ConversationMessage[] {
   return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))

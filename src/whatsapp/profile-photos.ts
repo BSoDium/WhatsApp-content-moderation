@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { createConcurrencyLimiter } from './concurrency-limiter.ts';
 import { downloadPhoto } from './photo-download.ts';
 import { getPhotoCache, invalidatePhotoCache, setPhotoCache } from '../store/contact-photos.ts';
@@ -34,7 +34,7 @@ const IQ_FORBIDDEN = 403;
 const IQ_ITEM_NOT_FOUND = 404;
 const NO_PHOTO_ERROR_CODES = new Set([IQ_NOT_AUTHORIZED, IQ_FORBIDDEN, IQ_ITEM_NOT_FOUND]);
 
-const logger = pino({ name: 'profile-photos' });
+const logger = createLogger('profile-photos');
 
 export type PhotoLookup = { ok: true; url: string | null } | { ok: false; error: string };
 export type PhotoFetch = { ok: true; photo: { body: Buffer; contentType: string } | null } | { ok: false; error: string };
