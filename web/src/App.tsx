@@ -95,7 +95,8 @@ function App() {
   // source of truth for a fresh load/refresh, afterwards state drives the
   // URL (the effect below), not the other way around.
   const initialUrlState = useMemo(() => readUrlState(), []);
-  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext } = useControlData(initialUrlState.contactId);
+  const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext, initialLoadComplete } =
+    useControlData(initialUrlState.contactId);
   const meta = useMeta();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
@@ -268,7 +269,14 @@ function App() {
               <OverviewStats />
             </div>
             <div className="min-h-0 flex-1 px-4 lg:px-8">
-              <ContactList contacts={contacts} roster={roster} selectedId={selectedId} onSelect={requestSelectContact} onToggle={setMonitored} />
+              <ContactList
+                contacts={contacts}
+                roster={roster}
+                selectedId={selectedId}
+                onSelect={requestSelectContact}
+                onToggle={setMonitored}
+                initialLoadComplete={initialLoadComplete}
+              />
             </div>
           </motion.section>
         </div>

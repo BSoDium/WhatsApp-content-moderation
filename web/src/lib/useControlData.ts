@@ -19,6 +19,10 @@ export function useControlData(initialSelectedId: string | null = null) {
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [error, setError] = useState<ControlError | null>(null);
+  // Flips once after the first fetch of both contacts and roster settles, so
+  // ContactList can skip its reorder animation for that initial population
+  // and only animate moderation changes that happen afterwards.
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
   const refreshContacts = useCallback(async function refreshContacts() {
@@ -38,8 +42,10 @@ export function useControlData(initialSelectedId: string | null = null) {
   }, []);
 
   useEffect(() => {
-    refreshContacts();
-    refreshRoster();
+    // refreshContacts/refreshRoster catch their own errors, so this always
+    // resolves — an initial fetch failure still counts as "settled" and
+    // unblocks the list's animations rather than leaving them off forever.
+    Promise.all([refreshContacts(), refreshRoster()]).then(() => setInitialLoadComplete(true));
 
     // Server push (src/web/control-server.ts's GET /api/events) so a change
     // made from another tab, or a live incoming message, shows up without
@@ -143,5 +149,5 @@ export function useControlData(initialSelectedId: string | null = null) {
 
   const dismissError = useCallback(() => setError(null), []);
 
-  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext };
+  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext, initialLoadComplete };
 }
