@@ -44,6 +44,11 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
   // see docs/decisions.md's contact-directory persistence note. Only takes
   // effect on a fresh link (QR scan); a reconnect using an existing
   // auth_info/ session never re-requests history at all, full or not.
+  // A bare `pino`, not `createLogger` (src/cli/logger.ts) — this only
+  // suppresses Baileys' own noisy internal logger, so it stays silent
+  // rather than going through the pretty-print pipeline. Raising this above
+  // 'silent' to debug Baileys itself would print raw JSON until it's moved
+  // over to createLogger too.
   const sock = makeWASocket({ auth: state, logger: pino({ level: 'silent' }), printQRInTerminal: false, syncFullHistory: true });
 
   sock.ev.on('creds.update', saveCreds);

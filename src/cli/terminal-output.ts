@@ -5,7 +5,8 @@
 
 // Per https://no-color.org: "regardless of its value" — presence alone
 // disables color, so NO_COLOR='' (however it ends up set) still counts.
-const NO_COLOR = process.env.NO_COLOR !== undefined;
+// Exported for logger.ts to share, so the two never drift apart.
+export const NO_COLOR = process.env.NO_COLOR !== undefined;
 
 // Colors are forced on rather than TTY-detected: under Docker (this app's
 // documented install path — see docker-compose.yml) the app's own stdout is

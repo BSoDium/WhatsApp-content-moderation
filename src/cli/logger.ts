@@ -1,10 +1,11 @@
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
+import { NO_COLOR } from './terminal-output.ts';
 
-// Per https://no-color.org: "regardless of its value" — presence alone
-// disables color, so NO_COLOR='' (however it ends up set) still counts.
-// Mirrors terminal-output.ts's own NO_COLOR check.
-const NO_COLOR = process.env.NO_COLOR !== undefined;
+// Lets an operator raise verbosity (e.g. 'debug') on a running deployment
+// without rebuilding the image — mirrors classifier.ts's env-driven knobs.
+const DEFAULT_LOG_LEVEL = 'info';
+const LOG_LEVEL = process.env.LOG_LEVEL?.trim() || DEFAULT_LOG_LEVEL;
 
 // A stream built directly from pino-pretty, not a `transport: { target:
 // 'pino-pretty' }` config — the latter resolves its target as a worker-thread
@@ -20,5 +21,5 @@ const stream = pinoPretty({
 });
 
 export function createLogger(name: string) {
-  return pino({ name }, stream);
+  return pino({ name, level: LOG_LEVEL }, stream);
 }
