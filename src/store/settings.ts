@@ -238,6 +238,12 @@ export interface SettingView {
   type: SettingType;
   value: string;
   default: string;
+  // Surfaced so the web control app can mirror validateValue()'s own
+  // constraints client-side (an inline check before the round-trip, not a
+  // replacement for it) instead of only finding out a value was rejected
+  // after submitting it.
+  min?: number;
+  required?: boolean;
 }
 
 export function listSettings(): SettingView[] {
@@ -251,6 +257,8 @@ export function listSettings(): SettingView[] {
     type: def.type,
     value: values.get(def.key) ?? def.default,
     default: def.default,
+    min: def.min,
+    required: def.required,
   }));
 }
 

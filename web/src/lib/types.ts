@@ -33,6 +33,10 @@ export interface Setting {
   type: 'string' | 'int' | 'float' | 'bool';
   value: string;
   default: string;
+  // Mirrors src/store/settings.ts's SettingDef — lets the field validate
+  // client-side before submitting, not just after the server rejects it.
+  min?: number;
+  required?: boolean;
 }
 
 // Matches GET /api/meta.
