@@ -68,15 +68,32 @@ const LOOPBACK_HOST = '127.0.0.1';
 // see createControlServer's doc comment.
 const ALL_INTERFACES_HOST = '0.0.0.0';
 
-// Best-effort first non-internal IPv4 address. Reliable under
-// `network_mode: host` (see docker-compose.yml) — under a container's own
-// isolated network namespace this would report a private container-only
-// address the operator could never actually reach, but host networking
-// makes it report the host's real interfaces instead.
+// Interface name prefixes that are virtual/tunnel adapters rather than a
+// real LAN NIC (Docker bridges, VPN tunnels, Tailscale) — skipped on a
+// first pass below so a host that also runs other bridged containers or a
+// VPN doesn't get one of these picked over the operator's actual LAN
+// interface, ahead of it in enumeration order purely by chance.
+const VIRTUAL_INTERFACE_PREFIXES = ['docker', 'br-', 'veth', 'tun', 'tap', 'utun', 'wg', 'tailscale', 'zt'];
+
+function isVirtualInterfaceName(name: string): boolean {
+  return VIRTUAL_INTERFACE_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+// Best-effort first non-internal IPv4 address, preferring a real LAN NIC
+// over a virtual/tunnel adapter (see above) but falling back to one rather
+// than reporting no address at all. Reliable under `network_mode: host`
+// (see docker-compose.yml) — under a container's own isolated network
+// namespace this would report a private container-only address the
+// operator could never actually reach, but host networking makes it
+// report the host's real interfaces instead.
 function firstLanAddress(): string | undefined {
-  for (const addresses of Object.values(networkInterfaces())) {
-    for (const address of addresses ?? []) {
-      if (address.family === 'IPv4' && !address.internal) return address.address;
+  const interfaces = Object.entries(networkInterfaces());
+  for (const preferRealNic of [true, false]) {
+    for (const [name, addresses] of interfaces) {
+      if (preferRealNic && isVirtualInterfaceName(name)) continue;
+      for (const address of addresses ?? []) {
+        if (address.family === 'IPv4' && !address.internal) return address.address;
+      }
     }
   }
   return undefined;

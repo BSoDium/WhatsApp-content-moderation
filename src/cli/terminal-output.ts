@@ -3,7 +3,9 @@
 // first-run operator actually needs to read in `docker compose logs` can't
 // be a structured JSON log line that's easy to scroll past.
 
-const NO_COLOR = Boolean(process.env.NO_COLOR);
+// Per https://no-color.org: "regardless of its value" — presence alone
+// disables color, so NO_COLOR='' (however it ends up set) still counts.
+const NO_COLOR = process.env.NO_COLOR !== undefined;
 
 // Colors are forced on rather than TTY-detected: under Docker (this app's
 // documented install path — see docker-compose.yml) the app's own stdout is
