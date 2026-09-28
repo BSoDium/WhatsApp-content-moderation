@@ -9,7 +9,7 @@ import { createContactDirectory, canonicalContactId, canonicalMessageContactId }
 import { createProfilePhotos } from './src/whatsapp/profile-photos.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
-import { ensureDefaultsSeeded } from './src/store/settings.ts';
+import { ensureDefaultsSeeded, migrateShadowModeFromEnv } from './src/store/settings.ts';
 import {
   listMonitored,
   isMonitored,
@@ -37,12 +37,32 @@ const RAW_CONTROL_PORT = process.env.CONTROL_PORT;
 const CONTROL_PORT = RAW_CONTROL_PORT ? Number(RAW_CONTROL_PORT) : DEFAULT_CONTROL_PORT;
 // Optional: restricts the control app to one Tailscale identity, proxied via
 // `tailscale serve` — see README. Left unset, the app binds every interface
-// and skips the identity check instead of refusing to start.
-const ALLOWED_TAILSCALE_LOGIN = process.env.ALLOWED_TAILSCALE_LOGIN;
+// and skips the identity check instead of refusing to start. Trimmed and
+// treated as unset when blank, so a set-but-empty value (an unresolved
+// template variable, an unset CI secret that resolves to "") never lands in
+// the no-auth/all-interfaces branch while looking configured.
+const ALLOWED_TAILSCALE_LOGIN = process.env.ALLOWED_TAILSCALE_LOGIN?.trim() || undefined;
 
 if (RAW_CONTROL_PORT && (!Number.isInteger(CONTROL_PORT) || CONTROL_PORT <= 0)) {
   console.error(`CONTROL_PORT must be a positive integer, got: ${RAW_CONTROL_PORT}`);
   process.exit(1);
+}
+
+if (!ALLOWED_TAILSCALE_LOGIN) {
+  // Deliberately a plain, unmissable banner rather than a structured pino
+  // log line: this app no longer refuses to start over a missing Tailscale
+  // login (see control-server.ts), and the packaged docker-compose.yml
+  // ships with ALLOWED_TAILSCALE_LOGIN commented out — a JSON log line
+  // alone is easy to scroll past in `docker compose logs`.
+  console.warn(
+    [
+      '',
+      '!! ALLOWED_TAILSCALE_LOGIN is not set.',
+      '!! The control app is reachable, unauthenticated, by anyone on your local network.',
+      '!! Set ALLOWED_TAILSCALE_LOGIN to restrict it to one Tailscale identity — see the README.',
+      '',
+    ].join('\n'),
+  );
 }
 
 const logger = pino({ name: 'index' });
@@ -97,6 +117,10 @@ let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;
 let controlServer: ReturnType<typeof createControlServer> | undefined;
 
 async function start() {
+  // Order matters: the SHADOW_MODE carry-over must run before
+  // ensureDefaultsSeeded() seeds that same key's hardcoded default — see
+  // migrateShadowModeFromEnv's doc comment.
+  migrateShadowModeFromEnv();
   // Must run before anything else touches a moderation-tuning setting, so
   // every read downstream sees a real value instead of racing an empty table.
   ensureDefaultsSeeded();
