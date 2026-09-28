@@ -1,26 +1,42 @@
+# The whole recipe: this file is all you need. Copy it into an empty folder
+# and run `docker compose up -d` — no repo clone, no .env, no config files
+# to create first. Everything the app needs to run is a hardcoded default or
+# a setting you change later from the web control app at
+# http://<this-host>:4756, including the moderation policy itself.
+#
+# By default the control app is open to anyone on your local network — see
+# the commented ALLOWED_TAILSCALE_LOGIN below to restrict it to one
+# Tailscale identity instead.
 services:
   app:
     # Published by .github/workflows/container.yml on every tagged release —
-    # this default file always runs that, never builds from source. Building
-    # locally (for development) is opt-in: see
-    # docker-compose.override.yml.example.
+    # this always runs that, never builds from source. Building locally (for
+    # development) is opt-in: see docker-compose.override.yml.example.
     image: ghcr.io/bsodium/whatsapp-content-moderation:latest
     restart: always
-    # Shares the Debian host loopback so host Tailscale Serve can proxy safely.
+    # Shares the host's network stack directly — the control app binds host
+    # port 4756 with no `ports:` mapping needed, and reaches Ollama below via
+    # its host-loopback publish. Also what lets host Tailscale Serve proxy
+    # this safely when ALLOWED_TAILSCALE_LOGIN is set — see the README.
     network_mode: host
-    env_file:
-      - .env
+    # environment:
+    #   # Set to your own Tailscale login (exactly what `tailscale status`
+    #   # reports for it) to restrict the control app to that one identity
+    #   # instead of the whole local network, then proxy it with
+    #   # `tailscale serve --bg 4756` — see the README's "Restricting access
+    #   # with Tailscale" section.
+    #   ALLOWED_TAILSCALE_LOGIN: you@example.com
+    #   # No second WhatsApp number to test with? Set this to moderate
+    #   # messages you send yourself instead — see the README.
+    #   TEST_ALLOW_SELF: "1"
     volumes:
       # WhatsApp session keys — see docs/decisions.md "auth_info/ is a
       # credential". Back this directory up; losing it means re-linking.
       - ./auth_info:/app/auth_info
-      # SQLite audit log / strikes / block records.
+      # SQLite: audit log, strikes, block records, every moderation-tuning
+      # setting, and the moderation policy itself — all edited live from the
+      # control app, not from this file.
       - ./data:/app/data
-      # The real moderation policy — gitignored, not baked into the image.
-      # Create it first: cp config/policy.example.md config/policy.md. Only
-      # read once, to seed the policy on first boot — edit it afterward from
-      # the control app, not this file (see src/classifier/policy.ts).
-      - ./config/policy.md:/app/config/policy.md:ro
     depends_on:
       - ollama
 

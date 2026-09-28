@@ -1176,6 +1176,45 @@ refetching stats it already has every time the operator opens Activity.
 The small duplication (both hooks fetch `/api/stats` the same way) is
 cheaper than the coupling.
 
+## Dropping `.env`, `config/policy.md`, and first-boot file imports
+
+Every prior revision of the Debian install flow (`scripts/setup.sh`,
+`.env.example`, `config/policy.example.md`) existed to solve one problem: a
+bind-mounted `auth_info/`/`data/` gets created by Docker owned by root, which
+the container's unprivileged UID 1000 can't write to, and the operator has
+to set at least `WEB_CONTROL_PORT` + `ALLOWED_TAILSCALE_LOGIN` (env vars)
+and a real `config/policy.md` (a file) before the app does anything useful.
+That grew into a guided script, a preflight checklist, and several hundred
+lines of README to walk a stranger through it — the opposite of "clone and
+run."
+
+Two changes remove the need for almost all of it:
+
+- **`docker-entrypoint.sh` fixes ownership itself.** The image now starts as
+  root, `chown -R`s the two bind-mounted directories to `node`, then
+  `su-exec`s down to run the app unprivileged. This was always fixable in
+  the image; routing it through a host-side `sudo chown` in `setup.sh` was
+  solving a container problem on the host, for no reason beyond that being
+  the first shape the fix took.
+- **Every configurable value now has a working hardcoded default**,
+  including the moderation policy itself (`DEFAULT_POLICY_TEXT` in
+  `src/classifier/policy.ts` — an explicit "flag nothing until this is
+  replaced" instruction, not a guessed real policy) and whether the control
+  app requires a Tailscale identity at all (`ALLOWED_TAILSCALE_LOGIN` is now
+  optional — see "Web control app: back to trusting the header" above for
+  the auth model this extends). Nothing is read from a file on first boot
+  any more, so there is nothing to import, migrate, or lose track of across
+  an upgrade.
+
+What's left is one file: `docker-compose.yml`, copied into an empty folder,
+mounting only `auth_info/` and `data/` — no repo clone, no `.env`, no
+`config/`. `scripts/setup.sh` and `scripts/preflight.sh` are gone entirely;
+the chown dance and the "is `ALLOWED_TAILSCALE_LOGIN` set" crash-loop check
+they existed for are no longer things an operator can get wrong. `data/`
+(SQLite) is now the only place operator-entered state lives outside the
+image, which already had to be backed up for the audit log and settings —
+the moderation policy just joined it.
+
 ## Real WhatsApp profile photos: lazy, bounded, proxied
 
 Picks up the photo feature "Control panel: full contact list + slide-in
@@ -1229,16 +1268,18 @@ doesn't re-query WhatsApp on every page load. The route answers a failure
 with the same plain 404 as "no photo". Either way the frontend's only move
 is falling back to initials, and a 5xx would just add console noise.
 
-**The route is a least-privilege proxy.** It's behind the same
-`verifyTailscaleIdentity` check as every other `/api/*` route, not the
-static-asset exceptions. The server fetches the image bytes itself and
+**The route is a least-privilege proxy.** It gets the same auth as every
+other `/api/*` route, not the static-asset exceptions: the
+`verifyTailscaleIdentity` check when `allowedLogin` is set, none in the
+open-access mode described in "Dropping `.env`, `config/policy.md`, and
+first-boot file imports" above. The server fetches the image bytes itself and
 returns only those: the signed CDN URL and WhatsApp's response headers
 never reach the browser. Before fetching, it checks that the URL is https
 on `*.whatsapp.net` and sets `redirect: 'error'`. The URL comes from
 WhatsApp, but this server fetches it with its own network access (next to
 a loopback-only Ollama), so it isn't trusted as an arbitrary URL. The
 response must be JPEG/PNG/WebP (never SVG, which could carry script once
-re-served from this authenticated origin) and at most 1 MiB, and it goes
+re-served from this app's own origin) and at most 1 MiB, and it goes
 out with `nosniff` and `Cache-Control: private, max-age=3600`. It only looks
 up individual JIDs already in the contact directory, so it can't be used
 to probe photos for arbitrary numbers.

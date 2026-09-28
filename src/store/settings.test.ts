@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-settings.test.sqlite';
 
-const { getRawSetting, getNumberSetting, setSetting, listSettings, ensureDefaultsSeeded, getRawValue, setRawValue } =
+const { getRawSetting, getNumberSetting, getBoolSetting, setSetting, listSettings, ensureDefaultsSeeded, getRawValue, setRawValue } =
   await import('./settings.ts');
 const { getDb } = await import('./db.ts');
 
@@ -70,6 +70,19 @@ test('setSetting rejects Infinity for a float setting', () => {
 test('setSetting accepts a setting\'s declared minimum value itself', () => {
   assert.deepEqual(setSetting('BUFFER_WINDOW_MS', '0'), { ok: true });
   assert.equal(getNumberSetting('BUFFER_WINDOW_MS'), 0);
+});
+
+test('SHADOW_MODE defaults to on', () => {
+  assert.equal(getBoolSetting('SHADOW_MODE'), true);
+});
+
+test('setSetting accepts "0"/"1" for a bool setting and rejects anything else', () => {
+  assert.deepEqual(setSetting('SHADOW_MODE', '0'), { ok: true });
+  assert.equal(getBoolSetting('SHADOW_MODE'), false);
+  const result = setSetting('SHADOW_MODE', 'false');
+  assert.equal(result.ok, false);
+  assert.equal(getBoolSetting('SHADOW_MODE'), false); // rejected value never applied
+  setSetting('SHADOW_MODE', '1');
 });
 
 test('listSettings returns every manifest key with its current value and default', () => {
