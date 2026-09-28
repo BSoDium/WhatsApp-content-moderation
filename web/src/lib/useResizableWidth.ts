@@ -63,7 +63,8 @@ function writePersistedWidth(id: string, width: number): void {
 
 function clampToViewport(width: number, min: number, max: number): number {
   const viewportMax = Math.min(max, window.innerWidth);
-  return clamp(width, min, viewportMax);
+  const viewportMin = Math.min(min, viewportMax);
+  return clamp(width, viewportMin, viewportMax);
 }
 
 export function useResizableWidth(
@@ -71,10 +72,12 @@ export function useResizableWidth(
 ): UseResizableWidthResult {
   const { id, defaultWidth, min, max, side = "left", label = "Resize panel" } = options;
 
-  const [width, setWidth] = useState<number>(() => {
+  const [preferredWidth, setPreferredWidth] = useState<number>(() => {
     const persisted = readPersistedWidth(id);
-    return clampToViewport(persisted ?? defaultWidth, min, max);
+    return clamp(persisted ?? defaultWidth, min, max);
   });
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const width = clamp(preferredWidth, Math.min(min, viewportWidth), Math.min(max, viewportWidth));
 
   const widthRef = useRef(width);
   useEffect(() => {
@@ -86,7 +89,7 @@ export function useResizableWidth(
   const commitWidth = useCallback(
     (next: number) => {
       const clamped = clampToViewport(next, min, max);
-      setWidth(clamped);
+      setPreferredWidth(clamped);
       writePersistedWidth(id, clamped);
       return clamped;
     },
@@ -100,20 +103,21 @@ export function useResizableWidth(
       if (timeoutId !== undefined) return;
       timeoutId = setTimeout(() => {
         timeoutId = undefined;
-        const reclamped = clampToViewport(widthRef.current, min, max);
-        if (reclamped !== widthRef.current) {
-          setWidth(reclamped);
-          writePersistedWidth(id, reclamped);
-        }
+        setViewportWidth(window.innerWidth);
       }, RESIZE_LISTENER_THROTTLE_MS);
     };
 
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(document.documentElement);
     window.addEventListener("resize", handleResize);
+    window.visualViewport?.addEventListener("resize", handleResize);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("resize", handleResize);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     };
-  }, [id, min, max]);
+  }, []);
 
   const resetToDefault = useCallback(() => {
     commitWidth(defaultWidth);
