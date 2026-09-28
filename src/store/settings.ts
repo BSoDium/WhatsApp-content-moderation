@@ -8,8 +8,8 @@ import type { SettingRecord } from '../types.ts';
 
 const logger = pino({ name: 'settings' });
 
-export type SettingSection = 'classifier' | 'warning' | 'strikes';
-export type SettingType = 'string' | 'int' | 'float';
+export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes';
+export type SettingType = 'string' | 'int' | 'float' | 'bool';
 
 export interface SettingDef {
   key: string;
@@ -26,10 +26,17 @@ export interface SettingDef {
   required?: boolean;
 }
 
-// Same defaults this project used to document in .env.example. Hardcoded
-// here, not read from process.env — moderation tuning moved into the web
-// control app entirely, see docs/decisions.md.
+// Hardcoded here, not read from process.env — moderation tuning lives
+// entirely in the web control app, see docs/decisions.md.
 export const SETTINGS: readonly SettingDef[] = [
+  {
+    key: 'SHADOW_MODE',
+    section: 'general',
+    label: 'Shadow mode',
+    description: 'Classify and log every message without deleting, warning, or blocking. Review the activity log before turning this off.',
+    type: 'bool',
+    default: '1',
+  },
   {
     key: 'OLLAMA_HOST',
     section: 'classifier',
@@ -162,6 +169,9 @@ function validateValue(def: SettingDef, raw: string): string | undefined {
     if (def.required && raw.trim() === '') return `${def.label} must not be empty`;
     return undefined;
   }
+  if (def.type === 'bool') {
+    return raw === '0' || raw === '1' ? undefined : `${def.label} must be "0" or "1"`;
+  }
   const num = Number(raw);
   if (raw.trim() === '' || Number.isNaN(num) || !Number.isFinite(num)) return `${def.label} must be a number`;
   if (def.type === 'int' && !Number.isInteger(num)) return `${def.label} must be an integer`;
@@ -214,6 +224,10 @@ export function getRawSetting(key: string): string {
 
 export function getNumberSetting(key: string): number {
   return Number(getRawSetting(key));
+}
+
+export function getBoolSetting(key: string): boolean {
+  return getRawSetting(key) === '1';
 }
 
 export interface SettingView {

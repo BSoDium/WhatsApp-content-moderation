@@ -62,21 +62,36 @@ diff in this repo.
 
 - Anything that's a credential or describes a real person never gets
   committed, even in an example/placeholder form that could leak details:
-  `auth_info/` (WhatsApp session keys), `config/policy.md` (the real
-  moderation policy), `.env`, `*.sqlite*` (once the audit log exists).
-  Ship a `*.example.*` template instead and gitignore the real file
-  specifically — see `.gitignore` and `config/policy.example.md`.
+  `auth_info/` (WhatsApp session keys), `.env`, `*.sqlite*` (audit log,
+  settings, and the moderation policy itself — see "Deployment invariants"
+  below for why the policy lives here now, not in a tracked file).
 - If a new local secret/config file is needed, follow that same pattern:
-  commit a template, gitignore the real file by exact name (not a broad
-  directory glob that could accidentally swallow something that should be
-  tracked).
+  commit a template if one's useful, and gitignore the real file by exact
+  name (not a broad directory glob that could accidentally swallow
+  something that should be tracked).
+- Prefer a hardcoded default over a first-boot file import for anything
+  configurable. Nothing in this app reads a config file on startup —
+  everything is a settings-store default (`src/store/settings.ts`,
+  `src/classifier/policy.ts`), editable live from the control app. Don't
+  reintroduce a "seed from disk once" step; it's exactly the pattern this
+  repo moved away from (see `docs/decisions.md`'s "Dropping `.env`,
+  `config/policy.md`, and first-boot file imports").
 
 ## Deployment invariants
 
-- `src/web/control-server.ts` binds to `127.0.0.1` so host Tailscale Serve
-  can proxy it without exposing the control API to the LAN. Keep the app on
-  `network_mode: host` in `docker-compose.yml`; bridge networking gives the
-  container a different loopback and breaks this boundary.
+- `docker-compose.yml` is the whole deploy recipe — one file, no repo
+  clone, no `.env`, no mounted config beyond `auth_info/` and `data/`. Don't
+  add a file the operator has to create before `docker compose up -d`
+  works; add a settings-store default instead.
+- `network_mode: host` in `docker-compose.yml` is load-bearing for two
+  things at once: it's what lets `src/web/control-server.ts` bind every
+  interface directly on the host (the default, LAN-open mode) with no
+  `ports:` mapping, and it's what lets host Tailscale Serve proxy the
+  loopback-only bind `ALLOWED_TAILSCALE_LOGIN` switches to. Don't move this
+  to bridge networking without re-deriving both of those — bridge gives the
+  container a different loopback/interface set entirely, and would also
+  break `OLLAMA_HOST`'s default (`http://127.0.0.1:11434`, which only
+  resolves under host networking).
 - With host networking, the app reaches the Compose Ollama service through
   `127.0.0.1:11434`. Publish Ollama on host loopback only; do not expose its
   port to the LAN.
@@ -88,16 +103,14 @@ diff in this repo.
   build. Regenerate it (`npx drizzle-kit generate`) and commit the result
   whenever `src/store/schema.ts` changes; don't hand-edit anything under
   `drizzle/`.
-- Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` out of the
-  image and persist them as Compose bind mounts. Update the Debian install
-  steps in `README.md` whenever these paths, ownership, networking, or the
-  source-build/update flow changes. The supported path clones this repo and
-  builds locally; GHCR images are published by tagged releases.
-- The runtime image runs as UID 1000. Its policy bind mount is read-only,
-  but the file still must be readable by that UID.
-- Keep first-run instructions in shadow mode. The 90-second classifier
-  timeout accommodates the documented CPU-only target; lower it only after
-  measuring inference on that hardware.
+- The runtime container drops from root to UID 1000 (`node`) via
+  `docker-entrypoint.sh`, which also `chown -R`s `auth_info/`/`data/` first
+  — this is what makes a bind mount Docker creates (owned by root) usable
+  by the app with no host-side `chown`. Keep this entrypoint in sync with
+  any new bind-mounted path; don't reintroduce a host-side ownership step.
+- Keep first-run defaults (shadow mode, the moderation policy) safe. The
+  90-second classifier timeout accommodates the documented CPU-only target;
+  lower it only after measuring inference on that hardware.
 
 ## Workflow
 

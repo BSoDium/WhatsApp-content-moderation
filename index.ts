@@ -10,7 +10,6 @@ import { createProfilePhotos } from './src/whatsapp/profile-photos.ts';
 import { createControlServer } from './src/web/control-server.ts';
 import { closeDb } from './src/store/db.ts';
 import { ensureDefaultsSeeded } from './src/store/settings.ts';
-import { importPolicyFromFileIfUnset } from './src/classifier/policy.ts';
 import {
   listMonitored,
   isMonitored,
@@ -30,21 +29,20 @@ const AUTH_DIR = './auth_info';
 const QR_PNG_PATH = './auth_info/login-qr.png';
 // No second number handy? Set TEST_ALLOW_SELF=1 — see README "Testing each layer in isolation".
 const ALLOW_SELF = process.env.TEST_ALLOW_SELF === '1';
-// See README "Web control app" before enabling this.
-const RAW_WEB_CONTROL_PORT = process.env.WEB_CONTROL_PORT;
-const WEB_CONTROL_PORT = RAW_WEB_CONTROL_PORT ? Number(RAW_WEB_CONTROL_PORT) : undefined;
+// The control app is always on — see README "Web control app". Port only,
+// not whether to start it: unlike every moderation-tuning knob, this has to
+// be known before the settings store even exists.
+const DEFAULT_CONTROL_PORT = 4756;
+const RAW_CONTROL_PORT = process.env.CONTROL_PORT;
+const CONTROL_PORT = RAW_CONTROL_PORT ? Number(RAW_CONTROL_PORT) : DEFAULT_CONTROL_PORT;
+// Optional: restricts the control app to one Tailscale identity, proxied via
+// `tailscale serve` — see README. Left unset, the app binds every interface
+// and skips the identity check instead of refusing to start.
 const ALLOWED_TAILSCALE_LOGIN = process.env.ALLOWED_TAILSCALE_LOGIN;
 
-// Checked against the raw string, not WEB_CONTROL_PORT itself, since "0"/NaN are falsy and would otherwise skip these checks silently.
-if (RAW_WEB_CONTROL_PORT) {
-  if (WEB_CONTROL_PORT === undefined || !Number.isInteger(WEB_CONTROL_PORT) || WEB_CONTROL_PORT <= 0) {
-    console.error(`WEB_CONTROL_PORT must be a positive integer, got: ${RAW_WEB_CONTROL_PORT}`);
-    process.exit(1);
-  }
-  if (!ALLOWED_TAILSCALE_LOGIN) {
-    console.error('WEB_CONTROL_PORT is set but ALLOWED_TAILSCALE_LOGIN is not — refusing to start the control server unauthenticated.');
-    process.exit(1);
-  }
+if (RAW_CONTROL_PORT && (!Number.isInteger(CONTROL_PORT) || CONTROL_PORT <= 0)) {
+  console.error(`CONTROL_PORT must be a positive integer, got: ${RAW_CONTROL_PORT}`);
+  process.exit(1);
 }
 
 const logger = pino({ name: 'index' });
@@ -102,24 +100,19 @@ async function start() {
   // Must run before anything else touches a moderation-tuning setting, so
   // every read downstream sees a real value instead of racing an empty table.
   ensureDefaultsSeeded();
-  // Migrates an existing config/policy.md into the settings store exactly
-  // once, so upgrading from the file-based policy doesn't silently lose it.
-  importPolicyFromFileIfUnset();
 
-  if (WEB_CONTROL_PORT) {
-    controlServer = createControlServer({
-      manualOverride,
-      contactDirectory,
-      profilePhotos,
-      monitoredContacts,
-      auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
-      blocks: { countActive: countActiveBlocks },
-      allowedLogin: ALLOWED_TAILSCALE_LOGIN!,
-      getSelfId: selfContactId,
-      allowSelf: ALLOW_SELF,
-    });
-    await controlServer.listen(WEB_CONTROL_PORT);
-  }
+  controlServer = createControlServer({
+    manualOverride,
+    contactDirectory,
+    profilePhotos,
+    monitoredContacts,
+    auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
+    blocks: { countActive: countActiveBlocks },
+    allowedLogin: ALLOWED_TAILSCALE_LOGIN,
+    getSelfId: selfContactId,
+    allowSelf: ALLOW_SELF,
+  });
+  await controlServer.listen(CONTROL_PORT);
 
   await connectWhatsApp({
     authDir: AUTH_DIR,

@@ -4,6 +4,7 @@ import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useMeta } from '@/lib/useMeta';
 import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { ActivityPanel } from '@/components/ActivityPanel';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
+import { OpenAccessBanner } from '@/components/OpenAccessBanner';
 
 // Matches Tailwind's `lg:` breakpoint — the width at which the list/detail
 // panes split side by side instead of the detail becoming a full-screen
@@ -89,6 +91,7 @@ function App() {
   // URL (the effect below), not the other way around.
   const initialUrlState = useMemo(() => readUrlState(), []);
   const { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext } = useControlData(initialUrlState.contactId);
+  const meta = useMeta();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
   // Bumped every time a panel opens (not just on the boolean flipping to
@@ -244,6 +247,7 @@ function App() {
                 </Button>
               </div>
             </div>
+            {meta && !meta.authRequired && <OpenAccessBanner />}
             {error && <ErrorBanner error={error} onDismiss={dismissError} />}
           </motion.div>
           <div className="flex-none px-4 pb-4 lg:px-8">

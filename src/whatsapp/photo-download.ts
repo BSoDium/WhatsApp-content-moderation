@@ -4,7 +4,7 @@ const DOWNLOAD_TIMEOUT_MS = 10_000;
 const MAX_PHOTO_BYTES = 1_048_576;
 // Only what WhatsApp actually serves profile photos as — notably never
 // image/svg+xml, which could carry script once re-served from this app's
-// own (authenticated) origin.
+// own origin.
 const ALLOWED_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 // Profile photos live on pps.whatsapp.net; the URL comes from WhatsApp via
 // the DB, but this server fetches it with its own network access, so it's

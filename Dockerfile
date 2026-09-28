@@ -8,6 +8,10 @@ RUN npm run build
 
 FROM node:24-alpine
 
+# Lets docker-entrypoint.sh drop from root to the `node` user after fixing
+# bind-mount ownership, instead of every deploy needing a host-side chown.
+RUN apk add --no-cache su-exec
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -17,17 +21,16 @@ COPY index.ts ./
 COPY src ./src
 COPY drizzle ./drizzle
 COPY --from=web-build /web/dist ./web/dist
-COPY config/policy.example.md ./config/policy.example.md
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 
-# auth_info/ (WhatsApp session keys), data/ (SQLite audit log) and
-# config/policy.md (the real moderation policy) are all gitignored,
-# host-owned state — see docs/decisions.md "auth_info/ is a credential".
-# Mount them from the host; policy.md specifically must be bind-mounted
-# since the image only ships the example template.
-VOLUME ["/app/auth_info", "/app/data", "/app/config"]
+# auth_info/ (WhatsApp session keys) and data/ (SQLite — audit log, strikes,
+# blocks, settings, and the moderation policy) are gitignored, host-owned
+# state — see docs/decisions.md "auth_info/ is a credential". Mount them
+# from the host; docker-entrypoint.sh fixes their ownership on every start.
+VOLUME ["/app/auth_info", "/app/data"]
 
-USER node
-
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "--experimental-strip-types", "index.ts"]

@@ -38,6 +38,10 @@ jobs:
         if: github.event_name == 'push'
         run: npm ci
 
+      - name: Install web dependencies
+        if: github.event_name == 'push'
+        run: npm ci --prefix web
+
       # Tags aren't required to have gone through CI first — run the same
       # suite here so a release can't be cut from a broken tree.
       - name: Run tests
