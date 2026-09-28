@@ -21,10 +21,7 @@ const { getPhotoCache, setPhotoCache } = await import('./contact-photos.ts');
 const { createContactDirectory, canonicalContactId } = await import('../whatsapp/contact-directory.ts');
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
-// All real migrations in drizzle/, not just the baseline — a database that's
-// actually been fully migrated (as opposed to one that adopted the baseline
-// without running it) ends up with every one of these recorded, whatever
-// gets added to drizzle/ next.
+// All real migrations in drizzle/, not just the baseline — a database that's actually been fully migrated (as opposed to one that adopted the baseline without running it) ends up with every one of these recorded, whatever gets added to drizzle/ next.
 const REAL_MIGRATIONS = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
 const [BASELINE] = REAL_MIGRATIONS;
 const ALL_MIGRATION_ROWS = REAL_MIGRATIONS.map((migration) => ({ hash: migration.hash, created_at: migration.folderMillis }));
@@ -40,13 +37,7 @@ after(() => {
   for (const dir of createdDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-// Every table/column/index the pre-ORM schema had once fully migrated,
-// written out independently of schema.ts. Deliberately does NOT include
-// anything a post-baseline Drizzle migration (e.g. 0001's call_strikes
-// table) has since added — this is "fully caught up on pre-ORM history
-// alone," which is what a raw pre-ORM SQL fixture below can actually
-// reach. See FULLY_MIGRATED_SHAPE below for the real end state once such a
-// fixture is booted through the actual app and every migration runs.
+// Every table/column/index the pre-ORM schema had once fully migrated, written out independently of schema.ts. Deliberately does NOT include anything a post-baseline Drizzle migration (e.g. 0001's call_strikes table) has since added — this is "fully caught up on pre-ORM history alone," which is what a raw pre-ORM SQL fixture below can actually reach. See FULLY_MIGRATED_SHAPE below for the real end state once such a fixture is booted through the actual app and every migration runs.
 const EXPECTED_SHAPE = {
   audit_log: {
     columns: ['action text', 'category text', 'classification_ok integer', 'contact_id text', 'created_at integer', 'direction text', 'error text', 'flagged integer', 'id integer', 'message text', 'reason text'],
@@ -74,11 +65,7 @@ const EXPECTED_SHAPE = {
   },
 };
 
-// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in
-// drizzle/ has added (currently just 0001's call_strikes table and
-// monitored_contacts.call_nuisance_threshold) — the shape a database ends
-// up with once actually, fully migrated: a fresh install, or a pre-ORM
-// database that's been adopted and then caught up.
+// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added (currently just 0001's call_strikes table and monitored_contacts.call_nuisance_threshold) — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
 const FULLY_MIGRATED_SHAPE = {
   ...EXPECTED_SHAPE,
   call_strikes: {
@@ -464,9 +451,7 @@ test('an empty __drizzle_migrations table next to pre-ORM tables still adopts ra
 
   withConnection(copyOf(fixture), (db) => assert.equal(resolveMigrationBaseline(db, MIGRATIONS_FOLDER), 'adopted'));
   const db = startup(path);
-  // Not a strict dumpTables equality against `before`, for the same reason
-  // as the up-to-date-fixtures loop above: adoption only means the baseline
-  // itself isn't re-run, not that nothing after it runs either.
+  // Not a strict dumpTables equality against `before`, for the same reason as the up-to-date-fixtures loop above: adoption only means the baseline itself isn't re-run, not that nothing after it runs either.
   assertPreserved(before, db);
   assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);
 });
@@ -496,13 +481,7 @@ test('a migration generated after the baseline still runs on an adopted database
   const folder = mkdtempSync(join(tmpdir(), 'wcm-migrations-'));
   createdDirs.push(folder);
   mkdirSync(join(folder, 'meta'));
-  // Deliberately NOT a copy of the real drizzle/ folder (which may already
-  // have its own migrations after the baseline by now) — a synthetic
-  // baseline-plus-one-future-migration folder, so this test's meaning
-  // ("a migration generated after the baseline") stays correct regardless
-  // of how many real migrations exist on top of the baseline when it runs.
-  // loadBaseline() (migration-baseline.ts) always reads meta/0000_snapshot.json
-  // by that fixed path, so it has to come along with the baseline SQL.
+  // Deliberately NOT a copy of the real drizzle/ folder (which may already have its own migrations after the baseline by now) — a synthetic baseline-plus-one-future-migration folder, so this test's meaning ("a migration generated after the baseline") stays correct regardless of how many real migrations exist on top of the baseline when it runs. loadBaseline() (migration-baseline.ts) always reads meta/0000_snapshot.json by that fixed path, so it has to come along with the baseline SQL.
   copyFileSync(join(MIGRATIONS_FOLDER, '0000_baseline.sql'), join(folder, '0000_baseline.sql'));
   copyFileSync(join(MIGRATIONS_FOLDER, 'meta/0000_snapshot.json'), join(folder, 'meta/0000_snapshot.json'));
   writeFileSync(join(folder, '0001_future.sql'), 'ALTER TABLE `contacts` ADD `future_column` text;');

@@ -14,6 +14,19 @@ function jitter(ms: number): number {
   return Math.round((Math.random() * 2 - 1) * ms);
 }
 
+// moderation-pipeline.ts and call-pipeline.ts each serialize their own event processing per contact in two separate Maps, so without a lock here too, one message burst and one call event for the same contact could both pass this function's getActiveBlock check before either writes, producing two block rows.
+const contactLocks = new Map<string, Promise<unknown>>();
+
+function withContactLock<T>(contactId: string, run: () => Promise<T>): Promise<T> {
+  const prior = contactLocks.get(contactId) ?? Promise.resolve();
+  const next = prior.then(run, run);
+  contactLocks.set(
+    contactId,
+    next.catch(() => {}),
+  );
+  return next;
+}
+
 /**
  * Blocks contactId once strikeCount crosses strikeThreshold, unless they
  * already have an active block. Shared by moderation-pipeline.ts (message
@@ -31,6 +44,15 @@ function jitter(ms: number): number {
  *   getActiveBlock read once a block's already succeeded.
  */
 export async function maybeBlockContact(
+  contactId: string,
+  strikeCount: number,
+  strikeThreshold: number,
+  block: (contactId: string) => Promise<unknown>,
+): Promise<boolean> {
+  return withContactLock(contactId, () => runMaybeBlockContact(contactId, strikeCount, strikeThreshold, block));
+}
+
+async function runMaybeBlockContact(
   contactId: string,
   strikeCount: number,
   strikeThreshold: number,

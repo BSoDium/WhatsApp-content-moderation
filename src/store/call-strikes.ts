@@ -29,16 +29,17 @@ export function getCallState(contactId: string): CallState {
  * declined): increments the contact's unanswered-call count by one.
  */
 export function recordUnansweredCall(contactId: string): number {
-  getOrm()
+  const row = getOrm()
     .insert(callStrikes)
     .values({ contact_id: contactId, unanswered_count: 1, strike_count: 0, updated_at: Date.now() })
     .onConflictDoUpdate({
       target: callStrikes.contact_id,
       set: { unanswered_count: sql`${callStrikes.unanswered_count} + 1`, updated_at: excluded(callStrikes.updated_at) },
     })
-    .run();
+    .returning({ unanswered_count: callStrikes.unanswered_count })
+    .get();
   emitControlEvent('roster');
-  return getCallState(contactId).unansweredCount;
+  return row.unanswered_count;
 }
 
 /**
@@ -46,16 +47,17 @@ export function recordUnansweredCall(contactId: string): number {
  * contact's call-strike count by one, toward NUISANCE_CALL_STRIKE_THRESHOLD.
  */
 export function recordCallStrike(contactId: string): number {
-  getOrm()
+  const row = getOrm()
     .insert(callStrikes)
     .values({ contact_id: contactId, unanswered_count: 0, strike_count: 1, updated_at: Date.now() })
     .onConflictDoUpdate({
       target: callStrikes.contact_id,
       set: { strike_count: sql`${callStrikes.strike_count} + 1`, updated_at: excluded(callStrikes.updated_at) },
     })
-    .run();
+    .returning({ strike_count: callStrikes.strike_count })
+    .get();
   emitControlEvent('roster');
-  return getCallState(contactId).strikeCount;
+  return row.strike_count;
 }
 
 /**
@@ -64,7 +66,7 @@ export function recordCallStrike(contactId: string): number {
  * floored at zero — mirrors src/store/strikes.ts's decayStrike.
  */
 export function recordAnsweredCall(contactId: string): CallState {
-  getOrm()
+  const row = getOrm()
     .insert(callStrikes)
     .values({ contact_id: contactId, unanswered_count: 0, strike_count: 0, updated_at: Date.now() })
     .onConflictDoUpdate({
@@ -75,7 +77,8 @@ export function recordAnsweredCall(contactId: string): CallState {
         updated_at: excluded(callStrikes.updated_at),
       },
     })
-    .run();
+    .returning({ unanswered_count: callStrikes.unanswered_count, strike_count: callStrikes.strike_count })
+    .get();
   emitControlEvent('roster');
-  return getCallState(contactId);
+  return { unansweredCount: row.unanswered_count, strikeCount: row.strike_count };
 }

@@ -264,9 +264,7 @@ test('a contact with an existing active block is not re-blocked', async () => {
       blockCalled = true;
     },
   };
-  // Two nuisance offers to actually cross NUISANCE_CALL_STRIKE_THRESHOLD=2 —
-  // otherwise maybeBlockContact would short-circuit on the strike count
-  // alone, never reaching the getActiveBlock check this test is about.
+  // Two nuisance offers to actually cross NUISANCE_CALL_STRIKE_THRESHOLD=2 — otherwise maybeBlockContact would short-circuit on the strike count alone, never reaching the getActiveBlock check this test is about.
   await handleCallEvent(call(contact, 'offer'), actions);
   await handleCallEvent(call(contact, 'offer'), actions);
 
@@ -295,9 +293,7 @@ test("a contact's own call-nuisance threshold override takes precedence over the
 
 test('call events for the same contact are serialized: a slow rejectCall does not let a second event interleave', async () => {
   const contact = 'nora@s.whatsapp.net';
-  // Two timeouts first so both offers below are already over the nuisance
-  // threshold and actually invoke rejectCall — 'timeout' itself is
-  // synchronous bookkeeping with no action to gate on.
+  // Two timeouts first so both offers below are already over the nuisance threshold and actually invoke rejectCall — 'timeout' itself is synchronous bookkeeping with no action to gate on.
   await handleCallEvent(call(contact, 'timeout'), noopActions);
   await handleCallEvent(call(contact, 'timeout'), noopActions);
 

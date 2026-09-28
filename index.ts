@@ -163,8 +163,7 @@ async function start() {
         }
       });
       s.ev.on('call', (calls) => {
-        // Group calls aren't something this app's 1:1 roster/strike model
-        // covers — skipped rather than mis-attributed to a group JID.
+        // Group calls aren't something this app's 1:1 roster/strike model covers — skipped rather than mis-attributed to a group JID.
         for (const call of calls) {
           if (call.isGroup) continue;
           const contactId = canonicalContactId({ id: call.chatId, phoneNumber: call.callerPn });
