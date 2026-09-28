@@ -35,7 +35,10 @@ interface ControlServerDependencies {
   blocks: {
     countActive: () => number;
   };
-  allowedLogin: string;
+  // Unset means the control app is open to anyone who can reach the host —
+  // see createControlServer's doc comment for the bind-address/auth
+  // tradeoff this makes.
+  allowedLogin: string | undefined;
   // The account's own contact_id (canonicalized the same way the directory
   // is), and whether TEST_ALLOW_SELF is enabled — together these let the
   // control app show the self contact as non-moderatable rather than a
@@ -52,8 +55,14 @@ const logger = pino({ name: 'control-server' });
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
 
-// Must stay loopback-only — see createControlServer's doc comment.
+// Must stay loopback-only whenever ALLOWED_TAILSCALE_LOGIN is set — see
+// createControlServer's doc comment. Also used as the dummy base for
+// parsing a request's relative URL, regardless of the real bind address.
 const LOOPBACK_HOST = '127.0.0.1';
+// Bound when no allow-listed login is configured, so the control app is
+// reachable from other devices on the local network without Tailscale —
+// see createControlServer's doc comment.
+const ALL_INTERFACES_HOST = '0.0.0.0';
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
@@ -304,6 +313,11 @@ async function handleApi(
     return true;
   }
 
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'meta') {
+    sendJson(res, 200, { authRequired: Boolean(deps.allowedLogin) });
+    return true;
+  }
+
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'policy') {
     sendJson(res, 200, { text: getPolicyText() });
     return true;
@@ -460,7 +474,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
     return;
   }
 
-  if (!verifyTailscaleIdentity(req, allowedLogin)) {
+  if (allowedLogin && !verifyTailscaleIdentity(req, allowedLogin)) {
     logger.warn({ login: req.headers['tailscale-user-login'] ?? null }, 'rejected: no matching Tailscale identity');
     sendJson(res, 403, { error: 'forbidden' });
     return;
@@ -495,22 +509,33 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  * Creates the manual-override control server (issues #29, #32): a static
  * page plus a small JSON API in front of src/override/manual-override.ts's
  * routines, src/whatsapp/contact-directory.ts's known-contacts list, and
- * src/store/monitored-contacts.ts's roster.
+ * src/store/monitored-contacts.ts's roster. Always runs — there is no
+ * "moderate with no control app" mode, since the roster can only be edited
+ * from here.
  *
- * Auth is a single check, required on `GET /` and every `/api/*` route —
- * see docs/decisions.md "Web control app: back to trusting the header
- * (issue #29, twice revisited)": `verifyTailscaleIdentity` trusts the
- * `Tailscale-User-Login` header `tailscale serve` sets when proxying a
- * tailnet request to this app, checked against `allowedLogin`. No shared
- * secret, no cookie, no bootstrap step — a plain visit to the tailnet URL
- * just works, every time. **Deliberately single-factor**: an earlier
- * revision tried closing the local-forgery gap (any other process/user on
- * this host connecting to this port directly, since the loopback bind in
- * `listen()` stops only *remote* access) via tailscaled's LocalAPI `whois`,
- * but that doesn't work for a `tailscale serve`-proxied backend — see the
- * decisions.md entry for why. Accepted for a single-operator host where
- * the operator is the only account with shell access to the machine.
+ * Auth is opt-in, driven entirely by whether `allowedLogin` is set:
  *
+ * - **Set**: binds loopback-only and requires every `GET /` and `/api/*`
+ *   request to carry a matching `Tailscale-User-Login` header — see
+ *   docs/decisions.md "Web control app: back to trusting the header (issue
+ *   #29, twice revisited)": `verifyTailscaleIdentity` trusts the header
+ *   `tailscale serve` sets when proxying a tailnet request to this app. No
+ *   shared secret, no cookie, no bootstrap step — a plain visit to the
+ *   tailnet URL just works, every time. **Deliberately single-factor**: an
+ *   earlier revision tried closing the local-forgery gap (any other
+ *   process/user on this host connecting to this port directly, since the
+ *   loopback bind stops only *remote* access) via tailscaled's LocalAPI
+ *   `whois`, but that doesn't work for a `tailscale serve`-proxied backend —
+ *   see the decisions.md entry for why. Accepted for a single-operator host
+ *   where the operator is the only account with shell access to the
+ *   machine.
+ * - **Unset**: binds every interface and skips the identity check entirely
+ *   — anyone who can reach the host on this port can open the control app.
+ *   This is the default so the app never refuses to start for lack of a
+ *   Tailscale login; `GET /api/meta`'s `authRequired: false` is what the
+ *   frontend uses to show a standing warning banner about it.
+ *
+
  * `GET /assets/*` (the Vite-built frontend's JS/CSS/font bundle) is the sole
  * exception, checked before the identity check: none of these files
  * contain anything secret — see docs/decisions.md "Control page styling"
@@ -545,7 +570,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
  *   blocks: { countActive: () => number },
- *   allowedLogin: string,
+ *   allowedLogin: string | undefined,
  * }} deps
  * @returns {{ listen: (port: number) => Promise<number>, close: () => Promise<void> }}
  */
@@ -561,11 +586,13 @@ export function createControlServer(deps: ControlServerDependencies): { listen: 
     });
   });
 
+  const bindHost = deps.allowedLogin ? LOOPBACK_HOST : ALL_INTERFACES_HOST;
+
   return {
     listen: (port) =>
       new Promise<number>((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, LOOPBACK_HOST, () => {
+        server.listen(port, bindHost, () => {
           server.removeListener('error', reject);
           const address = server.address();
           if (!address || typeof address === 'string') {
@@ -573,7 +600,11 @@ export function createControlServer(deps: ControlServerDependencies): { listen: 
             return;
           }
           const boundPort = (address as AddressInfo).port;
-          logger.info({ port: boundPort }, `control server listening on ${LOOPBACK_HOST} (loopback only)`);
+          if (deps.allowedLogin) {
+            logger.info({ port: boundPort }, `control server listening on ${bindHost} (loopback only)`);
+          } else {
+            logger.warn({ port: boundPort }, `control server listening on ${bindHost} (all interfaces, no ALLOWED_TAILSCALE_LOGIN set) — anyone on your local network can open it`);
+          }
           resolve(boundPort);
         });
       }),

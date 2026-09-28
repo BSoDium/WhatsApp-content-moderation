@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Routine update: pull the latest commit (keeps scripts/*.sh and the compose
-# files current) and restart the app service against the latest published
-# image — pass --build to instead rebuild from your local source (needs
+# For a local checkout only (the "building from source" flow — see README):
+# pull the latest commit (keeps scripts/*.sh and the compose files current)
+# and restart the app service against the latest published image — pass
+# --build to instead rebuild from your local source (needs
 # docker-compose.override.yml, see docker-compose.override.yml.example).
-# .env, config/policy.md, auth_info/, and data/ are all gitignored and
-# untouched by this — see README "Debian install and updates".
+# The packaged deploy (a bare docker-compose.yml with no repo checkout) has
+# no local commits to pull — just `docker compose pull app && docker compose
+# up -d app` directly. auth_info/ and data/ are gitignored and untouched by
+# this either way.
 set -euo pipefail
 
 BUILD=0
@@ -28,9 +31,7 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 fi
 
 log "Pulling latest source"
-BEFORE_EXAMPLE="$(cat .env.example)"
 git pull --ff-only
-AFTER_EXAMPLE="$(cat .env.example)"
 
 if [ "$BUILD" -eq 1 ]; then
   log "Rebuilding from source and restarting the app"
@@ -39,18 +40,6 @@ else
   log "Pulling the latest published image and restarting the app"
   docker compose pull app
   docker compose up -d app
-fi
-
-if [ "$BEFORE_EXAMPLE" != "$AFTER_EXAMPLE" ] && [ -f .env ]; then
-  NEW_KEYS="$(comm -23 \
-    <(grep -oE '^[A-Z_][A-Z0-9_]*=' .env.example | sed 's/=$//' | sort -u) \
-    <(grep -oE '^[A-Z_][A-Z0-9_]*=' .env | sed 's/=$//' | sort -u))"
-  if [ -n "$NEW_KEYS" ]; then
-    echo
-    echo "New .env.example settings not yet in your .env:"
-    echo "$NEW_KEYS" | sed 's/^/  - /'
-    echo "Review .env.example and add any you need."
-  fi
 fi
 
 log "Update complete"

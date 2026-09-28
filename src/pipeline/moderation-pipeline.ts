@@ -6,7 +6,7 @@ import { logMessage, getAuditLog } from '../store/audit-log.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
 import { isEscalationEnabled, getMonitored } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
-import { getRawSetting, getNumberSetting } from '../store/settings.ts';
+import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from '../types.ts';
 
@@ -31,7 +31,6 @@ interface BurstActions {
 
 type ConversationMessage = { from: 'me' | 'them'; text: string };
 
-const SHADOW_MODE = process.env.SHADOW_MODE === '1';
 // Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
 const MIN_BLOCK_MS = 60 * 1000;
 
@@ -75,7 +74,7 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
  * logged and the message is left unstruck rather than recording a strike
  * for an action that didn't actually complete.
  *
- * Shadow mode (SHADOW_MODE=1) classifies and audit-logs every message but
+ * Shadow mode (the SHADOW_MODE setting, on by default) classifies and audit-logs every message but
  * skips delete/warn/strike/block entirely, for watching classifier behavior
  * on real traffic before trusting it to act — see docs/roadmap.md issue #7.
  *
@@ -195,7 +194,7 @@ async function runBurst(
       continue;
     }
 
-    if (SHADOW_MODE) {
+    if (getBoolSetting('SHADOW_MODE')) {
       logMessage({ contactId, direction: 'them', message: text, classification, action: 'shadow' });
       continue;
     }

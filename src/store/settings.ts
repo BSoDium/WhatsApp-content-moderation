@@ -5,8 +5,8 @@ import type { SettingRecord } from '../types.ts';
 
 const logger = pino({ name: 'settings' });
 
-export type SettingSection = 'classifier' | 'warning' | 'strikes';
-export type SettingType = 'string' | 'int' | 'float';
+export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes';
+export type SettingType = 'string' | 'int' | 'float' | 'bool';
 
 export interface SettingDef {
   key: string;
@@ -23,10 +23,17 @@ export interface SettingDef {
   required?: boolean;
 }
 
-// Same defaults this project used to document in .env.example. Hardcoded
-// here, not read from process.env — moderation tuning moved into the web
-// control app entirely, see docs/decisions.md.
+// Hardcoded here, not read from process.env — moderation tuning lives
+// entirely in the web control app, see docs/decisions.md.
 export const SETTINGS: readonly SettingDef[] = [
+  {
+    key: 'SHADOW_MODE',
+    section: 'general',
+    label: 'Shadow mode',
+    description: 'Classify and log every message without deleting, warning, or blocking. Review the activity log before turning this off.',
+    type: 'bool',
+    default: '1',
+  },
   {
     key: 'OLLAMA_HOST',
     section: 'classifier',
@@ -159,6 +166,9 @@ function validateValue(def: SettingDef, raw: string): string | undefined {
     if (def.required && raw.trim() === '') return `${def.label} must not be empty`;
     return undefined;
   }
+  if (def.type === 'bool') {
+    return raw === '0' || raw === '1' ? undefined : `${def.label} must be "0" or "1"`;
+  }
   const num = Number(raw);
   if (raw.trim() === '' || Number.isNaN(num) || !Number.isFinite(num)) return `${def.label} must be a number`;
   if (def.type === 'int' && !Number.isInteger(num)) return `${def.label} must be an integer`;
@@ -214,6 +224,10 @@ export function getNumberSetting(key: string): number {
   return Number(getRawSetting(key));
 }
 
+export function getBoolSetting(key: string): boolean {
+  return getRawSetting(key) === '1';
+}
+
 export interface SettingView {
   key: string;
   section: SettingSection;
@@ -256,10 +270,32 @@ export function setSetting(key: string, value: string): { ok: true } | { ok: fal
 }
 
 /**
+ * One-time carry-over for anyone upgrading from a version where SHADOW_MODE
+ * was a process-env flag (checked once at startup, `=== '1'`) rather than a
+ * settings-store tunable. Call this *before* ensureDefaultsSeeded() — it
+ * only acts when SHADOW_MODE has no row yet, so ensureDefaultsSeeded's own
+ * hardcoded-default seed would otherwise win the race and this becomes a
+ * silent no-op. Without this, an operator who had already verified real
+ * traffic and set SHADOW_MODE=0 in their old .env would have that
+ * moderation actually running silently revert to log-only after upgrading,
+ * with nothing in the logs calling out why.
+ */
+export function migrateShadowModeFromEnv(): void {
+  const raw = process.env.SHADOW_MODE;
+  if (raw === undefined) return;
+  if (getRawValue('SHADOW_MODE') !== undefined) return;
+  // Matches the old env-var contract exactly: only the literal string '1'
+  // meant "shadow mode on," any other value meant off.
+  setRawValue('SHADOW_MODE', raw === '1' ? '1' : '0');
+}
+
+/**
  * Seeds every manifest key with its hardcoded default the first time it's
  * ever read (i.e. it has no row yet). Idempotent and safe to call on every
  * startup — a no-op once a key has a row, whether from this seeding or a
- * later web-UI edit.
+ * later web-UI edit. Call migrateShadowModeFromEnv() first (see its own
+ * doc comment) so SHADOW_MODE's carry-over isn't raced by this function's
+ * own hardcoded default for that same key.
  */
 export function ensureDefaultsSeeded(): void {
   const insert = getDb().prepare('INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING');

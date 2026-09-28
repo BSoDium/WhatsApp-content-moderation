@@ -4,288 +4,132 @@ A localised, background-hosted "digital curtain" for a personal WhatsApp account
 
 ## Status
 
-**Pre-release.** The moderation pipeline, block/unblock scheduler, manual override routines, and the multi-contact web control app are all built and have been validated against real WhatsApp accounts — see [`docs/decisions.md`](docs/decisions.md) for how, and for the full design history. This has **not** been run against a real contact for real moderation yet: `config/policy.md` is still the placeholder template. Run with `SHADOW_MODE=1` (the default) and review its logs before pointing this at anyone — see [`docs/roadmap.md`](docs/roadmap.md) for the remaining checklist.
-
-## Requirements
-
-- Node.js 24+ (the backend runs TypeScript directly via Node's built-in stripping — no separate build step)
-- [Ollama](https://ollama.com), running locally, with a model pulled
-- A phone with WhatsApp, to scan a QR code the first time you link the account
-- Optional, to use the web control app: [Tailscale](https://tailscale.com)
+**Pre-release.** The moderation pipeline, block/unblock scheduler, manual override routines, and the multi-contact web control app are all built and have been validated against real WhatsApp accounts — see [`docs/decisions.md`](docs/decisions.md) for how, and for the full design history. This has **not** been run against a real contact for real moderation yet: the moderation policy is still the placeholder default. Leave shadow mode on (the default) and review its logs before pointing this at anyone — see [`docs/roadmap.md`](docs/roadmap.md) for the remaining checklist.
 
 ## Quick start
 
+Requirements: [Docker Compose](https://docs.docker.com/compose/install/) and a phone with WhatsApp, to scan a QR code the first time you link the account. Nothing else — no repo clone, no config files to write first.
+
 ```sh
-npm install
-cp config/policy.example.md config/policy.md   # fill this in before real use — see "Classifier" below
-ollama pull llama3.2:3b
-WEB_CONTROL_PORT=4756 ALLOWED_TAILSCALE_LOGIN=you@example.com npm start
+mkdir whatsapp-moderation && cd whatsapp-moderation
+curl -O https://raw.githubusercontent.com/BSoDium/WhatsApp-content-moderation/main/docker-compose.yml
+docker compose up -d
+docker compose exec ollama ollama pull llama3.2:3b
+docker compose logs -f --no-log-prefix app   # scan the QR code shown here; Ctrl+C once connected
 ```
 
-`npm run typecheck` and `npm run lint` check the backend before you start it.
+Open `http://<this-machine's-address>:4756` (`http://localhost:4756` on the same machine) and add a contact to the monitored roster — every incoming message from a monitored contact is now buffered, classified, and acted on. Everyone else is ignored.
 
-The first run needs a WhatsApp QR code scanned interactively. `index.ts` stores the resulting session in `auth_info/`, so later runs reuse it without re-scanning. Once connected, open the web control app and add a contact to the monitored roster — every incoming message from a monitored contact is buffered, classified, and acted on (delete-for-me + warning + strike on a flag); everyone else is ignored. Leave `SHADOW_MODE=1` (classify and log without acting) until you've reviewed its behavior against real traffic.
+Everything else — the moderation policy, the classifier model, warning behavior, strike/block timings, and shadow mode itself — starts at a safe default and is edited live from that page, no restart needed. **Shadow mode is on by default**: the app classifies and logs but takes no action. Review the Activity panel against real traffic before turning it off in Settings.
 
-No second WhatsApp number to test with? Set `TEST_ALLOW_SELF=1` and add your own JID to the roster instead — the same idea the prototypes below use. Your own "Message yourself" chat sometimes routes through the newer `@lid` JID form rather than your phone-number JID; if self-test messages never reach the pipeline, check the actual `remoteJid` Baileys reports (log it once from `messages.upsert`, or check the control app's contact picker) rather than assuming the phone-number form.
+No second WhatsApp number to test with? Add `TEST_ALLOW_SELF: "1"` under `environment:` in `docker-compose.yml` and add your own account to the roster instead.
 
-## Configuration
+By default the control app is reachable by anyone on your local network — the page shows a warning banner saying so. See [Restricting access with Tailscale](#restricting-access-with-tailscale) below to lock it down to one identity instead.
 
-`.env` only holds bootstrap concerns needed before the app can even start — copy `.env.example` to `.env` (or set these directly in the environment — see [Deployment](#debian-install-and-updates) for the guided Debian setup):
+To update later: `docker compose pull && docker compose up -d`.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `SHADOW_MODE` | `1` | Classify and log without deleting, warning, or blocking. |
-| `WEB_CONTROL_PORT` | unset | Enables the [web control app](#web-control-app) on this port. This is also the only way to add a contact to the roster — leaving it unset means the moderator does nothing at all. |
-| `ALLOWED_TAILSCALE_LOGIN` | unset | The one Tailscale login allowed to use the control app. Required if `WEB_CONTROL_PORT` is set; the process refuses to start otherwise. |
-| `TEST_ALLOW_SELF` | `0` | Set to `1` to test the pipeline against messages you send yourself, with no second WhatsApp number. |
-| `DB_PATH` | `data/moderation.sqlite` | SQLite database path. |
+## Web control app
 
-Everything else — the classifier model/host/timeout, warning-message behavior, and strike/block/buffer timings — is **not** an environment variable. It's a setting in `src/store/settings.ts`, seeded with the hardcoded defaults below and tuned live from the control app's **Settings** panel, no restart needed:
+A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel, and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes." The page follows the OS/browser's light/dark preference automatically.
 
-| Setting | Default | Purpose |
-|---|---|---|
-| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Where the classifier reaches Ollama. |
-| `OLLAMA_MODEL` | `llama3.2:3b` | Classifier model — see [Classifier](#classifier) for why not the cheaper `1b`. |
-| `CLASSIFIER_TIMEOUT_MS` | `90000` | Classifier request timeout, sized for CPU-only inference — see [Reference hardware](#reference-hardware). |
-| `CLASSIFIER_HISTORY_LIMIT` | `10` | Prior messages included as conversation context. |
-| `STRIKE_THRESHOLD` | `3` | Strikes before a contact is blocked. |
-| `BLOCK_DURATION_MS` | `86400000` (24h) | Block length before auto-unblock. |
-| `BLOCK_JITTER_MS` | `14400000` (±4h) | Randomization applied to the block duration — see [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for why this matters. |
-| `UNBLOCK_POLL_INTERVAL_MS` | `120000` (2min) | How often the scheduler checks for expired blocks. |
-| `BUFFER_WINDOW_MS` | `7000` (7s) | Debounce window before classification. |
-| `WARNING_MODEL` | inherits `OLLAMA_MODEL` | Model used to generate a per-violation warning message — see [Warning messages](#warning-messages). |
-| `WARNING_TIMEOUT_MS` | `90000` | Warning-generation request timeout. |
-| `WARNING_TEMPERATURE` | `0.4` | 0 = deterministic, higher = more varied phrasing. |
-| `WARNING_MAX_LENGTH` | `180` | Hard cap on the generated message's length, in characters. |
-| `WARNING_MESSAGE` | `That message was removed for violating this chat's policy.` | Fallback text sent only if generating a warning message fails — see [Warning messages](#warning-messages). |
+- **Activity panel** — roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message, including anything already deleted, since the audit log is the only remaining record of it.
+- **Policy** — the global moderation policy the classifier judges every message against. Starts as a placeholder ("flag nothing until this is replaced") — write a real one here before trusting this with a real contact.
+- **Settings** — every classifier/warning/strike/buffer tuning knob, including shadow mode itself, grouped by area, saved on blur/toggle. Applies immediately.
 
-The global moderation policy works the same way, just with its own editor (the **Policy** button) instead of the generic Settings list — see [Classifier](#classifier). A per-contact "moderation context" (extra guidance for that relationship specifically, alongside the global policy) is set from that contact's own detail panel.
+### Auth model
 
-Upgrading from a version that read the settings table above out of `.env`? Those values are **not** carried over — re-enter them in the Settings panel after updating. `config/policy.md` is the one exception: it's still imported into the store automatically, once, on first boot.
+Authenticated via Tailscale identity, not a password or shared secret — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for the full reasoning. If `ALLOWED_TAILSCALE_LOGIN` isn't set, there's no auth at all: the app binds every network interface, and anyone who can reach the host on this port can open it — a warning banner on the page says so. This is the default so the app never refuses to start over a missing Tailscale login; see [Restricting access with Tailscale](#restricting-access-with-tailscale) to turn it on.
 
-`TARGET_CONTACT_JID` and `BLOCK_TEST_JID` are not application configuration — they're arguments to the standalone test scripts below (`whatsapp:test-actions`, `prototype:block-unblock`). The live pipeline has no single-contact equivalent; contacts are managed entirely through the [web control app](#web-control-app)'s roster.
+## Restricting access with Tailscale
+
+Requires [Tailscale](https://tailscale.com) installed on the host. Edit `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    environment:
+      ALLOWED_TAILSCALE_LOGIN: you@example.com   # exactly what `tailscale status` reports for your own login
+```
+
+Then, with the app running:
+
+```sh
+sudo tailscale serve --bg 4756
+```
+
+Open `https://<tailscale-hostname>/` (the hostname is whatever `tailscale serve status` prints) from a device signed in as that login. A visit from anyone else gets a 403 on every request. `src/web/control-server.ts` binds to `127.0.0.1` only in this mode, on purpose — it's reachable *only* through `tailscale serve`'s local proxy hop. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for what to do if that assumption doesn't hold for your setup (e.g. a shared or multi-user server).
 
 ## How it works
 
 ### Classifier
 
-Uses a local [Ollama](https://ollama.com) model — no per-message API cost, runs entirely on the self-hosted machine.
+Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service — no per-message API cost, runs entirely on the self-hosted machine. `llama3.2:3b` is the default (`docker compose exec ollama ollama pull llama3.2:3b`); change it in the Settings panel. It was chosen over the cheaper `llama3.2:1b` after the smaller model proved unreliable under JSON-schema-constrained output — see [`docs/decisions.md`](docs/decisions.md) for the comparison.
 
-```sh
-brew install ollama   # or see ollama.com for other platforms
-ollama serve           # or `brew services start ollama`
-ollama pull llama3.2:3b
-```
-
-The moderation policy — what actually gets flagged — is **not** in this repo. It's personal and describes a real contact, so it lives in `config/policy.md`, which is gitignored:
-
-```sh
-cp config/policy.example.md config/policy.md
-```
-
-Try it without a WhatsApp connection: `npm run classifier:test`.
-
-- `llama3.2:1b` was tried first — the cheapest fit for the reference deployment target's 2-core/8GB, GPU-less profile (see [Reference hardware](#reference-hardware)) — but was unreliable: under JSON-schema-constrained output it would write a correct `category`/`reason` and then still set `flagged: false`, contradicting its own reasoning. `llama3.2:3b` got every hand-tested case right and stayed internally consistent, so it's the default (change it in the Settings panel).
-- The response schema orders fields as `category`, `reason`, then `flagged` on purpose — this makes the model commit to its reasoning before the boolean verdict, instead of guessing `flagged` cold.
-- **Fails open**: any Ollama error, timeout, or malformed response returns `{ ok: false }` rather than a guessed verdict. Callers must never delete/block on `ok: false`.
+**Fails open**: any Ollama error, timeout, or malformed response returns `{ ok: false }` rather than a guessed verdict — the message is left alone, never deleted, warned, or struck.
 
 ### Warning messages
 
-The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it names the actual category/reason the message was flagged for and tells the contact plainly that an automated moderation system is watching the chat and will block them if it continues — this project deliberately doesn't hide that a system, not the account owner, is responding. Same fail-open contract as the classifier: any Ollama error, timeout, or empty response returns `{ ok: false }`, and `moderation-pipeline.ts` falls back to the static `WARNING_MESSAGE` so a warning is still sent either way. Its model/host is configurable independently of the classifier's own — see [Configuration](#configuration).
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it names the actual category/reason the message was flagged for and tells the contact plainly that an automated moderation system is watching the chat and will block them if it continues. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if generation fails.
 
 ### Moderation pipeline and block/unblock scheduler
 
-Incoming messages from monitored contacts are debounced (`BUFFER_WINDOW_MS`), classified, and — if flagged — deleted locally, answered with a warning, and recorded as a strike. A contact is blocked the first time their strike count reaches `STRIKE_THRESHOLD`, then automatically unblocked after `BLOCK_DURATION_MS` ± `BLOCK_JITTER_MS`, checked every `UNBLOCK_POLL_INTERVAL_MS` by `src/pipeline/unblock-scheduler.ts`. Disabling a contact's **escalation** toggle (in the control app) skips only the block/unblock step — classification, delete-for-me, warnings, strikes, and the audit log all still run. `SHADOW_MODE` skips all of the above and only logs. See [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for the full design, including why the block/unblock cycle is itself a ban-detection risk and how jitter mitigates it.
+Incoming messages from monitored contacts are debounced, classified, and — if flagged — deleted locally, answered with a warning, and recorded as a strike. A contact is blocked the first time their strike count reaches the strike threshold, then automatically unblocked after the configured duration (± jitter, to avoid a fixed, detectable cadence). Disabling a contact's **escalation** toggle skips only the block/unblock step — classification, delete-for-me, warnings, strikes, and the audit log all still run. Shadow mode skips all of the above and only logs. See [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for the full design.
 
 ### Manual override routines
 
-Every monitored contact can be paused, resumed, or unblocked ahead of schedule, independently of every other contact (`src/override/manual-override.ts`), driven by the [web control app](#web-control-app) rather than WhatsApp chat commands — see [`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9) for why.
-
-- `pause` / `resume` — stop/resume classifying and acting on incoming messages for that contact entirely (no audit-log entries while paused). Resets on restart.
-- `unblock` — unblock that contact immediately, ahead of the jittered schedule.
-- Status (pause state, strike count, block status) isn't a command — it's read directly via `getStatus(contactId)`, which the control app polls to render each contact's detail panel.
-
-### Web control app
-
-A small web app hosted by the same process (`src/web/`), authenticated via Tailscale identity rather than a password, OAuth login, or shared secret. On the page (`GET /`) and every `/api/*` route, the server checks the `Tailscale-User-Login` header that `tailscale serve` sets when proxying a request from the tailnet, against the single allow-listed `ALLOWED_TAILSCALE_LOGIN`. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine: the loopback bind stops remote access, but any *local* process on the same host could still set that header directly. See [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for the full reasoning, including two rejected alternatives, and what to do if that single-operator assumption doesn't hold for your setup (e.g. a shared or multi-user server). `GET /assets/*` (the built frontend's JS/CSS/font bundle) is the only unauthenticated route — none of it contains anything secret.
-
-This is where contacts actually get moderated: a scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel below, and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes." Turning a contact's switch off only stops future moderation and clears its context; strike/block/audit history is kept. The page follows the OS/browser's light/dark preference automatically — there's no in-app toggle.
-
-**Activity panel**: the "Activity" button in the header (or a contact's "Message history" row) opens a panel with roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message — including anything already deleted, since the audit log is the only remaining record of it. Filter by contact, by action (deleted/warned/passed/classifier error/action failed/shadow), or by message text; "Load more" pages further back via `GET /api/audit-log`'s cursor, `GET /api/stats` backs the numbers at the top.
-
-**Policy and Settings**: the "Policy" button opens an editor for the global moderation policy (`GET`/`POST /api/policy`) — the same text `config/policy.md` seeds on first boot, from then on edited here instead. The "Settings" button opens every classifier/warning/strike/buffer tuning knob (`GET /api/settings`, `POST /api/settings/:key`), grouped by area, saved on blur — see [Configuration](#configuration) for the full list and defaults. Both apply immediately; no restart, no `.env` edit.
-
-**Enabling and running it:**
-
-```sh
-WEB_CONTROL_PORT=4756
-ALLOWED_TAILSCALE_LOGIN=you@example.com   # exactly what `tailscale status` reports for your own login
-```
-
-```sh
-tailscale serve --bg 4756
-```
-
-Then open `https://<tailscale-hostname>/` (the hostname is whatever `tailscale serve status` prints) from a device signed in as the allow-listed login. A visit from anyone else gets a 403 on every request. The server binds to `127.0.0.1` only, on purpose — it must be reachable *only* through `tailscale serve`'s local proxy hop, never directly.
-
-**Developing the frontend**: the page is a Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) components on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` (scoped to `src/` only) and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request rather than caching it at startup, so a frontend change just needs a plain browser reload — no server restart. `npm run build:web` alone does a one-off production build; `npm test` runs it automatically first (`pretest`), since `control-server.test.ts` serves real files out of `web/dist/`.
+Every monitored contact can be paused, resumed, or unblocked ahead of schedule, independently of every other contact, driven by the web control app rather than WhatsApp chat commands — see [`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9) for why. `pause`/`resume` stop/resume classifying and acting on incoming messages for that contact entirely (resets on restart); `unblock` unblocks immediately, ahead of the jittered schedule.
 
 ## Development
 
-Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account you may not have. Each layer below can be exercised on its own instead:
+Requirements: Node.js 24+ (the backend runs TypeScript directly via Node's built-in stripping — no separate build step) and [Ollama](https://ollama.com), running locally, with a model pulled.
 
-- **Automated tests** (pure logic + real SQLite, no WhatsApp, no Ollama — assertions, real pass/fail, no manual reading required): `npm test` (includes the manual override routines and the web control app's HTTP/auth logic against a real server on an ephemeral port, with a synthetic `Tailscale-User-Login` header — not against a live `tailscale serve`, see [Web control app](#web-control-app))
+```sh
+npm install
+ollama pull llama3.2:3b
+CONTROL_PORT=4756 npm start
+```
+
+`npm run typecheck` and `npm run lint` check the backend; `npm test` runs the full suite (pure logic + real SQLite, no WhatsApp, no Ollama — includes the manual override routines and the control app's HTTP/auth logic against a real server on an ephemeral port).
+
+Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account. Each layer can be exercised on its own instead:
+
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
-- **Buffer** (pure timers, no WhatsApp, no Ollama): `npm run buffer:test`
+- **Buffer** (pure timers): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
-- **Moderation pipeline** (classifier + buffer + store, `deleteForMe`/`sendWarning` stubbed to console output): `npm run pipeline:test`
-- **WhatsApp actions** (`sendWarning` + `deleteForMe` against a real connection, classifier/buffer/pipeline bypassed entirely): `TARGET_CONTACT_JID=<a JID you can message, e.g. your own> npm run whatsapp:test-actions` — sends a throwaway message and immediately deletes it, so no second number or friend's participation is needed just to confirm these two primitives still work. Needs an `auth_info/` link that's had a few minutes to settle after first pairing (see "Validating 'delete for me'" below); `App state key not present!` almost always means the app-state sync key hasn't arrived yet, not a bug in the call itself.
-- **Block/unblock**: still needs a real second WhatsApp account's JID — see "Validating block/unblock" below. This is a WhatsApp-side restriction (you cannot block your own account), not something isolation can remove, but the second account only needs to exist, not actively participate.
+- **Moderation pipeline** (classifier + buffer + store, actions stubbed to console output): `npm run pipeline:test`
+- **WhatsApp actions** (`sendWarning` + `deleteForMe` against a real connection, classifier/buffer/pipeline bypassed): `TARGET_CONTACT_JID=<a JID you can message, e.g. your own> npm run whatsapp:test-actions`
+- **Block/unblock**: needs a real second WhatsApp account's JID (WhatsApp doesn't let you block your own account) — `BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock`. Check your phone directly too: `fetchBlocklist()` can return a stale snapshot for a few seconds right after a block/unblock call.
 
-Only the full live pipeline (`npm start`) and block/unblock genuinely require a live WhatsApp round-trip; everything else above runs offline or against a stub.
+Only the full live pipeline (`npm start`) and block/unblock genuinely require a live WhatsApp round-trip; everything else runs offline or against a stub.
 
-### Validating "delete for me"
+The first run needs a WhatsApp QR code scanned interactively; `index.ts` stores the resulting session in `auth_info/`, reused on later runs. `deleteForMe` (and any other app-state action) needs a sync key WhatsApp pushes to a companion device shortly after linking — give a **freshly** linked `auth_info/` a few minutes to sit open and idle before relying on it; `npm run prototype:delete-for-me` validates this in isolation (`TEST_ALLOW_SELF=1` to test against your own "Message yourself" chat, no second number needed). If `chatModify` throws `App state key not present!` well after linking, log out the device from WhatsApp → Linked Devices and relink cleanly.
 
-This has to be run interactively on the machine you intend to self-host on, since it requires scanning a QR code with your phone.
+### Frontend
 
-```sh
-npm install
-npm run prototype:delete-for-me
-```
+A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request, so a frontend change just needs a browser reload. `npm run build:web` does a one-off production build; `npm test` runs it automatically first.
 
-Then, from a second WhatsApp account, send a text message to the linked account. The script waits a few seconds, calls `chatModify({ deleteForMe: ... })`, and logs the result — check your phone to confirm the message actually disappeared.
-
-No second number on hand? Set `TEST_ALLOW_SELF=1` to test against messages you send yourself instead (e.g. the "Message yourself" chat) — the `deleteForMe` mechanism doesn't care who sent the message, so this still exercises the thing being validated.
-
-`deleteForMe` (and any other `chatModify` app-state action — archive, pin, etc.) needs an app-state sync key that WhatsApp pushes to a companion device shortly after it's linked. On a **freshly** linked `auth_info/`, give the connection a few minutes to sit open and idle before relying on `deleteForMe` — restarting the process repeatedly right after linking can interrupt that handshake and leave it missing indefinitely. If `chatModify` throws `App state key not present!` well after linking, log out the device from WhatsApp → Linked Devices and relink cleanly rather than retrying in place.
-
-### Validating block/unblock
-
-Same interactive requirement as above, plus a real second WhatsApp number: you can't block your own "Message yourself" chat, so there's no self-test fallback here.
+### Building the container from source
 
 ```sh
-npm install
-BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock
+git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
+cd WhatsApp-content-moderation
+cp docker-compose.override.yml.example docker-compose.override.yml
+docker compose up -d --build
 ```
 
-The script blocks the target via `updateBlockStatus`, confirms it with `fetchBlocklist()`, waits a few seconds, then unblocks and confirms again. Check your phone directly too: does the contact actually show as blocked, then unblocked?
-
-`fetchBlocklist()` can return a stale snapshot for a few seconds right after a socket connects or right after a block/unblock call — a fresh `updateBlockStatus` call may not show up in the very next `fetchBlocklist()` even though it already took effect (confirmed via the phone's own "You blocked/unblocked this person" system messages, which are the reliable signal). The script retries a few times before reporting either step as failed; if it still can't confirm after that, trust the phone over the console.
+Compose auto-merges `docker-compose.override.yml` whenever present — it builds a distinct `whatsapp-content-moderation:dev` tag from local source instead of pulling the published image, so it's never confused with a real release. Delete the override file to go back to the published image. `./scripts/update.sh --build` rebuilds and restarts the same way after a `git pull`; `./scripts/pair.sh` tails the app's log for the pairing QR code the same way the quick-start's `docker compose logs -f` command does, but returns control automatically once connected.
 
 ## Reference hardware
 
-This is designed to run comfortably on a mid-range machine — not as low as a Raspberry Pi, but not requiring a dedicated GPU or a high-end PC either. Two machines were considered as the actual self-host target:
-
-| | Lenovo ThinkCentre (10MQ, S0KM00) | Dell OptiPlex 3050 |
-|---|---|---|
-| CPU | Intel Celeron G3930T, 2.70 GHz | Intel Core i5-7500, up to 3.40 GHz |
-| RAM | 8 GB | 16 GB |
-| GPU | Intel HD Graphics 610 | — |
-| Power/noise/heat | Low | Higher |
-
-**The ThinkCentre is the default target**, even though the OptiPlex is clearly more capable: it runs as an always-on background server in a lived-in space, where lower power draw, noise, and heat output matter more day to day than raw throughput. The OptiPlex is the fallback if the ThinkCentre's throughput genuinely becomes a bottleneck — swap machines, not architecture, if that ever happens.
-
-The classifier's model choice (see [Classifier](#classifier)) was picked with the ThinkCentre's CPU-only, 2-core/8GB profile in mind, but hasn't actually been benchmarked on that hardware yet — only functionally verified on a much faster dev machine. Two things stack against it there: the Celeron G3930T (Kaby Lake, 2017) has no AVX2, which `llama.cpp`/Ollama's CPU kernels lean on heavily; and only 2 cores/threads, well short of the ~5 threads research suggests are needed to saturate typical dual-channel DDR4 bandwidth. Rough anchor points from public CPU-only `llama3.2:3b` benchmarks (a Raspberry Pi 5 gets ~4.6–4.9 tok/s, an Intel N150 gets ~9 tok/s) put **a rough estimate at 1–3 tok/s** for this hardware — call it 15–45 seconds for the classifier's short JSON response. That's too slow for a live chat reply, but the moderation pipeline doesn't need one; it only gates a delete/warn/block decision that already tolerates some delay. A multi-minute wait would still be a problem — that's the threshold to check for once this actually runs on the ThinkCentre. If it turns out too slow in practice: populate the second SO-DIMM slot for dual-channel memory before dropping to a smaller/less reliable model (`llama3.2:1b` was already tried and rejected for correctness, not speed).
-
-Sources: [Celeron G3930T spec (Intel)](https://www.intel.com/content/www/us/en/products/sku/97467/intel-celeron-processor-g3930t-2m-cache-2-70-ghz/specifications.html), [Pentium/Celeron AVX2 segmentation (TechPowerUp)](https://www.techpowerup.com/273516/intel-tiger-lake-based-pentium-and-celeron-to-feature-avx2-an-instruction-the-entry-level-brands-were-deprived-of), [llama3.2:3b CPU benchmarks (geerlingguy/ai-benchmarks)](https://github.com/geerlingguy/ai-benchmarks/blob/main/README.md), [CPU inference memory-bandwidth notes (Puget Systems)](https://www.pugetsystems.com/labs/articles/effects-of-cpu-speed-on-gpu-inference-in-llama-cpp/), [ThinkCentre M710q Tiny (10MQ) memory config (memory.net)](https://memory.net/product-category/lenovo/thinkcentre/m710q-10mq/).
+Designed to run comfortably on a mid-range machine — not as low as a Raspberry Pi, but not requiring a dedicated GPU or a high-end PC either. The reference target is a 2-core/8GB, GPU-less Celeron box (e.g. a Lenovo ThinkCentre 10MQ) chosen for low power/noise/heat as an always-on background server, not raw throughput — the classifier's 90-second default timeout and `llama3.2:3b` model choice both account for that CPU-only profile. See [`docs/decisions.md`](docs/decisions.md) for the full benchmark reasoning and sources if you're sizing different hardware.
 
 ## Architecture
 
 - **Transport**: Baileys (no headless browser, lighter than whatsapp-web.js)
 - **Classifier**: LLM call per message (structured JSON output, not free-text), with conversation context, fail-open on API errors
-- **State**: SQLite — strike counts, block records with `unblockAt`, full audit log of messages + classifications (the only record once a message is deleted)
+- **State**: SQLite — strike counts, block records, every setting (including the moderation policy), and a full audit log of messages + classifications (the only record once a message is deleted)
 - **Scheduler**: periodic check for expired blocks, jittered rather than fixed-interval
-- **Deployment**: self-hosted on the reference hardware above, Docker with `restart: always`, auth state on a persisted + backed-up volume
-
-## Debian install and updates
-
-On a Debian x86-64 host with Docker Compose and Tailscale installed:
-
-```sh
-git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
-cd WhatsApp-content-moderation
-./scripts/setup.sh
-```
-
-`setup.sh` creates `.env` and `config/policy.md`, fixes directory ownership for the container, and prints the exact commands to run next. It's safe to re-run. **If it warns that `ALLOWED_TAILSCALE_LOGIN` is still unset, fix that first** — the app refuses to start without it, and will crash-loop under Docker's restart policy rather than just failing once. Then, following what it prints:
-
-```sh
-docker compose up -d
-docker compose exec ollama ollama pull llama3.2:3b
-./scripts/pair.sh                 # scan the QR code shown here; returns once connected
-./scripts/preflight.sh            # sanity-check before going live
-sudo tailscale serve --bg 4756
-```
-
-`docker compose up -d` pulls the image tagged builds already publish to `ghcr.io/bsodium/whatsapp-content-moderation` — see [Building from source](#building-from-source) if you want to build locally instead.
-
-Edit `config/policy.md` before connecting a real account — it's only read once, to seed the policy on first boot; from then on, edit the policy (and every classifier/warning/strike tuning knob) live from the control app itself, not `.env` or this file. Leave `SHADOW_MODE=1` (the default, in `.env`) until you've reviewed its logs against real traffic. Then open the control app at the URL from `sudo tailscale serve status`.
-
-To update later:
-
-```sh
-./scripts/update.sh
-```
-
-<details>
-<summary><strong>What <code>setup.sh</code> does, and how to do it by hand</strong></summary>
-
-This recipe clones the source — `docker-compose.yml` and `scripts/*.sh` themselves have to come from somewhere — but the default `docker-compose.yml` runs the image tagged builds publish to `ghcr.io/bsodium/whatsapp-content-moderation` on every tagged release; it never builds from your local source. See [Building from source](#building-from-source) if you're contributing and want that instead.
-
-[`scripts/setup.sh`](scripts/setup.sh) does the tedious, error-prone part of first-time setup for you, and never overwrites a value you've already set:
-
-- copies `.env.example` → `.env` and `config/policy.example.md` → `config/policy.md` if they don't already exist
-- creates `auth_info/` and `data/`, and chowns those plus `config/policy.md` to UID 1000 (the container's user) via `sudo`, prompting for it only if needed
-- sets `WEB_CONTROL_PORT=4756`
-- if `jq` is installed and this host isn't Tailscale-tagged, auto-detects its Tailscale login (via `tailscale status --json`) and fills in `ALLOWED_TAILSCALE_LOGIN` — this assumes a single-user tailnet, where the host and the device you'll open the control app from belong to the same Tailscale account; double-check the value it picks. **On a Tailscale-tagged host** (e.g. `tag:server`, the recommended setup for an always-on server) this deliberately does nothing instead of guessing, since a tagged node's own identity is a machine name, not the operator's login. Set `ALLOWED_TAILSCALE_LOGIN` yourself: run `tailscale status` on a device *you* sign in with (your phone or laptop, not this server) — your login is the third column — or check the "Owner" column at [the Tailscale admin console](https://login.tailscale.com/admin/machines) for the device you'll use to open the control app. Skipping this leaves `WEB_CONTROL_PORT` set with no login allowed, which crash-loops the app under Compose's `restart: always` — `setup.sh` and `preflight.sh` both call this out explicitly if it happens
-
-It won't write your moderation policy for you. Keep `.env`, `config/policy.md`, `auth_info/`, and `data/` private and back up the session and database.
-
-If you'd rather do it by hand (or the script can't run on your setup):
-
-```sh
-cp .env.example .env
-cp config/policy.example.md config/policy.md
-mkdir -p auth_info data
-chmod 600 .env config/policy.md
-chmod 700 auth_info data
-sudo chown -R 1000:1000 auth_info data config/policy.md
-```
-
-The container runs as UID 1000. If your Debian login has a different UID, use `sudoedit config/policy.md` to edit the private, container-owned policy.
-
-Edit `.env`: set `WEB_CONTROL_PORT=4756` and your exact Tailscale login in `ALLOWED_TAILSCALE_LOGIN` (run `tailscale status` and use exactly what it reports for your account).
-
-</details>
-
-<details>
-<summary><strong>Scanning the QR code and running <code>preflight.sh</code></strong></summary>
-
-[`scripts/pair.sh`](scripts/pair.sh) shows the app's log in human-readable form (it pulls `.msg` out of each JSON line) instead of the raw structured output `docker compose logs` prints by default, and returns control on its own once the app connects — it doesn't block your terminal forever the way `docker compose logs -f` does, and killing it never touches the running container (`docker compose up -d` already detached it). Scan the QR it shows from WhatsApp → Linked devices; if it times out after 5 minutes without connecting, the app is still running regardless — check `docker compose logs -f app` manually. Then run [`scripts/preflight.sh`](scripts/preflight.sh) — it checks Compose, the pulled model, bind-mount ownership, the control port, and `tailscale serve` in one pass, including whether this host's Tailscale login matches `ALLOWED_TAILSCALE_LOGIN` (a mismatch there is the most common cause of a 403 from the control app). Fix anything it flags, then open the URL from `sudo tailscale serve status` — no query param needed. `preflight.sh`'s login check is only a same-host heuristic, not a substitute for the real test: confirm the page actually works from your allowed Tailscale login and is rejected from a different login or device — see [Web control app](#web-control-app). Add a contact in the control app and review shadow-mode logs before setting `SHADOW_MODE=0`.
-
-The app uses host networking so its loopback-only control server is the same `127.0.0.1` that host Tailscale proxies. Ollama stays in Compose and is published on host loopback only.
-
-</details>
-
-<details>
-<summary><strong>What <code>update.sh</code> does</strong></summary>
-
-[`scripts/update.sh`](scripts/update.sh) refuses to run if you have local tracked changes (commit or stash them first), otherwise it runs `git pull --ff-only` (to keep the compose files and scripts themselves current) followed by `docker compose pull app && docker compose up -d app` — pass `--build` to instead rebuild from your local source (see [Building from source](#building-from-source)). Either way, it flags any settings `.env.example` gained since your last update that aren't in your `.env` yet. Your `.env`, policy, WhatsApp session, SQLite data, and downloaded model persist across an update. Back them up before host maintenance.
-
-</details>
-
-<details>
-<summary><strong>Building from source</strong></summary>
-
-For contributing, or running against local changes before they're released. Copy the override template once:
-
-```sh
-cp docker-compose.override.yml.example docker-compose.override.yml
-```
-
-Compose auto-merges `docker-compose.override.yml` whenever it's present next to `docker-compose.yml` — no `-f` flag needed. From then on, `docker compose up -d --build` (or `./scripts/update.sh --build`) builds and runs your local source under a distinct `whatsapp-content-moderation:dev` tag, instead of pulling the published image. Delete `docker-compose.override.yml` (it's gitignored, not tracked) to go back to the published image.
-
-</details>
+- **Deployment**: self-hosted via Docker Compose, `restart: always`, `auth_info/`/`data/` on persisted + backed-up bind mounts, no other host state — see [`docs/decisions.md`](docs/decisions.md#dropping-env-configpolicymd-and-first-boot-file-imports)
 
 ## Further reading
 
