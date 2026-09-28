@@ -617,6 +617,56 @@ doesn't fully trust, this assumption needs revisiting, and the real fix at
 that point is the `tsnet`-based approach noted as a rejected alternative
 above, not a new shared secret bolted back on.
 
+## Restricting access with a Tailscale Service: replacing the host's own hostname
+
+**Superseded the plain-hostname `tailscale serve --bg 4756` setup above.**
+That setup worked, but it exposed the control app under `<host>.<tailnet>.
+ts.net` — the host's *own* identity, shared with anything else ever run on
+that machine. The operator wanted a real, independently-addressable
+service instead: a stable name that doesn't change if the app moves to
+different hardware, and doesn't implicitly bundle "this machine" and "this
+app" into one URL. [Tailscale Services](https://tailscale.com/docs/features/tailscale-services)
+is Tailscale's own answer to exactly that — a named `svc:<name>` resource
+with its own DNS name, decoupled from whichever device is currently
+serving it.
+
+**Chosen: keep `tailscale serve` (and everything it implies about the auth
+model below), just advertise a named Service instead of the host's own
+name — `tailscale serve --service=svc:whatsapp-moderation --bg 4756` in
+place of `tailscale serve --bg 4756`.** Nothing about `network_mode: host`,
+the loopback bind, or `src/web/tailscale-auth.ts`'s header-trust check
+changes — this is still the same reverse-proxy mechanism the two entries
+above already settled on and verified, just told to register under a
+Service name rather than the device's. `docker-compose.yml` and its
+`ALLOWED_TAILSCALE_LOGIN` are unaffected by this change.
+
+**The one hard requirement this adds: the host has to be a tagged device,
+not a personal login.** Tailscale Services require a tag-based identity to
+act as a Service host — confirmed in Tailscale's own documentation, not
+something discovered by trial here. The operator's production host was
+already tagged for unrelated reasons, so this wasn't a blocker in practice,
+but it's a real prerequisite for anyone following this from a fresh
+personal-login setup: tag the device (`tagOwners` + `tailscale up
+--advertise-tags=tag:...`) before trying to advertise a Service from it.
+
+**Not yet verified live, unlike the entry above it replaces.** The header+
+token design, the `whois` attempt, and the final header-trust design were
+each confirmed (or refuted) against a real tailnet before being trusted —
+see the two entries above this one for exactly that pattern, including one
+case where the documented behavior turned out to be wrong. This entry
+hasn't had that pass yet: this codebase has no live tailnet to test
+against, and the exact CLI syntax and ACL grant shape here (`--service=
+svc:<name>`, the `grants`/`autoApprovers` snippets in the README) were
+written from Tailscale's published Services documentation, not confirmed
+against a running `tailscale serve --service=...` proxy. **Specifically
+unconfirmed:** whether `Tailscale-User-Login` is set on a Service-proxied
+request the same way it is on a plain-hostname one — if a Service adds any
+different proxy path (the way `serve`'s reverse-proxy path already turned
+out to not support `whois`, see above), `src/web/tailscale-auth.ts` could
+silently stop matching real logins. Verify this against a real Service
+before relying on it for anything sensitive, the same way this project
+already insists on for every other Tailscale-dependent behavior here.
+
 ## Control page styling: three files, two of them unauthenticated
 
 A first code-review pass on the control page kept it as one self-contained
