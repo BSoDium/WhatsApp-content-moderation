@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 // test files do.
 process.env.DB_PATH = 'data/test-control-server.test.sqlite';
 
-const { createControlServer } = await import('./control-server.ts');
+const { createControlServer, getControlAppUrl } = await import('./control-server.ts');
 const { getRawSetting } = await import('../store/settings.ts');
 const { getPolicyText } = await import('../classifier/policy.ts');
 
@@ -780,4 +780,13 @@ test('close() resolves promptly even with a request in flight', async () => {
 
   releaseCommand();
   await inFlight;
+});
+
+test('getControlAppUrl() returns loopback when a Tailscale login is configured', () => {
+  assert.equal(getControlAppUrl(4756, ALLOWED), 'http://127.0.0.1:4756');
+});
+
+test('getControlAppUrl() returns a reachable IPv4 address when open to the network', () => {
+  const url = getControlAppUrl(4756, undefined);
+  assert.match(url, /^http:\/\/\d{1,3}(\.\d{1,3}){3}:4756$/);
 });

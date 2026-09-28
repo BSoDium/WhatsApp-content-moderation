@@ -1,10 +1,12 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
 import pino from 'pino';
+import { printSuccessBanner } from '../cli/terminal-output.ts';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
 import { onControlEvent } from '../store/events.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
@@ -65,6 +67,32 @@ const LOOPBACK_HOST = '127.0.0.1';
 // reachable from other devices on the local network without Tailscale —
 // see createControlServer's doc comment.
 const ALL_INTERFACES_HOST = '0.0.0.0';
+
+// Best-effort first non-internal IPv4 address. Reliable under
+// `network_mode: host` (see docker-compose.yml) — under a container's own
+// isolated network namespace this would report a private container-only
+// address the operator could never actually reach, but host networking
+// makes it report the host's real interfaces instead.
+function firstLanAddress(): string | undefined {
+  for (const addresses of Object.values(networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === 'IPv4' && !address.internal) return address.address;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The URL a human should be told to open for the control app. Neither bind
+ * address (`0.0.0.0`/`127.0.0.1`) is something an operator can type into a
+ * browser and reach, so this substitutes the host's real LAN address when
+ * the server is open to the network, or loopback when `allowedLogin`
+ * restricts it to Tailscale Serve (see LOOPBACK_HOST above).
+ */
+export function getControlAppUrl(port: number, allowedLogin: string | undefined): string {
+  const host = allowedLogin ? LOOPBACK_HOST : (firstLanAddress() ?? LOOPBACK_HOST);
+  return `http://${host}:${port}`;
+}
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
@@ -646,6 +674,7 @@ export function createControlServer(deps: ControlServerDependencies): { listen: 
           } else {
             logger.warn({ port: boundPort }, `control server listening on ${bindHost} (all interfaces, no ALLOWED_TAILSCALE_LOGIN set) — anyone on your local network can open it`);
           }
+          printSuccessBanner([`Control app running at ${getControlAppUrl(boundPort, deps.allowedLogin)}`]);
           resolve(boundPort);
         });
       }),

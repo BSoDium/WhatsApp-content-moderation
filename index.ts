@@ -7,7 +7,8 @@ import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
 import { createProfilePhotos } from './src/whatsapp/profile-photos.ts';
-import { createControlServer } from './src/web/control-server.ts';
+import { createControlServer, getControlAppUrl } from './src/web/control-server.ts';
+import { printWarningBanner, printSuccessBanner } from './src/cli/terminal-output.ts';
 import { closeDb } from './src/store/db.ts';
 import { ensureDefaultsSeeded, migrateShadowModeFromEnv } from './src/store/settings.ts';
 import {
@@ -54,15 +55,11 @@ if (!ALLOWED_TAILSCALE_LOGIN) {
   // login (see control-server.ts), and the packaged docker-compose.yml
   // ships with ALLOWED_TAILSCALE_LOGIN commented out — a JSON log line
   // alone is easy to scroll past in `docker compose logs`.
-  console.warn(
-    [
-      '',
-      '!! ALLOWED_TAILSCALE_LOGIN is not set.',
-      '!! The control app is reachable, unauthenticated, by anyone on your local network.',
-      '!! Set ALLOWED_TAILSCALE_LOGIN to restrict it to one Tailscale identity — see the README.',
-      '',
-    ].join('\n'),
-  );
+  printWarningBanner([
+    '!! ALLOWED_TAILSCALE_LOGIN is not set.',
+    '!! The control app is reachable, unauthenticated, by anyone on your local network.',
+    '!! Set ALLOWED_TAILSCALE_LOGIN to restrict it to one Tailscale identity — see the README.',
+  ]);
 }
 
 const logger = pino({ name: 'index' });
@@ -160,6 +157,11 @@ async function start() {
     },
     onOpen: () => {
       logger.info({ monitored: listMonitored().length, allowSelf: ALLOW_SELF }, 'connected; moderating monitored contacts');
+      printSuccessBanner([
+        'Connected — moderation is live for the monitored roster.',
+        `Open ${getControlAppUrl(CONTROL_PORT, ALLOWED_TAILSCALE_LOGIN)} to add a contact.`,
+        'This terminal is now just showing live logs — press Ctrl+C anytime, the app keeps running in the background.',
+      ]);
       // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(currentSocket(), jid) });
     },
