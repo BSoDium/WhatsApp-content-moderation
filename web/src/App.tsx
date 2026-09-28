@@ -97,6 +97,7 @@ function App() {
   const initialUrlState = useMemo(() => readUrlState(), []);
   const {
     contacts,
+    contactsLoaded,
     roster,
     selectedId,
     setSelectedId,
@@ -109,7 +110,7 @@ function App() {
     setCallNuisanceThreshold,
     initialLoadComplete,
   } = useControlData(initialUrlState.contactId);
-  const meta = useMeta();
+  const { meta, settled: metaSettled } = useMeta();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [skipInitialPanelAnimation, setSkipInitialPanelAnimation] = useState(initialUrlState.openPanel !== null);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
@@ -119,7 +120,14 @@ function App() {
   const [panelSeq, setPanelSeq] = useState({ activity: 0, policy: 0, settings: 0 });
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
-  const panelOpen = Boolean(selectedContact);
+  // Driven by the id, not the resolved contact: on a deep-linked load the
+  // contact list is still in flight, and deriving this from it would flip
+  // the pane from closed to open (animating) once the fetch lands.
+  const panelOpen = selectedId !== null;
+
+  useEffect(() => {
+    if (contactsLoaded && contacts.length > 0 && selectedId !== null && !selectedContact) setSelectedId(null);
+  }, [contactsLoaded, contacts, selectedId, selectedContact, setSelectedId]);
 
   // Guards every path that would discard the open contact-detail panel
   // (its own Back button, picking a different contact from the list) so an
@@ -187,16 +195,10 @@ function App() {
   // on (the full-screen overlay is a plain CSS transform), so it mirrors
   // `panelOpen` directly there.
   const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
-  const [initialLayoutSettled, setInitialLayoutSettled] = useState(false);
-  useLayoutEffect(() => {
-    if (!contactsLoaded) return;
-    setInitialLayoutSettled(true);
-    if (panelOpen) setDesktopDetailReady(true);
-  }, [contactsLoaded, panelOpen, selectedContact]);
   useEffect(() => {
     if (!panelOpen) setDesktopDetailReady(false);
   }, [panelOpen]);
-  const detailInteractive = isDesktop ? (initialLayoutSettled ? desktopDetailReady : panelOpen) : panelOpen;
+  const detailInteractive = isDesktop ? desktopDetailReady : panelOpen;
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
     setSkipInitialPanelAnimation(false);
@@ -217,8 +219,11 @@ function App() {
     writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
   }, [selectedId, openPanel, activityContactId]);
 
-  const moveTransition = reduceMotion || !initialLayoutSettled ? INSTANT_TRANSITION : MOVE_TRANSITION;
+  const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
+  // Banners that arrive with the first data (meta, a failed initial fetch) are part of the settled layout, not an event — only ones appearing afterwards animate.
+  const initialDataSettled = contactsLoaded && metaSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
+  const bannerTransition = initialDataSettled ? fadeTransition : INSTANT_TRANSITION;
 
   // ContactDetailPanel renders nothing once its `contact` prop is null, but
   // `selectedContact` goes null in the same render `panelOpen` does — so
@@ -290,7 +295,7 @@ function App() {
                     initial={{ height: 0, marginTop: 0, opacity: 0 }}
                     animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
                     exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={fadeTransition}
+                    transition={bannerTransition}
                     className="overflow-hidden"
                   >
                     <OpenAccessBanner />
@@ -302,7 +307,7 @@ function App() {
                     initial={{ height: 0, marginTop: 0, opacity: 0 }}
                     animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
                     exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={fadeTransition}
+                    transition={bannerTransition}
                     className="overflow-hidden"
                   >
                     <ErrorBanner error={error} onDismiss={dismissError} />
@@ -330,7 +335,7 @@ function App() {
         <motion.section
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen)}
-          transition={{ x: moveTransition, opacity: initialLayoutSettled ? fadeTransition : INSTANT_TRANSITION }}
+          transition={{ x: moveTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
@@ -339,7 +344,6 @@ function App() {
           inert={!detailInteractive}
           className={cn(
             'fixed top-0 right-0 bottom-0 left-0 h-screen bg-background transition-transform duration-[250ms] ease-in-out',
-            !initialLayoutSettled && 'transition-none',
             panelOpen ? 'translate-x-0' : 'translate-x-full',
             // Taken out of the flex row entirely (absolute, not relative)
             // so its width is never part of the layout's own resize math —

@@ -52,13 +52,12 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
           <span className="hidden shrink-0 @lg:inline">· {block ? 'Blocked' : 'Not blocked'}</span>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="outline"
               size="icon-lg"
-              className="size-11"
               aria-label={`View message history for ${contact.name}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -75,7 +74,6 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
           <Button
             variant={monitored ? 'default' : 'outline'}
             size="icon-lg"
-            className="size-11"
             aria-label={label}
             aria-pressed={monitored}
             disabled={pending || selfBlocked}
