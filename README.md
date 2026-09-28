@@ -12,10 +12,10 @@ Requirements: [Docker Compose](https://docs.docker.com/compose/install/) and a p
 
 ```sh
 mkdir whatsapp-moderation && cd whatsapp-moderation
-curl -O https://raw.githubusercontent.com/BSoDium/WhatsApp-content-moderation/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/BSoDium/WhatsApp-content-moderation/main/compose.yml
 ```
 
-By default the control app this starts is reachable by anyone on your local network, with a warning banner on the page saying so. **This is the point to decide** whether that's fine for now, or whether to lock it down to one Tailscale identity first — see [Restricting access with Tailscale](#restricting-access-with-tailscale) below, which edits this same `docker-compose.yml` before you start the container. Continue below either way.
+By default the control app this starts is reachable by anyone on your local network, with a warning banner on the page saying so. **This is the point to decide** whether that's fine for now, or whether to lock it down to one Tailscale identity first — see [Restricting access with Tailscale](#restricting-access-with-tailscale) below, which edits this same `compose.yml` before you start the container. Continue below either way.
 
 ```sh
 docker compose up -d
@@ -27,7 +27,7 @@ Open `http://<this-machine's-address>:4756` (`http://localhost:4756` on the same
 
 Everything else — the moderation policy, the classifier model, warning behavior, strike/block timings, and shadow mode itself — starts at a safe default and is edited live from that page, no restart needed. **Shadow mode is on by default**: the app classifies and logs but takes no action. Review the Activity panel against real traffic before turning it off in Settings.
 
-No second WhatsApp number to test with? Add `TEST_ALLOW_SELF: "1"` under `environment:` in `docker-compose.yml` and add your own account to the roster instead.
+No second WhatsApp number to test with? Add `TEST_ALLOW_SELF: "1"` under `environment:` in `compose.yml` and add your own account to the roster instead.
 
 To update later: `docker compose pull && docker compose up -d`.
 
@@ -47,7 +47,7 @@ Authenticated via Tailscale identity, not a password or shared secret — see [`
 
 Requires [Tailscale](https://tailscale.com) installed on the host, **with the host itself running under a tagged identity, not a personal login** — [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) (the named-service mechanism this section sets up, in place of exposing the whole host under its own `<host>.<tailnet>.ts.net` name) require a tag-based device to act as a Service host. Tag it first if it isn't already — add a tag to `tagOwners` in your tailnet's ACL policy and run `sudo tailscale up --advertise-tags=tag:whatsapp-mod` (substitute your own tag).
 
-Edit the `docker-compose.yml` from the quick start above, before running `docker compose up -d`:
+Edit the `compose.yml` from the quick start above, before running `docker compose up -d`:
 
 ```yaml
 services:
@@ -136,11 +136,11 @@ A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https
 ```sh
 git clone https://github.com/BSoDium/WhatsApp-content-moderation.git
 cd WhatsApp-content-moderation
-cp docker-compose.override.yml.example docker-compose.override.yml
+cp compose.override.yml.example compose.override.yml
 docker compose up -d --build
 ```
 
-Compose auto-merges `docker-compose.override.yml` whenever present — it builds a distinct `whatsapp-content-moderation:dev` tag from local source instead of pulling the published image, so it's never confused with a real release. Delete the override file to go back to the published image. `./scripts/update.sh --build` rebuilds and restarts the same way after a `git pull`; `./scripts/pair.sh` tails the app's log for the pairing QR code the same way the quick-start's `docker compose logs -f` command does, but returns control automatically once connected.
+Compose auto-merges `compose.override.yml` whenever present — it builds a distinct `whatsapp-content-moderation:dev` tag from local source instead of pulling the published image, so it's never confused with a real release. Delete the override file to go back to the published image. `./scripts/update.sh --build` rebuilds and restarts the same way after a `git pull`; `./scripts/pair.sh` tails the app's log for the pairing QR code the same way the quick-start's `docker compose logs -f` command does, but returns control automatically once connected.
 
 ## Reference hardware
 

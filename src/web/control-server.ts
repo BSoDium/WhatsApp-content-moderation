@@ -82,7 +82,7 @@ function isVirtualInterfaceName(name: string): boolean {
 // Best-effort first non-internal IPv4 address, preferring a real LAN NIC
 // over a virtual/tunnel adapter (see above) but falling back to one rather
 // than reporting no address at all. Reliable under `network_mode: host`
-// (see docker-compose.yml) — under a container's own isolated network
+// (see compose.yml) — under a container's own isolated network
 // namespace this would report a private container-only address the
 // operator could never actually reach, but host networking makes it
 // report the host's real interfaces instead.

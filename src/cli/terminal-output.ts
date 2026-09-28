@@ -9,7 +9,7 @@
 export const NO_COLOR = process.env.NO_COLOR !== undefined;
 
 // Colors are forced on rather than TTY-detected: under Docker (this app's
-// documented install path — see docker-compose.yml) the app's own stdout is
+// documented install path — see compose.yml) the app's own stdout is
 // a pipe, not a tty, even though the operator is watching it in a real,
 // color-capable terminal via `docker compose logs -f`. NO_COLOR
 // (https://no-color.org) is still the escape hatch for anyone redirecting

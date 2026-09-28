@@ -79,11 +79,11 @@ diff in this repo.
 
 ## Deployment invariants
 
-- `docker-compose.yml` is the whole deploy recipe — one file, no repo
+- `compose.yml` is the whole deploy recipe — one file, no repo
   clone, no `.env`, no mounted config beyond `auth_info/` and `data/`. Don't
   add a file the operator has to create before `docker compose up -d`
   works; add a settings-store default instead.
-- `network_mode: host` in `docker-compose.yml` is load-bearing for two
+- `network_mode: host` in `compose.yml` is load-bearing for two
   things at once: it's what lets `src/web/control-server.ts` bind every
   interface directly on the host (the default, LAN-open mode) with no
   `ports:` mapping, and it's what lets host Tailscale Serve proxy the

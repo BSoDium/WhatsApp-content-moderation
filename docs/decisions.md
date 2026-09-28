@@ -552,7 +552,7 @@ carries `Access-Control-Allow-Origin`, locking this in.
 is normally root-owned, and this app's container runs as UID 1000** — a
 documented deployment invariant (see `AGENTS.md`'s "Deployment invariants"),
 not incidental. Bind-mounting the host socket into the container
-(`docker-compose.yml`) doesn't by itself prove UID 1000 can connect to it.
+(`compose.yml`) doesn't by itself prove UID 1000 can connect to it.
 Untested as of this writing whether `sudo tailscale set
 --operator=<host-user>` (mapping to a real host account with UID 1000)
 grants `whois` access specifically, rather than just CLI command rights. If
@@ -637,7 +637,7 @@ place of `tailscale serve --bg 4756`.** Nothing about `network_mode: host`,
 the loopback bind, or `src/web/tailscale-auth.ts`'s header-trust check
 changes — this is still the same reverse-proxy mechanism the two entries
 above already settled on and verified, just told to register under a
-Service name rather than the device's. `docker-compose.yml` and its
+Service name rather than the device's. `compose.yml` and its
 `ALLOWED_TAILSCALE_LOGIN` are unaffected by this change.
 
 **The one hard requirement this adds: the host has to be a tagged device,
@@ -1256,7 +1256,7 @@ Two changes remove the need for almost all of it:
   any more, so there is nothing to import, migrate, or lose track of across
   an upgrade.
 
-What's left is one file: `docker-compose.yml`, copied into an empty folder,
+What's left is one file: `compose.yml`, copied into an empty folder,
 mounting only `auth_info/` and `data/` — no repo clone, no `.env`, no
 `config/`. `scripts/setup.sh` and `scripts/preflight.sh` are gone entirely;
 the chown dance and the "is `ALLOWED_TAILSCALE_LOGIN` set" crash-loop check

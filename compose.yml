@@ -11,7 +11,7 @@ services:
   app:
     # Published by .github/workflows/container.yml on every tagged release —
     # this always runs that, never builds from source. Building locally (for
-    # development) is opt-in: see docker-compose.override.yml.example.
+    # development) is opt-in: see compose.override.yml.example.
     image: ghcr.io/bsodium/whatsapp-content-moderation:latest
     restart: always
     # Shares the host's network stack directly — the control app binds host

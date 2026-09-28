@@ -1,9 +1,9 @@
 # Opt-in for contributors/development only. Copy this to
-# docker-compose.override.yml (gitignored, Compose auto-merges it when
+# compose.override.yml (gitignored, Compose auto-merges it when
 # present — no -f flag needed) to build the app from your local source
 # instead of pulling the published ghcr.io image:
 #
-#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   cp compose.override.yml.example compose.override.yml
 #   docker compose up -d --build
 #
 # A distinct image tag (whatsapp-content-moderation:dev, not the ghcr.io

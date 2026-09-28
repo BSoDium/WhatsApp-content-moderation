@@ -29,8 +29,8 @@ auth_info*/
 config/policy.md
 
 # Opt-in local override to build from source instead of pulling the
-# published image — see docker-compose.override.yml.example (the template,
+# published image — see compose.override.yml.example (the template,
 # stays tracked) and README "Building from source". Exact name, not a
-# broader glob, so a real docker-compose*.yml a contributor adds on purpose
-# isn't swallowed by accident.
-docker-compose.override.yml
+# broader glob, so a real compose*.yml a contributor adds on purpose isn't
+# swallowed by accident.
+compose.override.yml
