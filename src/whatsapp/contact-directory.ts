@@ -17,6 +17,8 @@ interface ContactEntry extends Omit<Partial<Contact>, 'lid' | 'name' | 'notify' 
   verifiedName?: string | null;
   lid?: string | null;
   lastMessageAt?: number | null;
+  photoUrl?: string | null;
+  photoFetchedAt?: number | null;
 }
 
 // @newsletter is WhatsApp Channels — not a DM, and not something the
@@ -121,13 +123,24 @@ function coalesceExisting(column: SQLiteColumn): SQL {
   return sql`COALESCE(${excluded(column)}, ${column})`;
 }
 
+// A cached photo lookup is one (url, fetched_at) pair (a null url means "no photo" only alongside its fetched_at), so both columns take the incoming folded alias's pair only when it's newer, never mixing two lookups.
+function newerPhotoLookup(column: SQLiteColumn): SQL {
+  return sql`CASE
+    WHEN ${excluded(contacts.photo_fetched_at)} IS NOT NULL
+      AND (${contacts.photo_fetched_at} IS NULL OR ${excluded(contacts.photo_fetched_at)} > ${contacts.photo_fetched_at})
+    THEN ${excluded(column)}
+    ELSE ${column}
+  END`;
+}
+
 // COALESCE against the existing name/notify/verifiedName/lid columns, not a
 // full overwrite, so a later partial (e.g. {id, notify} on every incoming
 // message) never erases a fuller name an earlier event already found.
 // last_message_at instead takes the MAX of old vs incoming, since two real
 // timestamps should keep the more recent one regardless of event order,
 // and a touch that doesn't know a timestamp (a pure name-sync event) must
-// leave it untouched rather than clearing it.
+// leave it untouched rather than clearing it. Only foldAlias() ever passes a
+// photo lookup; every other ingest leaves the cached one alone.
 function upsert(entry: ContactEntry): void {
   getOrm()
     .insert(contacts)
@@ -141,6 +154,8 @@ function upsert(entry: ContactEntry): void {
       verified_name: entry.verifiedName || null,
       lid: entry.lid || null,
       last_message_at: entry.lastMessageAt ?? null,
+      photo_url: entry.photoUrl ?? null,
+      photo_fetched_at: entry.photoFetchedAt ?? null,
       updated_at: Date.now(),
     })
     .onConflictDoUpdate({
@@ -155,6 +170,8 @@ function upsert(entry: ContactEntry): void {
           WHEN ${contacts.last_message_at} IS NULL THEN ${excluded(contacts.last_message_at)}
           ELSE MAX(${contacts.last_message_at}, ${excluded(contacts.last_message_at)})
         END`,
+        photo_url: newerPhotoLookup(contacts.photo_url),
+        photo_fetched_at: newerPhotoLookup(contacts.photo_fetched_at),
         updated_at: excluded(contacts.updated_at),
       },
     })
@@ -169,12 +186,27 @@ function upsert(entry: ContactEntry): void {
 function foldAlias(canonicalId: string, aliasId: string | null | undefined): void {
   if (!aliasId || aliasId === canonicalId) return;
   const stale = getOrm()
-    .select({ name: contacts.name, notify: contacts.notify, verified_name: contacts.verified_name, last_message_at: contacts.last_message_at })
+    .select({
+      name: contacts.name,
+      notify: contacts.notify,
+      verified_name: contacts.verified_name,
+      last_message_at: contacts.last_message_at,
+      photo_url: contacts.photo_url,
+      photo_fetched_at: contacts.photo_fetched_at,
+    })
     .from(contacts)
     .where(eq(contacts.contact_id, aliasId))
     .get();
   if (!stale) return;
-  upsert({ id: canonicalId, name: stale.name, notify: stale.notify, verifiedName: stale.verified_name, lastMessageAt: stale.last_message_at });
+  upsert({
+    id: canonicalId,
+    name: stale.name,
+    notify: stale.notify,
+    verifiedName: stale.verified_name,
+    lastMessageAt: stale.last_message_at,
+    photoUrl: stale.photo_url,
+    photoFetchedAt: stale.photo_fetched_at,
+  });
   getOrm().delete(contacts).where(eq(contacts.contact_id, aliasId)).run();
 }
 

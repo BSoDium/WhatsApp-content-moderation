@@ -235,6 +235,44 @@ test('a message with remoteJidAlt reconciles a lid-addressed chat to its phone-n
   assert.equal(directory.get('15551234567@s.whatsapp.net').lastMessageAt, 1_700_000_500_000);
 });
 
+test("a lid-only contact's cached photo lookup survives the fold into its phone-number row", () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('contacts.update', [{ id: '222@lid', notify: 'Négrel' }]);
+  setPhotoCache('222@lid', 'https://pps.whatsapp.net/a.jpg', 1_700_000_000_000);
+
+  sock.emit('contacts.upsert', [{ id: '222@lid', phoneNumber: '15559876543@s.whatsapp.net', name: 'Alain Négrel' }]);
+
+  assert.deepEqual(directory.list().map((c) => c.id), ['15559876543@s.whatsapp.net']);
+  assert.deepEqual(getPhotoCache('15559876543@s.whatsapp.net'), { url: 'https://pps.whatsapp.net/a.jpg', fetchedAt: 1_700_000_000_000 });
+});
+
+test('folding a lid row into an existing phone-number row keeps the newer cached photo lookup, url and timestamp together', () => {
+  const directory = createContactDirectory();
+  const sock = fakeSock();
+  directory.attach(sock);
+  sock.emit('messaging-history.set', {
+    contacts: [
+      { id: '15551234567@s.whatsapp.net', name: 'Alice' },
+      { id: '15557654321@s.whatsapp.net', name: 'Bob' },
+    ],
+  });
+  sock.emit('contacts.update', [{ id: '111@lid', notify: 'Al' }, { id: '222@lid', notify: 'Bo' }]);
+  setPhotoCache('15551234567@s.whatsapp.net', 'https://pps.whatsapp.net/alice-old.jpg', 1_700_000_000_000);
+  setPhotoCache('111@lid', null, 1_700_000_100_000);
+  setPhotoCache('15557654321@s.whatsapp.net', 'https://pps.whatsapp.net/bob-new.jpg', 1_700_000_100_000);
+  setPhotoCache('222@lid', 'https://pps.whatsapp.net/bob-old.jpg', 1_700_000_000_000);
+
+  sock.emit('contacts.upsert', [
+    { id: '111@lid', phoneNumber: '15551234567@s.whatsapp.net' },
+    { id: '222@lid', phoneNumber: '15557654321@s.whatsapp.net' },
+  ]);
+
+  assert.deepEqual(getPhotoCache('15551234567@s.whatsapp.net'), { url: null, fetchedAt: 1_700_000_100_000 });
+  assert.deepEqual(getPhotoCache('15557654321@s.whatsapp.net'), { url: 'https://pps.whatsapp.net/bob-new.jpg', fetchedAt: 1_700_000_100_000 });
+});
+
 test('a lid contact with no phone-number pairing known yet stays as its own row instead of being lost', () => {
   const directory = createContactDirectory();
   const sock = fakeSock();

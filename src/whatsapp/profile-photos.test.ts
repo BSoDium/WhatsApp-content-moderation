@@ -1,6 +1,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rmSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { Boom } from '@hapi/boom';
 
 process.env.DB_PATH = 'data/test-profile-photos.test.sqlite';
@@ -53,6 +54,16 @@ function setup({ lookup, respond, connected = true } = {}) {
   const fetchImpl = fakeFetch(respond);
   const photos = createProfilePhotos({ getSocket: () => (connected ? sock : undefined), fetchImpl, now: () => clock.now });
   return { photos, sock, fetchImpl, clock };
+}
+
+// A second connection holding the write lock makes the app's own writes throw SQLITE_BUSY, as concurrent access would.
+function lockDatabase() {
+  const other = new DatabaseSync(process.env.DB_PATH);
+  other.exec('BEGIN IMMEDIATE');
+  return () => {
+    other.exec('ROLLBACK');
+    other.close();
+  };
 }
 
 beforeEach(() => {
@@ -287,6 +298,59 @@ test('a failed download (network error) fails open', async () => {
   });
 
   assert.deepEqual(await photos.getPhoto(ALICE), { ok: false, error: 'fetch failed' });
+});
+
+test('a cache read failure fails open without querying WhatsApp, and photoPath still answers', async () => {
+  seedContacts(ALICE);
+  const { photos, sock } = setup();
+  getDb().exec('ALTER TABLE contacts RENAME TO contacts_unavailable');
+  try {
+    const result = await photos.getPhoto(ALICE);
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /no such table: contacts/);
+    assert.equal(sock.calls.length, 0);
+    assert.equal(photos.photoPath(ALICE), `/api/contacts/${encodeURIComponent(ALICE)}/photo`);
+  } finally {
+    getDb().exec('ALTER TABLE contacts_unavailable RENAME TO contacts');
+  }
+});
+
+test('a cache write failure after a successful lookup fails open, and backs off instead of re-querying WhatsApp', async () => {
+  seedContacts(ALICE);
+  const { photos, sock } = setup();
+  const unlock = lockDatabase();
+  try {
+    const result = await photos.getPhoto(ALICE);
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /database is locked/);
+    assert.deepEqual(await photos.getPhoto(ALICE), { ok: false, error: 'a recent lookup failed; backing off' });
+    assert.equal(sock.calls.length, 1);
+  } finally {
+    unlock();
+  }
+});
+
+test('a cache invalidation failure on an expired CDN URL fails open instead of re-downloading the same URL', async () => {
+  seedContacts(ALICE);
+  let unlock;
+  const { photos, sock, fetchImpl } = setup({
+    respond: () => {
+      unlock = lockDatabase();
+      return new Response(null, { status: 403 });
+    },
+  });
+  try {
+    const result = await photos.getPhoto(ALICE);
+
+    assert.equal(result.ok, false);
+    assert.match(result.error, /database is locked/);
+    assert.equal(sock.calls.length, 1);
+    assert.equal(fetchImpl.calls.length, 1);
+  } finally {
+    unlock?.();
+  }
 });
 
 test('a non-WhatsApp-CDN URL is never fetched server-side', async () => {
