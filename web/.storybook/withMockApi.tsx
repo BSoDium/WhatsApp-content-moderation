@@ -1,3 +1,4 @@
+import { useEffect, type ReactNode } from 'react';
 import type { Decorator } from '@storybook/react-vite';
 
 export interface MockRoute {
@@ -5,10 +6,7 @@ export interface MockRoute {
   match: string | RegExp;
   status?: number;
   body?: unknown;
-  // Separate from `body` rather than a `unknown | Fn` union: TypeScript
-  // collapses any union containing `unknown` back down to `unknown`, which
-  // would leave every inline route handler's (path, init) params as
-  // implicit `any`.
+  // Kept separate from `body` (rather than a `unknown | Fn` union) because a union with `unknown` collapses to `unknown`, breaking inline handlers' param inference.
   bodyFn?: (path: string, init?: RequestInit) => unknown;
   delayMs?: number;
 }
@@ -34,39 +32,43 @@ function buildMockFetch(routes: MockRoute[], passthrough: typeof fetch): typeof 
   };
 }
 
-// The app also opens an EventSource for live push updates (GET /api/events).
-// Storybook has no server to answer it, so this swaps in a no-op instead of
-// leaving the browser retrying a real connection in the background forever.
+// Storybook has no server for GET /api/events; this no-op replaces a real EventSource that would otherwise retry a dead connection forever.
 class NoopEventSource {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   close(): void {}
 }
 
-// window.fetch itself (not a ref/component state), captured the first time
-// any story installs a mock — every later install rebuilds the mock from
-// this same real fetch, so passthrough (an unmatched route) always reaches
-// the network rather than a previous story's mock.
+// Captured once (real fetch/EventSource, never a previous story's mock) so both passthrough and restoreRealApi always land on the genuine originals.
 let realFetch: typeof fetch | undefined;
+let realEventSource: typeof EventSource | undefined;
 
 function installMockApi(routes: MockRoute[]): void {
   realFetch ??= window.fetch;
+  realEventSource ??= window.EventSource;
   window.fetch = buildMockFetch(routes, realFetch);
   window.EventSource = NoopEventSource as unknown as typeof EventSource;
 }
 
-// Stubs window.fetch (and EventSource) before a story renders, so components
-// whose data comes from hooks calling the real /api/* endpoints (App,
-// OverviewStats, SettingsPanel, PolicyEditor, ActivityPanel) render against
-// fixture data instead of every request failing against Storybook's static
-// file server. Installed directly in the decorator (not from inside a
-// component's render or effect) so it's in place before any child component
-// underneath fires its own fetch-on-mount effect. A route's `bodyFn` can
-// close over local state if a story needs a mutation (e.g. POST
-// /api/roster) reflected by a later GET in the same story.
+function restoreRealApi(): void {
+  if (realFetch) window.fetch = realFetch;
+  if (realEventSource) window.EventSource = realEventSource;
+}
+
+// Effect-only cleanup: restoring on unmount (this story going away) has no ordering constraint, unlike installing the mock, which must happen before this story's own children mount.
+function MockApiCleanup({ children }: { children: ReactNode }) {
+  useEffect(() => restoreRealApi, []);
+  return <>{children}</>;
+}
+
+// Stubs fetch/EventSource before a story renders (in the decorator itself, not a component render/effect) so a child's fetch-on-mount effect always sees the mock, and restores the real ones once the story unmounts.
 export function withMockApi(routes: MockRoute[]): Decorator {
   return (Story) => {
     installMockApi(routes);
-    return <Story />;
+    return (
+      <MockApiCleanup>
+        <Story />
+      </MockApiCleanup>
+    );
   };
 }
