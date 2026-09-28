@@ -254,21 +254,21 @@ function App() {
               transition={moveTransition}
               className="flex-none px-4 pb-4 lg:px-8 @container"
             >
-              <div className="flex flex-col items-stretch gap-3 @lg:flex-row @lg:items-start @lg:justify-between @lg:gap-4">
-                <div className="min-w-0">
-                  <h1 className="text-2xl font-semibold">WhatsApp moderation control</h1>
-                  <p className="mt-2 text-muted-foreground">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+              <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-xl leading-tight font-semibold sm:text-2xl">WhatsApp moderation control</h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
                 </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-2 self-end @lg:mt-1 @lg:self-auto">
-                  <Button variant="outline" size="sm" onClick={() => showPanel('settings')}>
+                <div className="grid shrink-0 grid-cols-3 gap-2 xl:flex xl:justify-end">
+                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     Settings
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => showPanel('policy')}>
+                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
                     Policy
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => showPanel('activity')}>
+                  <Button variant="outline" size="lg" className="h-11 px-1.5 xl:px-4" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
                     Activity
                   </Button>
@@ -287,6 +287,7 @@ function App() {
                 selectedId={selectedId}
                 onSelect={requestSelectContact}
                 onToggle={setMonitored}
+                onViewHistory={(contactId) => showPanel('activity', contactId)}
                 initialLoadComplete={initialLoadComplete}
               />
             </div>

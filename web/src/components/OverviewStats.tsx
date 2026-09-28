@@ -1,4 +1,3 @@
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useOverviewStats } from '@/lib/useStats';
@@ -28,9 +27,9 @@ export function OverviewStats() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-4 gap-2" aria-hidden="true">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-hidden="true">
         {Array.from({ length: SKELETON_CHIP_COUNT }, (_, i) => (
-          <Skeleton key={i} className="h-[42px] rounded-lg" />
+          <div key={i} className="h-24 rounded-xl border border-border bg-muted/50" />
         ))}
       </div>
     );
@@ -51,18 +50,18 @@ export function OverviewStats() {
 
   return (
     <div>
-      <dl className="grid grid-cols-4 gap-2">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {chipsFor(stats).map((chip) => (
           <div
             key={chip.label}
-            className="flex flex-col items-center justify-center gap-0.5 rounded-lg border border-border bg-card px-1 py-1.5"
+            className="relative flex min-h-24 flex-col items-start justify-end overflow-hidden rounded-xl border border-border bg-card px-4 py-3 text-left"
           >
-            <dt className="text-[10px] leading-none whitespace-nowrap text-muted-foreground">{chip.label}</dt>
-            <dd className={cn('text-sm leading-none font-semibold tabular-nums', chip.warn && 'text-destructive')}>{chip.value}</dd>
+            <dt className="order-2 mt-2 text-sm leading-none text-muted-foreground">{chip.label}</dt>
+            <dd className={cn('order-1 text-3xl leading-none font-bold tracking-tight tabular-nums sm:text-4xl', chip.warn && 'text-destructive')}>{chip.value}</dd>
           </div>
         ))}
       </dl>
-      {error && <p className="mt-1 text-[10px] text-muted-foreground">Showing last known values — {error}</p>}
+      {error && <p className="mt-1 text-xs text-muted-foreground">Showing last known values — {error}</p>}
     </div>
   );
 }
