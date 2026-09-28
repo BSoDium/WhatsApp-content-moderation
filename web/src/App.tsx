@@ -330,7 +330,7 @@ function App() {
         <motion.section
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen)}
-          transition={{ x: moveTransition, opacity: fadeTransition }}
+          transition={{ x: moveTransition, opacity: initialLayoutSettled ? fadeTransition : INSTANT_TRANSITION }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
