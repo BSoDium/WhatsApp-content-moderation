@@ -14,6 +14,7 @@ const meta = {
     ),
   ],
   args: {
+    initialLoadComplete: true,
     selectedId: null,
     onSelect: fn(),
     onToggle: fn(async () => {}),
