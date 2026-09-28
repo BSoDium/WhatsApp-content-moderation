@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-settings.test.sqlite';
 
-const { getRawSetting, getNumberSetting, getBoolSetting, setSetting, listSettings, ensureDefaultsSeeded, getRawValue, setRawValue } =
+const { getRawSetting, getNumberSetting, getBoolSetting, setSetting, listSettings, ensureDefaultsSeeded, migrateShadowModeFromEnv, getRawValue, setRawValue } =
   await import('./settings.ts');
 const { getDb } = await import('./db.ts');
 
@@ -83,6 +83,43 @@ test('setSetting accepts "0"/"1" for a bool setting and rejects anything else', 
   assert.equal(result.ok, false);
   assert.equal(getBoolSetting('SHADOW_MODE'), false); // rejected value never applied
   setSetting('SHADOW_MODE', '1');
+});
+
+function clearRow(key) {
+  getDb().prepare('DELETE FROM settings WHERE key = ?').run(key);
+}
+
+test('migrateShadowModeFromEnv is a no-op when SHADOW_MODE is unset in the environment', () => {
+  clearRow('SHADOW_MODE');
+  delete process.env.SHADOW_MODE;
+  migrateShadowModeFromEnv();
+  assert.equal(getRawValue('SHADOW_MODE'), undefined);
+});
+
+test('migrateShadowModeFromEnv carries over SHADOW_MODE=1 from the environment when no row exists yet', () => {
+  clearRow('SHADOW_MODE');
+  process.env.SHADOW_MODE = '1';
+  migrateShadowModeFromEnv();
+  assert.equal(getRawValue('SHADOW_MODE'), '1');
+  delete process.env.SHADOW_MODE;
+});
+
+test('migrateShadowModeFromEnv carries over any non-"1" env value as "0", matching the old env-var contract', () => {
+  clearRow('SHADOW_MODE');
+  process.env.SHADOW_MODE = '0';
+  migrateShadowModeFromEnv();
+  assert.equal(getRawValue('SHADOW_MODE'), '0');
+  delete process.env.SHADOW_MODE;
+});
+
+test('migrateShadowModeFromEnv never overwrites an existing row, even if the env var disagrees', () => {
+  clearRow('SHADOW_MODE');
+  setRawValue('SHADOW_MODE', '0');
+  process.env.SHADOW_MODE = '1';
+  migrateShadowModeFromEnv();
+  assert.equal(getRawValue('SHADOW_MODE'), '0');
+  delete process.env.SHADOW_MODE;
+  setRawValue('SHADOW_MODE', '1'); // restore for tests after this one
 });
 
 test('listSettings returns every manifest key with its current value and default', () => {
