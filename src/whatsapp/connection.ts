@@ -3,6 +3,7 @@ import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import pino from 'pino';
+import { colors } from '../cli/terminal-output.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 
 interface ConnectionOptions {
@@ -52,11 +53,11 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('\nScan this QR code with WhatsApp on your phone (Linked Devices):\n');
+      console.log(`\n${colors.bold('Scan this QR code with WhatsApp on your phone (Linked Devices):')}\n`);
       qrcode.generate(qr, { small: true });
       if (qrPngPath) {
         QRCode.toFile(qrPngPath, qr, { width: 400 })
-          .then(() => console.log(`[qr] also saved to ${qrPngPath}`))
+          .then(() => console.log(colors.cyan(`[qr] also saved to ${qrPngPath}`)))
           .catch((err: unknown) => console.error('[qr] failed to save PNG:', err instanceof Error ? err.message : err));
       }
     }
