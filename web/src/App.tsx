@@ -27,10 +27,26 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 // flush-left once a contact is open — chosen so opening a contact both
 // moves (the centering margin collapses to 0) and resizes (60% -> 50%) the
 // pane at once. Centered so the two margins are equal (100 - 60) / 2 = 20.
-const LIST_PANE_WIDTH_BROWSING = '60%';
-const LIST_PANE_MARGIN_BROWSING = '20%';
-const LIST_PANE_WIDTH_OPEN = '50%';
-const LIST_PANE_MARGIN_OPEN = '0%';
+const LIST_PANE_WIDTH_BROWSING_PCT = 60;
+const LIST_PANE_MARGIN_BROWSING_PCT = 20;
+const LIST_PANE_WIDTH_OPEN_PCT = 50;
+const LIST_PANE_MARGIN_OPEN_PCT = 0;
+const LIST_PANE_WIDTH_BROWSING = `${LIST_PANE_WIDTH_BROWSING_PCT}%`;
+const LIST_PANE_MARGIN_BROWSING = `${LIST_PANE_MARGIN_BROWSING_PCT}%`;
+const LIST_PANE_WIDTH_OPEN = `${LIST_PANE_WIDTH_OPEN_PCT}%`;
+const LIST_PANE_MARGIN_OPEN = `${LIST_PANE_MARGIN_OPEN_PCT}%`;
+// Must match the detail pane's `lg:w-[50%]` className below — there's no
+// way to share one literal between a Tailwind arbitrary-value class and
+// this arithmetic without breaking Tailwind's static class-name scanning.
+const DETAIL_PANE_WIDTH_PCT = 50;
+// The detail pane's closed `x`, as a fraction of its *own* width (Framer
+// Motion's `x` percentages resolve against the element's own box, same as
+// CSS transform percentages) — not fully off-screen, but exactly far
+// enough that its left edge starts where the list pane's own right edge
+// sits while browsing (margin + width). That makes the two panes' visible
+// edges travel the same distance over the same transition and arrive
+// together, instead of the detail pane racing in from further away.
+const DETAIL_PANE_CLOSED_X = `${(((LIST_PANE_MARGIN_BROWSING_PCT + LIST_PANE_WIDTH_BROWSING_PCT) - DETAIL_PANE_WIDTH_PCT) / DETAIL_PANE_WIDTH_PCT) * 100}%`;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -59,14 +75,12 @@ function listPaneTarget(isDesktop: boolean, expanded: boolean) {
 // The detail pane never resizes — at `lg:` it's always the layout's fixed
 // right-hand width (see its `lg:w-[50%]` className below) and only ever
 // slides (`x`) and fades (`opacity`) into or out of that fixed position,
-// so it arrives already at its final size instead of growing into it.
-// `x` is a fraction of the pane's *own* width (Framer Motion's percentage
-// transforms work the same way CSS's do), so '100%' is exactly enough to
-// clear it off the right edge regardless of viewport width.
+// so it arrives already at its final size instead of growing into it. See
+// DETAIL_PANE_CLOSED_X for why the closed `x` isn't simply '100%'.
 function detailPaneTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { width: '100%', opacity: 1 };
   return {
-    x: expanded ? '0%' : '100%',
+    x: expanded ? '0%' : DETAIL_PANE_CLOSED_X,
     opacity: expanded ? 1 : 0,
   };
 }
@@ -91,13 +105,12 @@ function App() {
   const [panelSeq, setPanelSeq] = useState({ activity: 0, policy: 0, settings: 0 });
 
   const selectedContact = contacts.find((contact) => contact.id === selectedId) ?? null;
-  const selectedEntry = selectedContact ? roster.find((entry) => entry.id === selectedContact.id) : undefined;
   const panelOpen = Boolean(selectedContact);
 
   // Guards every path that would discard the open contact-detail panel
   // (its own Back button, picking a different contact from the list) so an
   // unsaved moderation-context draft is never silently lost to a remount —
-  // see ContactDetailPanel's `key={selectedContact?.id}` below.
+  // see ContactDetailPanel's `key={displayedContact?.id}` below.
   const detailPanelRef = useRef<ContactDetailPanelHandle>(null);
   // `undefined` = no confirmation pending; `null`/a contact id = the
   // selection change waiting on the user's save/discard/stay choice.
@@ -184,6 +197,25 @@ function App() {
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
 
+  // ContactDetailPanel renders nothing once its `contact` prop is null, but
+  // `selectedContact` goes null in the same render `panelOpen` does — so
+  // passing it straight through would empty the panel instantly instead of
+  // letting it fade/slide away with its content still visible. Keep showing
+  // the last contact until the close transition's own duration has actually
+  // elapsed, matching whichever one is active (desktop's Framer Motion
+  // transition, or mobile's `duration-[250ms]` CSS one).
+  const [displayedContact, setDisplayedContact] = useState(selectedContact);
+  useEffect(() => {
+    if (selectedContact) {
+      setDisplayedContact(selectedContact);
+      return;
+    }
+    const closeMs = (isDesktop ? moveTransition.duration : 0.25) * 1000;
+    const timeoutId = setTimeout(() => setDisplayedContact(null), closeMs);
+    return () => clearTimeout(timeoutId);
+  }, [selectedContact, isDesktop, moveTransition]);
+  const displayedEntry = displayedContact ? roster.find((entry) => entry.id === displayedContact.id) : undefined;
+
   return (
     <TooltipProvider>
       <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -269,9 +301,9 @@ function App() {
         >
           <ContactDetailPanel
             ref={detailPanelRef}
-            key={selectedContact?.id}
-            contact={selectedContact}
-            entry={selectedEntry}
+            key={displayedContact?.id}
+            contact={displayedContact}
+            entry={displayedEntry}
             onClose={() => requestSelectContact(null)}
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}
