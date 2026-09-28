@@ -12,8 +12,6 @@ import { ContactList } from '@/components/ContactList';
 import { ContactDetailPanel, type ContactDetailPanelHandle } from '@/components/ContactDetailPanel';
 import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { ResizeHandle } from '@/components/ResizeHandle';
-import { useResizableWidth } from '@/lib/useResizableWidth';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
@@ -36,19 +34,15 @@ const LIST_PANE_WIDTH_OPEN = '50%';
 const LIST_PANE_MARGIN_OPEN = '0%';
 const DETAIL_PANE_WIDTH_OPEN = '50%';
 const DETAIL_PANE_WIDTH_CLOSED = '0%';
-const DETAIL_PANEL_MIN_WIDTH = 500;
-// Comfortably covers the 50%-of-row width Motion animates to (the
-// choreography's own target, uncapped) on anything up to a ~2800px-wide
-// display — past that a resize-mode handoff can still visibly snap, but a
-// fixed cap has to end somewhere, and screens beyond this are rare enough
-// not to hold the common case's max hostage.
-const DETAIL_PANEL_MAX_WIDTH = 1400;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
 
-const MOVE_TRANSITION = { duration: 0.25, ease: 'easeInOut' as const };
-const FADE_TRANSITION = { duration: 0.2, ease: 'easeInOut' as const };
+// Material 3's "emphasized decelerate" curve — fast start, slow settle.
+// Reads as snappier than a symmetric easeInOut despite the longer duration.
+const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0, 1];
+const MOVE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
+const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
 
 // The contact-detail pane's two-stage open/close choreography:
@@ -80,14 +74,6 @@ function detailPaneTarget(isDesktop: boolean, phase: PanelPhase) {
 function headerPaddingTarget(isDesktop: boolean, phase: PanelPhase) {
   if (!isDesktop) return { paddingTop: HEADER_PT_MOBILE };
   return { paddingTop: phase === 'closed' ? HEADER_PT_BROWSING : HEADER_PT_OPEN };
-}
-
-// Seeds the resizable detail panel at roughly the same width the opening
-// choreography settles on (half the viewport), so switching from the
-// choreographed percentage width to the user-resizable pixel width once
-// fully open doesn't visibly jump.
-function estimateHalfViewportWidth(): number {
-  return Math.min(DETAIL_PANEL_MAX_WIDTH, Math.max(DETAIL_PANEL_MIN_WIDTH, Math.round(window.innerWidth * 0.5)));
 }
 
 function App() {
@@ -217,31 +203,6 @@ function App() {
   // width:50%-but-invisible mid-choreography.
   const detailInteractive = phase === 'open';
 
-  const detailWidth = useResizableWidth({
-    id: 'contact-detail-panel',
-    defaultWidth: estimateHalfViewportWidth(),
-    min: DETAIL_PANEL_MIN_WIDTH,
-    max: DETAIL_PANEL_MAX_WIDTH,
-    side: 'left',
-    label: 'Resize contact details panel',
-  });
-  // Only takes over from the choreographed percentage width once the panel
-  // is fully open and settled — mid-animation, Motion owns the width. Held
-  // one render behind `phase === 'open'` (via the effect below) rather than
-  // computed inline: dropping `width` from Motion's `animate` object and
-  // adding it to `style` in the exact same commit leaves Motion holding its
-  // last-animated percentage indefinitely instead of picking up the style
-  // value — reproduced against the pinned Motion version. The extra
-  // render/commit this effect introduces before resize mode engages gives
-  // Motion a chance to settle on the current `animate` target first.
-  const [resizeReady, setResizeReady] = useState(false);
-  useEffect(() => {
-    setResizeReady(isDesktop && phase === 'open');
-  }, [isDesktop, phase]);
-  const detailResizeActive = resizeReady;
-  const detailAnimate = detailResizeActive ? { opacity: 1 } : detailPaneTarget(isDesktop, phase);
-  const detailStyle = detailResizeActive ? { width: detailWidth.width, maxWidth: 'none' } : undefined;
-
   return (
     <TooltipProvider>
       <div className="flex min-h-screen overflow-x-hidden bg-background text-foreground">
@@ -293,8 +254,7 @@ function App() {
 
         <motion.section
           initial={false}
-          animate={detailAnimate}
-          style={detailStyle}
+          animate={detailPaneTarget(isDesktop, phase)}
           transition={{ width: moveTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && phase === 'closing') setPhase('closed');
@@ -309,9 +269,6 @@ function App() {
             detailInteractive && 'lg:border-border',
           )}
         >
-          {detailResizeActive && (
-            <ResizeHandle {...detailWidth.handleProps} className="absolute inset-y-0 left-0 hidden lg:flex" />
-          )}
           <ContactDetailPanel
             ref={detailPanelRef}
             key={selectedContact?.id}
