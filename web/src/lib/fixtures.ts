@@ -15,7 +15,16 @@ export const FIXTURE_CONTACTS: Contact[] = [
 ];
 
 export const FIXTURE_ROSTER: RosterEntry[] = [
-  { id: 'alice', name: 'Alice Moreau', escalationEnabled: true, context: null, paused: false, strikeCount: 2, block: null },
+  {
+    id: 'alice',
+    name: 'Alice Moreau',
+    escalationEnabled: true,
+    context: null,
+    paused: false,
+    strikeCount: 2,
+    block: null,
+    callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+  },
   {
     id: 'carol',
     name: 'Carol — Atelier Lumière',
@@ -24,6 +33,7 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
     paused: false,
     strikeCount: 0,
     block: { unblockAt: Date.now() + HOUR_MS },
+    callNuisance: { unansweredCount: 1, strikeCount: 0, threshold: 2, thresholdOverride: null },
   },
 ];
 

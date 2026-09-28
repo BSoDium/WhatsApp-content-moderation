@@ -23,7 +23,19 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         const { contactId } = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
         const contact = FIXTURE_CONTACTS.find((candidate) => candidate.id === contactId);
         if (contact && !roster.some((entry) => entry.id === contactId)) {
-          roster = [...roster, { id: contact.id, name: contact.name, escalationEnabled: true, context: null, paused: false, strikeCount: 0, block: null }];
+          roster = [
+            ...roster,
+            {
+              id: contact.id,
+              name: contact.name,
+              escalationEnabled: true,
+              context: null,
+              paused: false,
+              strikeCount: 0,
+              block: null,
+              callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+            },
+          ];
         }
         return { ok: true };
       },

@@ -41,7 +41,16 @@ export const NoneModerated: Story = {
 export const AllModerated: Story = {
   args: {
     contacts: FIXTURE_CONTACTS,
-    roster: FIXTURE_CONTACTS.map((contact) => ({ id: contact.id, name: contact.name, escalationEnabled: true, context: null, paused: false, strikeCount: 0, block: null })),
+    roster: FIXTURE_CONTACTS.map((contact) => ({
+      id: contact.id,
+      name: contact.name,
+      escalationEnabled: true,
+      context: null,
+      paused: false,
+      strikeCount: 0,
+      block: null,
+      callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+    })),
   },
 };
 
