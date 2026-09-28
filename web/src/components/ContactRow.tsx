@@ -26,7 +26,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
   const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
   const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
-  const block = entry?.block ?? contact.block ?? null;
+  const block = entry ? entry.block : contact.block ?? null;
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
