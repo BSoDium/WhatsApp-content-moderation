@@ -12,6 +12,10 @@ const { setSetting } = await import('../store/settings.ts');
 
 setSetting('STRIKE_THRESHOLD', '2');
 setSetting('WARNING_MESSAGE', 'TEST_FALLBACK_WARNING');
+// Off by default here so the bulk of this suite exercises real
+// delete/warn/strike/block behavior; shadow mode itself is covered by its
+// own test below, which flips this back on for the duration of that test.
+setSetting('SHADOW_MODE', '0');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -51,6 +55,35 @@ test('classifier ok:false fails open: no strike, no action, logged as classifier
   assert.equal(deleteForMeCalled, false);
   const [entry] = getAuditLog(contact);
   assert.equal(entry.action, 'classifier_error');
+});
+
+test('shadow mode classifies and logs a flagged message but takes no action', async () => {
+  const contact = 'shadow@s.whatsapp.net';
+  let acted = false;
+  const shadowActions = {
+    deleteForMe: async () => {
+      acted = true;
+    },
+    sendWarning: async () => {
+      acted = true;
+    },
+    block: async () => {
+      acted = true;
+    },
+    generateWarning: okWarning,
+  };
+
+  setSetting('SHADOW_MODE', '1');
+  try {
+    const { strikeCount } = await handleBurst(burst(contact, ['bad message']), { ...shadowActions, classify: okFlag });
+
+    assert.equal(strikeCount, 0);
+    assert.equal(acted, false);
+    const [entry] = getAuditLog(contact);
+    assert.equal(entry.action, 'shadow');
+  } finally {
+    setSetting('SHADOW_MODE', '0');
+  }
 });
 
 test("a monitored contact's roster context is passed to classify as contactContext", async () => {

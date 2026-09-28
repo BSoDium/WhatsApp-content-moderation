@@ -57,7 +57,7 @@ jobs:
 
       # Push-less build — catches a broken Dockerfile on every PR without
       # touching GHCR. The tagged, pushed image only happens in
-      # container.yml, triggered off a published release.
+      # container.yml, triggered directly off a version-tag push.
       - name: Build image
         uses: docker/build-push-action@v7
         with:
