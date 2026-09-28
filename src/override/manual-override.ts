@@ -1,4 +1,4 @@
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { getStrikeCount } from '../store/strikes.ts';
 import { getActiveBlock } from '../store/blocks.ts';
 import { emitControlEvent } from '../store/events.ts';
@@ -6,7 +6,7 @@ import { resolveUnblock } from '../pipeline/unblock-resolution.ts';
 
 type OverrideCommand = 'pause' | 'resume' | 'unblock';
 
-const logger = pino({ name: 'manual-override' });
+const logger = createLogger('manual-override');
 
 /**
  * Creates the pause/status/unblock routines behind issue #9 (manual

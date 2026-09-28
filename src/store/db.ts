@@ -2,12 +2,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { resolveMigrationBaseline } from './migration-baseline.ts';
 import { openNodeSqliteOrm } from './node-sqlite-driver.ts';
 import type { OrmDatabase } from './node-sqlite-driver.ts';
 
-const logger = pino({ name: 'db' });
+const logger = createLogger('db');
 
 const DEFAULT_DB_PATH = 'data/moderation.sqlite';
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));

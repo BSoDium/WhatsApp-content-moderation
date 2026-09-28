@@ -5,7 +5,7 @@ import { networkInterfaces } from 'node:os';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, resolve } from 'node:path';
-import pino from 'pino';
+import { createLogger } from '../cli/logger.ts';
 import { printSuccessBanner } from '../cli/terminal-output.ts';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
 import { onControlEvent } from '../store/events.ts';
@@ -54,7 +54,7 @@ interface ControlServerDependencies {
   allowSelf: boolean;
 }
 
-const logger = pino({ name: 'control-server' });
+const logger = createLogger('control-server');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
