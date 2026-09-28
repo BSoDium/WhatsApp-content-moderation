@@ -2,6 +2,7 @@ import { createLogger } from './src/cli/logger.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.ts';
+import { handleCallEvent, pendingCallEvents } from './src/pipeline/call-pipeline.ts';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
@@ -19,10 +20,13 @@ import {
   removeMonitored,
   setEscalationEnabled,
   setContext,
+  setCallNuisanceThreshold,
+  getEffectiveNuisanceThreshold,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
-import { deleteForMe, sendWarning, block, unblock } from './src/whatsapp/actions.ts';
+import { getCallState } from './src/store/call-strikes.ts';
+import { deleteForMe, sendWarning, block, unblock, rejectCall } from './src/whatsapp/actions.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from './src/types.ts';
 
@@ -108,6 +112,12 @@ const monitoredContacts = {
   remove: removeMonitored,
   setEscalationEnabled,
   setContext,
+  setCallNuisanceThreshold,
+};
+const callActions = {
+  rejectCall: (callId: string, callFrom: string) => rejectCall(currentSocket(), callId, callFrom),
+  sendWarning: (jid: string, text: string) => sendWarning(currentSocket(), jid, text),
+  block: (jid: string) => block(currentSocket(), jid),
 };
 
 let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;
@@ -154,6 +164,19 @@ async function start() {
           if (incoming) buffer.push(contactId, incoming);
         }
       });
+      s.ev.on('call', (calls) => {
+        // Group calls aren't something this app's 1:1 roster/strike model
+        // covers — skipped rather than mis-attributed to a group JID.
+        for (const call of calls) {
+          if (call.isGroup) continue;
+          const contactId = canonicalContactId({ id: call.chatId, phoneNumber: call.callerPn });
+          if (!contactId || !isMonitored(contactId) || manualOverride.isPaused(contactId)) continue;
+
+          handleCallEvent({ contactId, call }, callActions).catch((err) =>
+            logger.error({ contactId, error: err instanceof Error ? err.message : String(err) }, 'handleCallEvent failed'),
+          );
+        }
+      });
     },
     onOpen: () => {
       logger.info({ monitored: listMonitored().length, allowSelf: ALLOW_SELF }, 'connected; moderating monitored contacts');
@@ -174,7 +197,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   await controlServer?.close();
   await unblockScheduler?.stop();
   await buffer.flushAll();
-  await Promise.allSettled(pendingBursts());
+  await Promise.allSettled([...pendingBursts(), ...pendingCallEvents()]);
   closeDb();
   process.exit(0);
 }

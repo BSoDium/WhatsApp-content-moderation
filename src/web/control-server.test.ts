@@ -28,7 +28,12 @@ function makeOverride() {
   return {
     calls,
     isPaused: (contactId) => paused.get(contactId) ?? false,
-    getStatus: (contactId) => ({ paused: paused.get(contactId) ?? false, strikeCount: 2, block: null }),
+    getStatus: (contactId) => ({
+      paused: paused.get(contactId) ?? false,
+      strikeCount: 2,
+      block: null,
+      callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2 },
+    }),
     runCommand: async (contactId, command) => {
       calls.push([contactId, command]);
       switch (command) {
@@ -72,13 +77,14 @@ function makeProfilePhotos(photos = {}) {
 }
 
 function makeMonitoredContacts(initial = []) {
-  const roster = new Map(initial.map((row) => [row.contactId, { context: null, ...row }]));
+  const roster = new Map(initial.map((row) => [row.contactId, { context: null, callNuisanceThreshold: null, ...row }]));
   return {
     list: () => Array.from(roster.values()),
     isMonitored: (contactId) => roster.has(contactId),
     get: (contactId) => roster.get(contactId),
     add: (contactId) => {
-      if (!roster.has(contactId)) roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now(), context: null });
+      if (!roster.has(contactId))
+        roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now(), context: null, callNuisanceThreshold: null });
     },
     remove: (contactId) => roster.delete(contactId),
     setEscalationEnabled: (contactId, enabled) => {
@@ -93,6 +99,12 @@ function makeMonitoredContacts(initial = []) {
       // Mirrors the real store's normalization (monitored-contacts.ts) so
       // this fixture doesn't mask a regression in it.
       row.context = context?.trim() ? context.trim() : null;
+      return true;
+    },
+    setCallNuisanceThreshold: (contactId, threshold) => {
+      const row = roster.get(contactId);
+      if (!row) return false;
+      row.callNuisanceThreshold = threshold;
       return true;
     },
   };
@@ -355,7 +367,16 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
     const res = await fetch(`${base}/api/roster`, { headers: authHeaders() });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), [
-      { id: 'alice@s.whatsapp.net', name: 'Alice', escalationEnabled: false, context: null, paused: false, strikeCount: 2, block: null },
+      {
+        id: 'alice@s.whatsapp.net',
+        name: 'Alice',
+        escalationEnabled: false,
+        context: null,
+        paused: false,
+        strikeCount: 2,
+        block: null,
+        callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+      },
     ]);
   });
 });
@@ -641,6 +662,54 @@ test('POST /api/roster/:contactId/context on an unmonitored contact returns 404'
   });
 });
 
+test('POST /api/roster/:contactId/call-nuisance-threshold sets and clears a per-contact override', async () => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  await withServer({ monitoredContacts }, async (base) => {
+    const set = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/call-nuisance-threshold`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ threshold: 1 }),
+    });
+    assert.equal(set.status, 200);
+    assert.deepEqual(await set.json(), { callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: 1 } });
+    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').callNuisanceThreshold, 1);
+
+    const clear = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/call-nuisance-threshold`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ threshold: null }),
+    });
+    assert.equal(clear.status, 200);
+    assert.deepEqual(await clear.json(), { callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null } });
+    assert.equal(monitoredContacts.get('alice@s.whatsapp.net').callNuisanceThreshold, null);
+  });
+});
+
+test('POST /api/roster/:contactId/call-nuisance-threshold rejects a negative or non-integer threshold', async () => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  await withServer({ monitoredContacts }, async (base) => {
+    for (const threshold of [-1, 1.5, 'two']) {
+      const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/call-nuisance-threshold`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ threshold }),
+      });
+      assert.equal(res.status, 400);
+    }
+  });
+});
+
+test('POST /api/roster/:contactId/call-nuisance-threshold on an unmonitored contact returns 404', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/call-nuisance-threshold`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ threshold: 1 }),
+    });
+    assert.equal(res.status, 404);
+  });
+});
+
 test('GET /api/policy returns the current policy text', async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/policy`, { headers: authHeaders() });
@@ -748,7 +817,7 @@ test('close() resolves promptly even with a request in flight', async () => {
   const held = new Promise((resolve) => (releaseCommand = resolve));
   const manualOverride = {
     isPaused: () => false,
-    getStatus: () => ({ paused: false, strikeCount: 0, block: null }),
+    getStatus: () => ({ paused: false, strikeCount: 0, block: null, callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2 } }),
     runCommand: async () => {
       await held;
       return 'done';

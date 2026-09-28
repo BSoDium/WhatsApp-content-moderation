@@ -31,6 +31,7 @@ interface ControlServerDependencies {
     remove: (contactId: string) => boolean;
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
     setContext: (contactId: string, context: string | null) => boolean;
+    setCallNuisanceThreshold: (contactId: string, threshold: number | null) => boolean;
   };
   auditLog: {
     getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
@@ -255,15 +256,22 @@ function isIndividualJid(contactId: string): boolean {
 }
 
 function rosterEntry(
-  { contactId, escalationEnabled, context }: { contactId: string; escalationEnabled: boolean; context: string | null },
+  {
+    contactId,
+    escalationEnabled,
+    context,
+    callNuisanceThreshold,
+  }: { contactId: string; escalationEnabled: boolean; context: string | null; callNuisanceThreshold: number | null },
   { contactDirectory, manualOverride }: Pick<ControlServerDependencies, 'contactDirectory' | 'manualOverride'>,
 ) {
+  const { callNuisance, ...status } = manualOverride.getStatus(contactId);
   return {
     id: contactId,
     name: contactDirectory.get(contactId).name,
     escalationEnabled,
     context,
-    ...manualOverride.getStatus(contactId),
+    ...status,
+    callNuisance: { ...callNuisance, thresholdOverride: callNuisanceThreshold },
   };
 }
 
@@ -544,6 +552,28 @@ async function handleApi(
       sendJson(res, 200, { context: monitoredContacts.get(contactId)?.context ?? null });
       return true;
     }
+
+    if (action === 'call-nuisance-threshold') {
+      if (!requireJsonContentType(req, res)) return true;
+      const body = await readValidatedJsonBody(req, res);
+      if (body === undefined) return true;
+      if (typeof body !== 'object' || body === null || !('threshold' in body)) {
+        sendJson(res, 400, { error: 'threshold must be a non-negative integer, or null to use the global default' });
+        return true;
+      }
+      const { threshold } = body as { threshold: unknown };
+      if (threshold !== null && (typeof threshold !== 'number' || !Number.isInteger(threshold) || threshold < 0)) {
+        sendJson(res, 400, { error: 'threshold must be a non-negative integer, or null to use the global default' });
+        return true;
+      }
+      const updated = monitoredContacts.setCallNuisanceThreshold(contactId, threshold);
+      if (!updated) {
+        sendJson(res, 404, { error: 'not monitored' });
+        return true;
+      }
+      sendJson(res, 200, { callNuisance: { ...manualOverride.getStatus(contactId).callNuisance, thresholdOverride: threshold } });
+      return true;
+    }
   }
 
   return false;
@@ -653,6 +683,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     remove: (contactId: string) => boolean,
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
  *     setContext: (contactId: string, context: string | null) => boolean,
+ *     setCallNuisanceThreshold: (contactId: string, threshold: number | null) => boolean,
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
  *   blocks: { countActive: () => number },
