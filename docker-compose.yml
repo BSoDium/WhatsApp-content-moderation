@@ -16,15 +16,17 @@ services:
     restart: always
     # Shares the host's network stack directly — the control app binds host
     # port 4756 with no `ports:` mapping needed, and reaches Ollama below via
-    # its host-loopback publish. Also what lets host Tailscale Serve proxy
-    # this safely when ALLOWED_TAILSCALE_LOGIN is set — see the README.
+    # its host-loopback publish. Also what lets the host advertise this
+    # safely as a Tailscale Service when ALLOWED_TAILSCALE_LOGIN is set —
+    # see the README.
     network_mode: host
     # environment:
     #   # Set to your own Tailscale login (exactly what `tailscale status`
     #   # reports for it) to restrict the control app to that one identity
-    #   # instead of the whole local network, then proxy it with
-    #   # `tailscale serve --bg 4756` — see the README's "Restricting access
-    #   # with Tailscale" section.
+    #   # instead of the whole local network, then advertise it as a named
+    #   # Tailscale Service with `tailscale serve --service=svc:<name> --bg
+    #   # 4756` — see the README's "Restricting access with Tailscale"
+    #   # section.
     #   ALLOWED_TAILSCALE_LOGIN: you@example.com
     #   # No second WhatsApp number to test with? Set this to moderate
     #   # messages you send yourself instead — see the README.

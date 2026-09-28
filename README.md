@@ -45,7 +45,9 @@ Authenticated via Tailscale identity, not a password or shared secret — see [`
 
 ## Restricting access with Tailscale
 
-Requires [Tailscale](https://tailscale.com) installed on the host. Edit the `docker-compose.yml` from the quick start above, before running `docker compose up -d`:
+Requires [Tailscale](https://tailscale.com) installed on the host, **with the host itself running under a tagged identity, not a personal login** — [Tailscale Services](https://tailscale.com/docs/features/tailscale-services) (the named-service mechanism this section sets up, in place of exposing the whole host under its own `<host>.<tailnet>.ts.net` name) require a tag-based device to act as a Service host. Tag it first if it isn't already — add a tag to `tagOwners` in your tailnet's ACL policy and run `sudo tailscale up --advertise-tags=tag:whatsapp-mod` (substitute your own tag).
+
+Edit the `docker-compose.yml` from the quick start above, before running `docker compose up -d`:
 
 ```yaml
 services:
@@ -54,13 +56,31 @@ services:
       ALLOWED_TAILSCALE_LOGIN: you@example.com   # exactly what `tailscale status` reports for your own login
 ```
 
-Then continue the quick start (`docker compose up -d`, pulling the model, scanning the QR code) and, once the app is running:
+Add a grant in your tailnet's ACL policy so your login can reach the service (merge this into your policy's existing `grants`, and narrow `src` to your own login or a group instead of every member if you don't want the whole tailnet able to reach it):
 
-```sh
-sudo tailscale serve --bg 4756
+```json
+{
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["svc:whatsapp-moderation"],
+      "ip": ["443"]
+    }
+  ]
+}
 ```
 
-Open `https://<tailscale-hostname>/` (the hostname is whatever `tailscale serve status` prints) from a device signed in as that login. A visit from anyone else gets a 403 on every request. `src/web/control-server.ts` binds to `127.0.0.1` only in this mode, on purpose — it's reachable *only* through `tailscale serve`'s local proxy hop. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for what to do if that assumption doesn't hold for your setup (e.g. a shared or multi-user server).
+Then continue the quick start (`docker compose up -d`, pulling the model, scanning the QR code) and, once the app is running, advertise it as a named Service instead of under the host's own hostname:
+
+```sh
+sudo tailscale serve --service=svc:whatsapp-moderation --bg 4756
+```
+
+The first time a device advertises a new Service, Tailscale needs it approved once — either approve it in the admin console's Access Controls page, or add an `autoApprovers` entry for `svc:whatsapp-moderation` under your host's tag so it's approved automatically on every future restart (see [Tailscale Services](https://tailscale.com/docs/features/tailscale-services)).
+
+Open `https://whatsapp-moderation.<your-tailnet>.ts.net/` (`tailscale serve get-config --all` prints the exact name it was assigned) from a device signed in as the login the grant above allows. A visit from anyone else gets a 403 on every request. `src/web/control-server.ts` binds to `127.0.0.1` only in this mode, on purpose — it's reachable *only* through this proxy hop, now addressed by a stable service name instead of the host's own hostname, so the URL survives a host rename or a migration to different hardware. **This is deliberately single-factor**, accepted for a host where the operator is the only account with shell access to the machine — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for what to do if that assumption doesn't hold for your setup (e.g. a shared or multi-user server).
+
+**Not yet verified live**, unlike the plain-hostname `tailscale serve` path this replaces (which was, twice — see `docs/decisions.md`): confirm `Tailscale-User-Login` is still set the same way when `tailscale serve` proxies through a named Service before relying on this for anything sensitive — see [`docs/decisions.md`](docs/decisions.md#restricting-access-with-a-tailscale-service-replacing-the-hosts-own-hostname) for exactly what to check and why.
 
 ## How it works
 
