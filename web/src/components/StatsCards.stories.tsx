@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FIXTURE_STATS } from '@/lib/fixtures';
+import { FIXTURE_STATS, FIXTURE_STATS_EMPTY } from '@/lib/fixtures';
 import { StatsCards } from './StatsCards';
 
 const meta = {
@@ -26,7 +26,7 @@ export const NoErrors: Story = {
 };
 
 export const Empty: Story = {
-  args: { stats: { monitoredCount: 0, activeBlocks: 0, totalLogged: 0, totalFlaggedDeleted: 0, totalWarningsSent: 0, totalClassifierErrors: 0, byCategory: [] } },
+  args: { stats: FIXTURE_STATS_EMPTY },
 };
 
 export const Loading: Story = {

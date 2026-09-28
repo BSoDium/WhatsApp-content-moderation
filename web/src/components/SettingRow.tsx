@@ -5,8 +5,6 @@ interface SettingRowProps {
   title: string;
   description?: string;
   control: ReactNode;
-  // A validation message for `control`, rendered full-width below the row
-  // instead of squeezed into the control's own fixed-height column.
   error?: ReactNode;
 }
 

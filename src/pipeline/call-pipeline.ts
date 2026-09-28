@@ -1,5 +1,6 @@
 import { createLogger } from '../cli/logger.ts';
-import { logMessage } from '../store/audit-log.ts';
+import { generateCallWarningMessage } from '../classifier/call-warning-message.ts';
+import { getAuditLog, logMessage } from '../store/audit-log.ts';
 import { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall } from '../store/call-strikes.ts';
 import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
@@ -15,7 +16,12 @@ interface CallActions {
   rejectCall: (callId: string, callFrom: string) => Promise<unknown>;
   sendWarning: (contactId: string, text: string) => Promise<unknown>;
   block: (contactId: string) => Promise<unknown>;
+  generateWarning?: typeof generateCallWarningMessage;
 }
+
+const RECENT_MESSAGE_LIMIT = 5;
+const AUDIT_LOOKBACK = 40;
+const CALL_CATEGORY = 'call';
 
 const logger = createLogger('pipeline');
 
@@ -82,6 +88,27 @@ function shadowModeSkip(contactId: string, call: WACallEvent): boolean {
   return true;
 }
 
+function recentIncomingMessages(contactId: string): string[] {
+  return getAuditLog(contactId, AUDIT_LOOKBACK)
+    .filter((entry) => entry.direction === 'them' && entry.category !== CALL_CATEGORY)
+    .slice(0, RECENT_MESSAGE_LIMIT)
+    .reverse()
+    .map((entry) => entry.message);
+}
+
+async function resolveWarningText(contactId: string, strikeCount: number, strikeThreshold: number, actions: CallActions): Promise<string> {
+  const fallback = renderWarningMessage(strikeCount, strikeThreshold);
+  const recentMessages = recentIncomingMessages(contactId);
+  if (recentMessages.length === 0) return fallback;
+
+  const generate = actions.generateWarning ?? generateCallWarningMessage;
+  const result = await generate({ recentMessages, strikeCount, strikeThreshold });
+  if (result.ok) return result.text;
+
+  logger.warn({ contactId, error: result.error }, 'call warning generation failed; using the static fallback');
+  return fallback;
+}
+
 async function handleOffer(contactId: string, call: WACallEvent, actions: CallActions): Promise<void> {
   const { unansweredCount, strikeCount } = getCallState(contactId);
   const threshold = getEffectiveNuisanceThreshold(contactId);
@@ -98,13 +125,12 @@ async function handleOffer(contactId: string, call: WACallEvent, actions: CallAc
   }
 
   const strikeThreshold = getNumberSetting('NUISANCE_CALL_STRIKE_THRESHOLD');
-  const warningText = renderWarningMessage(strikeCount + 1, strikeThreshold);
   const autoReject = getBoolSetting('NUISANCE_CALL_AUTO_REJECT');
 
   // rejectCall and sendWarning are independent of each other's outcome, run concurrently — mirrors moderation-pipeline.ts's delete+warn Promise.allSettled pair.
   const [rejectOutcome, warnOutcome] = await Promise.allSettled([
     autoReject ? actions.rejectCall(call.id, call.from) : Promise.resolve(undefined),
-    actions.sendWarning(contactId, warningText),
+    resolveWarningText(contactId, strikeCount + 1, strikeThreshold, actions).then((text) => actions.sendWarning(contactId, text)),
   ]);
 
   if (autoReject) {

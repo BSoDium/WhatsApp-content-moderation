@@ -5,7 +5,7 @@ import { rmSync } from 'node:fs';
 process.env.DB_PATH = 'data/test-call-pipeline.test.sqlite';
 
 const { handleCallEvent } = await import('./call-pipeline.ts');
-const { getAuditLog } = await import('../store/audit-log.ts');
+const { getAuditLog, logMessage } = await import('../store/audit-log.ts');
 const { getCallState } = await import('../store/call-strikes.ts');
 const { createBlock, getActiveBlock } = await import('../store/blocks.ts');
 const { addMonitored, setEscalationEnabled, setCallNuisanceThreshold } = await import('../store/monitored-contacts.ts');
@@ -328,4 +328,55 @@ test('call events for the same contact are serialized: a slow rejectCall does no
 
   assert.deepEqual(order, ['first-start', 'first-end', 'second-start']);
   assert.deepEqual(getCallState(contact), { unansweredCount: 2, strikeCount: 2 });
+});
+
+async function nuisanceOffer(contact, generateWarning) {
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+  const sent = [];
+  await handleCallEvent(call(contact, 'offer'), {
+    rejectCall: async () => {},
+    sendWarning: async (_jid, text) => {
+      sent.push(text);
+    },
+    block: async () => {},
+    generateWarning,
+  });
+  return sent;
+}
+
+test('the nuisance warning is generated from the contact\'s recent chat messages', async () => {
+  const contact = 'olga@s.whatsapp.net';
+  logMessage({ contactId: contact, direction: 'them', message: 'Bonjour, tu peux me rappeler ?', classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
+  let received;
+
+  const sent = await nuisanceOffer(contact, async (input) => {
+    received = input;
+    return { ok: true, text: 'Arrêtez d\'appeler, ceci est un système automatique.' };
+  });
+
+  assert.deepEqual(received.recentMessages, ['Bonjour, tu peux me rappeler ?']);
+  assert.deepEqual(sent, ['Arrêtez d\'appeler, ceci est un système automatique.']);
+});
+
+test('a failed generation falls back to the configured static warning', async () => {
+  const contact = 'paul@s.whatsapp.net';
+  logMessage({ contactId: contact, direction: 'them', message: 'hello', classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
+
+  const sent = await nuisanceOffer(contact, async () => ({ ok: false, error: 'ollama down' }));
+
+  assert.deepEqual(sent, ['TEST_WARNING strike=1 threshold=2']);
+});
+
+test('a contact with no chat history gets the static warning without calling the generator', async () => {
+  const contact = 'quinn@s.whatsapp.net';
+  let called = false;
+
+  const sent = await nuisanceOffer(contact, async () => {
+    called = true;
+    return { ok: true, text: 'unused' };
+  });
+
+  assert.equal(called, false);
+  assert.deepEqual(sent, ['TEST_WARNING strike=1 threshold=2']);
 });

@@ -12,12 +12,10 @@ interface ContactListProps {
   selectedId: string | null;
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
+  onViewHistory: (contactId: string) => void;
   initialLoadComplete: boolean;
 }
 
-// Most-recently-active first, then name as a stable tiebreaker. Moderated
-// contacts are split into their own section below rather than sorted to the
-// top of one flat list.
 function sortedFiltered(contacts: Contact[], query: string): Contact[] {
   return contacts
     .filter((contact) => matchesQuery(contact, query))
@@ -25,20 +23,16 @@ function sortedFiltered(contacts: Contact[], query: string): Contact[] {
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.name.localeCompare(b.name));
 }
 
-export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, initialLoadComplete }: ContactListProps) {
+export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete }: ContactListProps) {
   const [query, setQuery] = useState('');
   const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
+  const rosterById = useMemo(() => new Map(roster.map((entry) => [entry.id, entry])), [roster]);
   const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase()), [contacts, query]);
   const moderated = useMemo(() => filtered.filter((contact) => monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const others = useMemo(() => filtered.filter((contact) => !monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const [listRef, setAnimationsEnabled] = useAutoAnimate(fadeAndSlide);
 
-  // The list mounts empty and contacts/roster arrive later over the network
-  // (useControlData's initial fetch), so auto-animate — already watching the
-  // container by the time that data lands — would otherwise play its
-  // add/reorder animation for the whole list on every page load. Animations
-  // stay off until that first fetch settles, then turn on (after a frame, so
-  // the settled list paints in place first) for genuine later changes.
+  // Animations stay off until the first fetch settles, or auto-animate would play add/reorder for the whole list on every load.
   useEffect(() => {
     if (!initialLoadComplete) {
       setAnimationsEnabled(false);
@@ -58,7 +52,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
         onChange={(event) => setQuery(event.target.value)}
         className="h-10 flex-none px-4"
       />
-      <ul ref={listRef} className="mt-4 flex-1 overflow-y-auto pb-8" aria-label="Contacts">
+      <ul ref={listRef} className="@container mt-4 flex-1 overflow-y-auto pb-8" aria-label="Contacts">
         {filtered.length === 0 && <li className="py-6 text-center text-muted-foreground">No contacts match your search.</li>}
         {moderated.length > 0 && <SectionHeading key="heading-moderated">Moderated</SectionHeading>}
         {moderated.map((contact) => (
@@ -68,7 +62,9 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
             monitored={true}
             selected={contact.id === selectedId}
             onSelect={onSelect}
+            entry={rosterById.get(contact.id)}
             onToggle={onToggle}
+            onViewHistory={onViewHistory}
           />
         ))}
         {moderated.length > 0 && others.length > 0 && <li key="divider" role="separator" className="mx-2 my-2 border-t" />}
@@ -80,7 +76,9 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
             monitored={false}
             selected={contact.id === selectedId}
             onSelect={onSelect}
+            entry={rosterById.get(contact.id)}
             onToggle={onToggle}
+            onViewHistory={onViewHistory}
           />
         ))}
       </ul>

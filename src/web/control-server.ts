@@ -342,13 +342,18 @@ async function handleApi(
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'contacts') {
     const selfId = deps.getSelfId();
-    const contacts = contactDirectory.list().map((c) => ({
-      ...c,
-      monitored: monitoredContacts.isMonitored(c.id),
-      isSelf: c.id === selfId,
-      allowSelf: deps.allowSelf,
-      photoUrl: profilePhotos.photoPath(c.id),
-    }));
+    const contacts = contactDirectory.list().map((c) => {
+      const { strikeCount, block } = deps.manualOverride.getStatus(c.id);
+      return {
+        ...c,
+        monitored: monitoredContacts.isMonitored(c.id),
+        isSelf: c.id === selfId,
+        allowSelf: deps.allowSelf,
+        strikeCount,
+        block,
+        photoUrl: profilePhotos.photoPath(c.id),
+      };
+    });
     sendJson(res, 200, contacts);
     return true;
   }

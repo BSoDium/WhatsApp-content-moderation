@@ -1,6 +1,7 @@
 import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
-import { getRawSetting, getNumberSetting } from '../store/settings.ts';
+import { getNumberSetting } from '../store/settings.ts';
+import { sanitizeWarning, warningModel } from './warning-text.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -16,13 +17,6 @@ interface WarningMessageDependencies {
 }
 
 type WarningMessageResult = { ok: true; text: string } | { ok: false; error: string };
-
-// Falls back to the classifier's own model — same local Ollama install, no extra pull required —
-// but overridable independently since generation and classification are different tasks. Empty
-// WARNING_MODEL (its manifest default) means "inherit", so `||` not `??` on the empty string.
-function warningModel(): string {
-  return getRawSetting('WARNING_MODEL') || getRawSetting('OLLAMA_MODEL');
-}
 
 function buildSystemPrompt(): string {
   return [
@@ -66,17 +60,6 @@ function buildUserPrompt({ message, category, reason, strikeCount, strikeThresho
   ].join('\n');
 }
 
-// Collapses whatever formatting a small local model adds (surrounding quotes, stray newlines,
-// multiple spaces) down to the single plain line an actual text message would be.
-function sanitize(raw: string, maxLength: number): string {
-  const collapsed = raw.replace(/\s+/g, ' ').trim();
-  const unquoted = collapsed.replace(/^["'“‘`]+/, '').replace(/["'”’`]+$/, '').trim();
-  if (unquoted.length <= maxLength) return unquoted;
-  // Math.max guards maxLength <= 1: slice(0, negative) counts from the end
-  // in JS, which would return almost the whole string instead of ~nothing.
-  return `${unquoted.slice(0, Math.max(maxLength - 1, 0)).trimEnd()}…`;
-}
-
 /**
  * Generates a contextual warning message to send back to a contact whose
  * message was just flagged and deleted, instead of a single static string —
@@ -111,7 +94,7 @@ export async function generateWarningMessage(
       options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
     });
 
-    const text = sanitize(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
+    const text = sanitizeWarning(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
     if (!text) throw new Error('empty warning message generated');
 
     return { ok: true, text };

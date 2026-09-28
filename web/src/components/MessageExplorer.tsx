@@ -83,13 +83,7 @@ export function MessageExplorer({
       </div>
 
       <div className="rounded-xl border border-border">
-        {/* table-fixed + an explicit width on every column but Message: in the
-            browser's default auto layout, a cell's max-w/min-w are only hints —
-            long unwrapped content (e.g. the "Classifier error" badge) can still
-            force the whole table wider than its container, which the outer
-            overflow-x-auto then lets you scroll into instead of actually
-            wrapping. Fixed layout makes the header row the sole source of
-            truth for column widths, so Message reliably gets what's left. */}
+        {/* table-fixed with explicit column widths: in auto layout, long unwrapped cells force the table wider than its container instead of wrapping. */}
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>

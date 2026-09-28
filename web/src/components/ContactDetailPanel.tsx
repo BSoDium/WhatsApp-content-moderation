@@ -23,11 +23,7 @@ interface ContactDetailPanelProps {
   onViewHistory: (contactId: string) => void;
 }
 
-// Lets the parent (App.tsx) ask "is it safe to switch away from this
-// contact / close this panel right now" before it discards this component
-// by remounting it with a different `key` — the moderation-context draft
-// below is the one field here with unsaved state that a silent remount
-// would otherwise lose.
+// Lets App.tsx check for unsaved state before a remount would silently lose the moderation-context draft.
 export interface ContactDetailPanelHandle {
   hasUnsavedChanges: () => boolean;
   save: () => Promise<boolean>;
@@ -36,8 +32,6 @@ export interface ContactDetailPanelHandle {
 
 type FieldSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-// How long the "Saved" confirmation stays up before fading back to idle —
-// long enough to register, short enough not to linger and look stuck.
 const SAVED_CONFIRMATION_MS = 2500;
 
 // Mirrors setContext in src/store/monitored-contacts.ts, which stores the trimmed value (all-whitespace as null, surfaced here as '').
@@ -126,8 +120,7 @@ function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThr
   );
 }
 
-// The caller mounts this with `key={contact.id}` so `message` resets by
-// remounting on a new selection, rather than needing an effect to reset it.
+// Mounted with `key={contact.id}` so `message` resets on a new selection.
 export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
   { contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onViewHistory },
   ref,
@@ -137,9 +130,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
   const [contextDraft, setContextDraft] = useState(entry?.context ?? '');
   const [contextSaveState, setContextSaveState] = useState<FieldSaveState>('idle');
   const [contextError, setContextError] = useState<string | null>(null);
-  // The last server value this draft was synced from — same "no unsaved
-  // edit in progress" check SettingsPanel/PolicyEditor use, so a live
-  // update from another tab never clobbers a draft in progress here.
+  // Same synced-value check as SettingsPanel/PolicyEditor, so a live update never clobbers a draft.
   const lastSyncedContext = useRef(entry?.context ?? '');
   const savedConfirmationTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -190,10 +181,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
-  // Only blocks turning it ON: if it's already monitored (e.g. added while
-  // TEST_ALLOW_SELF=1, then the env var got turned back off), the operator
-  // must still be able to turn it back off — locking that too would strand
-  // them with a switch they can see is on but can never touch.
+  // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
   // Guards against a rapid double-click firing two overlapping requests for the same control (each key here is independent, so other controls stay usable).

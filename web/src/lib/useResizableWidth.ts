@@ -63,7 +63,8 @@ function writePersistedWidth(id: string, width: number): void {
 
 function clampToViewport(width: number, min: number, max: number): number {
   const viewportMax = Math.min(max, window.innerWidth);
-  return clamp(width, min, viewportMax);
+  const viewportMin = Math.min(min, viewportMax);
+  return clamp(width, viewportMin, viewportMax);
 }
 
 export function useResizableWidth(
@@ -71,10 +72,12 @@ export function useResizableWidth(
 ): UseResizableWidthResult {
   const { id, defaultWidth, min, max, side = "left", label = "Resize panel" } = options;
 
-  const [width, setWidth] = useState<number>(() => {
+  const [preferredWidth, setPreferredWidth] = useState<number>(() => {
     const persisted = readPersistedWidth(id);
-    return clampToViewport(persisted ?? defaultWidth, min, max);
+    return clamp(persisted ?? defaultWidth, min, max);
   });
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const width = clamp(preferredWidth, Math.min(min, viewportWidth), Math.min(max, viewportWidth));
 
   const widthRef = useRef(width);
   useEffect(() => {
@@ -86,7 +89,7 @@ export function useResizableWidth(
   const commitWidth = useCallback(
     (next: number) => {
       const clamped = clampToViewport(next, min, max);
-      setWidth(clamped);
+      setPreferredWidth(clamped);
       writePersistedWidth(id, clamped);
       return clamped;
     },
@@ -100,20 +103,21 @@ export function useResizableWidth(
       if (timeoutId !== undefined) return;
       timeoutId = setTimeout(() => {
         timeoutId = undefined;
-        const reclamped = clampToViewport(widthRef.current, min, max);
-        if (reclamped !== widthRef.current) {
-          setWidth(reclamped);
-          writePersistedWidth(id, reclamped);
-        }
+        setViewportWidth(window.innerWidth);
       }, RESIZE_LISTENER_THROTTLE_MS);
     };
 
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(document.documentElement);
     window.addEventListener("resize", handleResize);
+    window.visualViewport?.addEventListener("resize", handleResize);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("resize", handleResize);
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     };
-  }, [id, min, max]);
+  }, []);
 
   const resetToDefault = useCallback(() => {
     commitWidth(defaultWidth);
@@ -145,13 +149,7 @@ export function useResizableWidth(
         if (moveEvent.pointerId !== pointerId) return;
         pendingWidth = widthAtClientX(moveEvent.clientX);
         if (rafId !== null) return;
-        // Coalesce to at most one commitWidth per animation frame: a trackpad
-        // or high-poll-rate mouse fires pointermove well past 100/s, and each
-        // commitWidth is a React re-render plus a synchronous sessionStorage
-        // write. Unlike the resize listener's settle-then-fire debounce
-        // (fine there, since viewport size rarely changes mid-gesture), a
-        // drag has to keep tracking the pointer in real time, so this bounds
-        // the rate instead of waiting for movement to pause.
+        // Coalesced to one commit per frame: each commit is a re-render plus a sessionStorage write, and pointermove can exceed 100/s.
         rafId = requestAnimationFrame(() => {
           rafId = null;
           if (pendingWidth !== null) {
@@ -164,18 +162,14 @@ export function useResizableWidth(
       const handleEnd = (endEvent: PointerEvent, commitFinal: boolean) => {
         if (endEvent.pointerId !== pointerId) return;
         if (commitFinal) {
-          // Bypass any pending coalesced frame so the committed width always
-          // matches the pointer's true final position, never a stale rAF
-          // value from a frame that got dropped or hadn't fired yet.
+          // Bypasses a pending coalesced frame so the final width matches the pointer's true position.
           commitWidth(widthAtClientX(endEvent.clientX));
         }
         stopDrag();
       };
 
       const handleUp = (upEvent: PointerEvent) => handleEnd(upEvent, true);
-      // A cancel means the gesture was aborted (touch reinterpreted as a
-      // scroll/back gesture, a dialog stealing focus, ...), not completed —
-      // clean up the same as pointerup, but never commit a final width.
+      // A cancel is an aborted gesture, so clean up without committing a width.
       const handleCancel = (cancelEvent: PointerEvent) => handleEnd(cancelEvent, false);
 
       window.addEventListener("pointermove", handleMove);

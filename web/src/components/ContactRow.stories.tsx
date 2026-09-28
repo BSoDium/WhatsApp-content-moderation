@@ -1,6 +1,6 @@
 import { fn } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FIXTURE_CONTACTS } from '@/lib/fixtures';
+import { FIXTURE_CONTACTS, FIXTURE_ROSTER } from '@/lib/fixtures';
 import { ContactRow } from './ContactRow';
 
 const meta = {
@@ -16,6 +16,7 @@ const meta = {
   args: {
     onSelect: fn(),
     onToggle: fn(async () => {}),
+    onViewHistory: fn(),
   },
 } satisfies Meta<typeof ContactRow>;
 
@@ -26,6 +27,7 @@ export const Unmoderated: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],
     monitored: false,
+    entry: undefined,
     selected: false,
   },
 };
@@ -34,6 +36,7 @@ export const Moderated: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],
     monitored: true,
+    entry: FIXTURE_ROSTER[0],
     selected: false,
   },
 };
@@ -42,6 +45,7 @@ export const Selected: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],
     monitored: true,
+    entry: FIXTURE_ROSTER[0],
     selected: true,
   },
 };
@@ -50,6 +54,7 @@ export const SelfBlocked: Story = {
   args: {
     contact: FIXTURE_CONTACTS.find((contact) => contact.isSelf)!,
     monitored: false,
+    entry: undefined,
     selected: false,
   },
 };
