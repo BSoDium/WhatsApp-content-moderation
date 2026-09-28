@@ -13,6 +13,11 @@ Requirements: [Docker Compose](https://docs.docker.com/compose/install/) and a p
 ```sh
 mkdir whatsapp-moderation && cd whatsapp-moderation
 curl -O https://raw.githubusercontent.com/BSoDium/WhatsApp-content-moderation/main/docker-compose.yml
+```
+
+By default the control app this starts is reachable by anyone on your local network, with a warning banner on the page saying so. **This is the point to decide** whether that's fine for now, or whether to lock it down to one Tailscale identity first — see [Restricting access with Tailscale](#restricting-access-with-tailscale) below, which edits this same `docker-compose.yml` before you start the container. Continue below either way.
+
+```sh
 docker compose up -d
 docker compose exec ollama ollama pull llama3.2:3b
 docker compose logs -f --no-log-prefix app   # scan the QR code shown here; Ctrl+C once connected
@@ -23,8 +28,6 @@ Open `http://<this-machine's-address>:4756` (`http://localhost:4756` on the same
 Everything else — the moderation policy, the classifier model, warning behavior, strike/block timings, and shadow mode itself — starts at a safe default and is edited live from that page, no restart needed. **Shadow mode is on by default**: the app classifies and logs but takes no action. Review the Activity panel against real traffic before turning it off in Settings.
 
 No second WhatsApp number to test with? Add `TEST_ALLOW_SELF: "1"` under `environment:` in `docker-compose.yml` and add your own account to the roster instead.
-
-By default the control app is reachable by anyone on your local network — the page shows a warning banner saying so. See [Restricting access with Tailscale](#restricting-access-with-tailscale) below to lock it down to one identity instead.
 
 To update later: `docker compose pull && docker compose up -d`.
 
@@ -42,7 +45,7 @@ Authenticated via Tailscale identity, not a password or shared secret — see [`
 
 ## Restricting access with Tailscale
 
-Requires [Tailscale](https://tailscale.com) installed on the host. Edit `docker-compose.yml`:
+Requires [Tailscale](https://tailscale.com) installed on the host. Edit the `docker-compose.yml` from the quick start above, before running `docker compose up -d`:
 
 ```yaml
 services:
@@ -51,7 +54,7 @@ services:
       ALLOWED_TAILSCALE_LOGIN: you@example.com   # exactly what `tailscale status` reports for your own login
 ```
 
-Then, with the app running:
+Then continue the quick start (`docker compose up -d`, pulling the model, scanning the QR code) and, once the app is running:
 
 ```sh
 sudo tailscale serve --bg 4756
