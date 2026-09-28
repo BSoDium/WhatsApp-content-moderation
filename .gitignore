@@ -22,6 +22,13 @@ auth_info*/
 *.sqlite-shm
 .env
 
+# The app itself no longer reads this (the policy lives in SQLite now — see
+# docs/decisions.md's "Dropping `.env`, `config/policy.md`, and first-boot
+# file imports"), but anyone upgrading from an older release can still have
+# a real one on disk, describing a real person — never let it get swept up
+# by a broad `git add`.
+config/policy.md
+
 # Opt-in local override to build from source instead of pulling the
 # published image — see docker-compose.override.yml.example (the template,
 # stays tracked) and README "Building from source". Exact name, not a
