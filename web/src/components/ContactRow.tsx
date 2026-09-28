@@ -38,7 +38,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
 
   return (
     <li
-      className={cn('flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent', selected && 'bg-accent')}
+      className={cn('group flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
@@ -62,6 +62,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
             <Button
               variant="ghost"
               size="icon-lg"
+              className="[@media(hover:hover)]:opacity-0 group-focus-within:opacity-100! group-hover:opacity-100! focus-visible:opacity-100!"
               aria-label={`View message history for ${contact.name}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -76,7 +77,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={monitored ? 'default' : 'ghost'}
+              variant={monitored ? 'default' : 'outline'}
               size="icon-lg"
               aria-label={label}
               aria-pressed={monitored}
