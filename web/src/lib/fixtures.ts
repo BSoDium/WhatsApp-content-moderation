@@ -84,6 +84,18 @@ export const FIXTURE_STATS: Stats = {
     { category: 'scam', count: 2 },
     { category: 'harassment', count: 2 },
   ],
+  trend: { monitoredCount: 1, activeBlocks: 0, totalFlaggedDeleted: 3, totalWarningsSent: -2, totalClassifierErrors: 1, totalLogged: 48 },
+};
+
+export const FIXTURE_STATS_EMPTY: Stats = {
+  monitoredCount: 0,
+  activeBlocks: 0,
+  totalLogged: 0,
+  totalFlaggedDeleted: 0,
+  totalWarningsSent: 0,
+  totalClassifierErrors: 0,
+  byCategory: [],
+  trend: { monitoredCount: 0, activeBlocks: 0, totalFlaggedDeleted: 0, totalWarningsSent: 0, totalClassifierErrors: 0, totalLogged: 0 },
 };
 
 export const FIXTURE_AUDIT_LOG: AuditLogEntry[] = [

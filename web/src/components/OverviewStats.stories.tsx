@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FIXTURE_STATS } from '@/lib/fixtures';
+import { FIXTURE_STATS, FIXTURE_STATS_EMPTY } from '@/lib/fixtures';
 import { withMockApi } from '../../.storybook/withMockApi';
 import { OverviewStats } from './OverviewStats';
 
@@ -20,6 +20,10 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   decorators: [withMockApi([{ match: '/api/stats', body: FIXTURE_STATS }])],
+};
+
+export const Empty: Story = {
+  decorators: [withMockApi([{ match: '/api/stats', body: FIXTURE_STATS_EMPTY }])],
 };
 
 export const Loading: Story = {

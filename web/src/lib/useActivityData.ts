@@ -73,6 +73,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     try {
       const [statsResult, page] = await Promise.all([apiFetch<Stats>('/api/stats'), fetchPage()]);
       if (seq !== requestSeq.current) return;
+      opened.current = true;
       setStats(statsResult);
       setEntries(page.entries);
       setNextBefore(page.nextBefore);
@@ -105,12 +106,8 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
 
   useEffect(() => {
     if (!open) return;
-    if (opened.current) {
-      loadPage();
-    } else {
-      opened.current = true;
-      refresh();
-    }
+    if (opened.current) loadPage();
+    else refresh();
   }, [open, loadPage, refresh]);
 
   // Live audit-log entries while the panel is open (src/web/control-server.ts's
