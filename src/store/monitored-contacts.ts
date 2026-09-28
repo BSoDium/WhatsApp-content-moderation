@@ -2,6 +2,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { monitoredContacts } from './schema.ts';
+import { getNumberSetting } from './settings.ts';
 import type { MonitoredContactRecord } from '../types.ts';
 
 export interface MonitoredContact {
@@ -9,6 +10,7 @@ export interface MonitoredContact {
   escalationEnabled: boolean;
   addedAt: number;
   context: string | null;
+  callNuisanceThreshold: number | null;
 }
 
 function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
@@ -17,6 +19,7 @@ function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
     escalationEnabled: Boolean(row.escalation_enabled),
     addedAt: row.added_at,
     context: row.context,
+    callNuisanceThreshold: row.call_nuisance_threshold,
   };
 }
 
@@ -106,6 +109,36 @@ export function setContext(contactId: string, context: string | null): boolean {
     .run();
   if (changes > 0) emitControlEvent('roster');
   return changes > 0;
+}
+
+/**
+ * Sets or clears a contact's per-contact nuisance-call threshold override —
+ * null falls back to the global NUISANCE_CALL_THRESHOLD setting, same
+ * null-means-default convention as setContext above.
+ *
+ * @returns {boolean} whether contactId was on the roster to update
+ */
+export function setCallNuisanceThreshold(contactId: string, threshold: number | null): boolean {
+  const { changes } = getOrm()
+    .update(monitoredContacts)
+    .set({ call_nuisance_threshold: threshold })
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .run();
+  if (changes > 0) emitControlEvent('roster');
+  return changes > 0;
+}
+
+/**
+ * Resolves the nuisance-call threshold that actually applies to contactId:
+ * their own override if set, otherwise the global default.
+ */
+export function getEffectiveNuisanceThreshold(contactId: string): number {
+  const row = getOrm()
+    .select({ call_nuisance_threshold: monitoredContacts.call_nuisance_threshold })
+    .from(monitoredContacts)
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .get();
+  return row?.call_nuisance_threshold ?? getNumberSetting('NUISANCE_CALL_THRESHOLD');
 }
 
 /**

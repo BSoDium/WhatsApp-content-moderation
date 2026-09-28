@@ -8,6 +8,13 @@ export const strikes = sqliteTable('strikes', {
   updated_at: integer().notNull(),
 });
 
+export const callStrikes = sqliteTable('call_strikes', {
+  contact_id: text().primaryKey(),
+  unanswered_count: integer().notNull().default(0),
+  strike_count: integer().notNull().default(0),
+  updated_at: integer().notNull(),
+});
+
 export const blocks = sqliteTable(
   'blocks',
   {
@@ -49,6 +56,8 @@ export const monitoredContacts = sqliteTable('monitored_contacts', {
   escalation_enabled: integer().notNull().default(1),
   added_at: integer().notNull(),
   context: text(),
+  // null = use the global NUISANCE_CALL_THRESHOLD setting.
+  call_nuisance_threshold: integer(),
 });
 
 export const contacts = sqliteTable('contacts', {
