@@ -1,10 +1,10 @@
 # WhatsApp-content-moderation
 
-A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from an operator-chosen set of monitored contacts through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks a contact after repeated strikes (unless that contact has escalation turned off).
+A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from an operator-chosen set of monitored contacts through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks a contact after repeated strikes (unless that contact has escalation turned off). Repeated unanswered calls from a monitored contact are handled the same way, independently of messages: past a configurable threshold, further calls are rejected and warned, escalating to a block.
 
 ## Status
 
-**Pre-release.** The moderation pipeline, block/unblock scheduler, manual override routines, and the multi-contact web control app are all built and have been validated against real WhatsApp accounts — see [`docs/decisions.md`](docs/decisions.md) for how, and for the full design history. This has **not** been run against a real contact for real moderation yet: the moderation policy is still the placeholder default. Leave shadow mode on (the default) and review its logs before pointing this at anyone — see [`docs/roadmap.md`](docs/roadmap.md) for the remaining checklist.
+**Pre-release.** The moderation pipeline, block/unblock scheduler, manual override routines, and the multi-contact web control app are all built and have been validated against real WhatsApp accounts — see [`docs/decisions.md`](docs/decisions.md) for how, and for the full design history. This has **not** been run against a real contact for real moderation yet: the moderation policy is still the placeholder default. Leave shadow mode on (the default) and review its logs before pointing this at anyone — see [`docs/roadmap.md`](docs/roadmap.md) for the remaining checklist. Nuisance-call detection is newer and, unlike the rest, hasn't yet been confirmed against a real WhatsApp call — see [Validating nuisance-call handling](#validating-nuisance-call-handling) before relying on it.
 
 ## Quick start
 
@@ -33,11 +33,11 @@ To update later: `docker compose pull && docker compose up -d`.
 
 ## Web control app
 
-A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel, and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes." The page follows the OS/browser's light/dark preference automatically.
+A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel, a **nuisance calls** block (call strikes, unanswered-call count, and an optional per-contact override of the nuisance call threshold), and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes." The page follows the OS/browser's light/dark preference automatically.
 
 - **Activity panel** — roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message, including anything already deleted, since the audit log is the only remaining record of it.
 - **Policy** — the global moderation policy the classifier judges every message against. Starts as a placeholder ("flag nothing until this is replaced") — write a real one here before trusting this with a real contact.
-- **Settings** — every classifier/warning/strike/buffer tuning knob, including shadow mode itself, grouped by area, saved on blur/toggle. Applies immediately.
+- **Settings** — every classifier/warning/strike/buffer/nuisance-call tuning knob, including shadow mode itself, grouped by area, saved on blur/toggle. Applies immediately.
 
 ### Auth model
 
@@ -106,6 +106,10 @@ Incoming messages from monitored contacts are debounced, classified, and — if 
 
 Every monitored contact can be paused, resumed, or unblocked ahead of schedule, independently of every other contact, driven by the web control app rather than WhatsApp chat commands — see [`docs/decisions.md`](docs/decisions.md#manual-override-channel-issue-9) for why. `pause`/`resume` stop/resume classifying and acting on incoming messages for that contact entirely (resets on restart); `unblock` unblocks immediately, ahead of the jittered schedule.
 
+### Nuisance call detection
+
+Repeated unanswered voice/video calls from a monitored contact are tracked independently of message strikes: once a contact's unanswered-call count crosses the **nuisance call threshold** (a global default, overridable per contact — a specific harasser can get a stricter number than everyone else), the bot rejects the call outright and replies with a warning, and records a call strike toward its own **nuisance call strike threshold**, which blocks the contact the same way repeated bad messages do. Answering a call resets the unanswered count and decays the strike count by one. Auto-rejecting can be turned off in Settings to fall back to warning-only. Shadow mode and the escalation toggle apply here exactly as they do for messages. See [`docs/decisions.md`](docs/decisions.md#nuisance-call-detection) for the full design.
+
 ## Development
 
 Requirements: Node.js 24+ (the backend runs TypeScript directly via Node's built-in stripping — no separate build step) and [Ollama](https://ollama.com), running locally, with a model pulled.
@@ -128,6 +132,10 @@ Sending real WhatsApp messages back and forth for every change is slow and, for 
 - **Block/unblock**: needs a real second WhatsApp account's JID (WhatsApp doesn't let you block your own account) — `BLOCK_TEST_JID=15551234567@s.whatsapp.net npm run prototype:block-unblock`. Check your phone directly too: `fetchBlocklist()` can return a stale snapshot for a few seconds right after a block/unblock call.
 
 Only the full live pipeline (`npm start`) and block/unblock genuinely require a live WhatsApp round-trip; everything else runs offline or against a stub.
+
+#### Validating nuisance-call handling
+
+The call-pipeline logic itself (`src/pipeline/call-pipeline.ts`) is covered by `npm test` with fake actions, no WhatsApp connection needed. What can't be simulated is whether Baileys' `call` event and `rejectCall()` actually behave as documented against a real WhatsApp connection — `npm run prototype:nuisance-calls` logs every `call` event it receives (status, id, video/voice, who from) and, with `REJECT=1` set, calls `rejectCall()` on each offer so you can confirm on your phone that the call actually stops ringing. Needs a second number to call from, same as block/unblock.
 
 The first run needs a WhatsApp QR code scanned interactively; `index.ts` stores the resulting session in `auth_info/`, reused on later runs. `deleteForMe` (and any other app-state action) needs a sync key WhatsApp pushes to a companion device shortly after linking — give a **freshly** linked `auth_info/` a few minutes to sit open and idle before relying on it; `npm run prototype:delete-for-me` validates this in isolation (`TEST_ALLOW_SELF=1` to test against your own "Message yourself" chat, no second number needed). If `chatModify` throws `App state key not present!` well after linking, log out the device from WhatsApp → Linked Devices and relink cleanly.
 

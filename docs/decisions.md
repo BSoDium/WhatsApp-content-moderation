@@ -1491,3 +1491,86 @@ baseline adopted rather than blindly executed) stands as written.
   pre-ORM tables keep SQLite's legacy nullable text primary keys. No code
   path ever writes a NULL key, and a future migration that rebuilds one
   of those tables converges them.
+
+## Nuisance call detection
+
+Repeated unanswered WhatsApp calls from a contact are handled the same
+way as repeated bad messages — reject/warn, escalate to a block — but
+deliberately as an independent path, not folded into the existing
+message-strike machinery.
+
+- *A separate counter, a separate table.* `call_strikes`
+  (`src/store/call-strikes.ts`) tracks two numbers per contact:
+  `unanswered_count` (how many calls in a row went unanswered) and
+  `strike_count` (how many of those crossed the nuisance threshold and
+  got rejected/warned). Sharing `strikes`/`STRIKE_THRESHOLD` with
+  messages would conflate two different violations under one number a
+  contact could cross by mixing spammy messages with nuisance calls,
+  neither of which was actually severe enough on its own — and would
+  make the two features impossible to tune independently
+  (`NUISANCE_CALL_THRESHOLD`/`NUISANCE_CALL_STRIKE_THRESHOLD` vs.
+  `STRIKE_THRESHOLD`).
+- *Reuses the block escalation, not the message pipeline.* Once a
+  nuisance call's strike crosses `NUISANCE_CALL_STRIKE_THRESHOLD`, it
+  reaches a block through the exact same `maybeBlockContact`
+  (`src/pipeline/escalation.ts`, extracted out of
+  `moderation-pipeline.ts` for this) that message strikes use —
+  `BLOCK_DURATION_MS`/`BLOCK_JITTER_MS`, the per-contact `escalation`
+  toggle, and the block-then-record ordering invariant (see "The
+  block/unblock cycle is itself a ban signal" above) all apply
+  identically. Two independent strike counters converge on one block
+  mechanism, rather than each reimplementing it.
+- *Proactive at `offer`, not reactive at `timeout`.* Baileys' `call`
+  event fires `offer` when a call starts ringing and (among others)
+  `timeout` once it rings out unanswered. "Automatically dismiss the
+  call" only means anything at `offer` time — rejecting a call that's
+  already timed out is a no-op, the call is already over. So the
+  nuisance check (and the reject+warn action) happens on `offer`,
+  using the unanswered-call count accumulated from *previous* calls;
+  `timeout` itself only increments that count for next time.
+- *Distinguishing our own reject from a manual decline.* Once we
+  `rejectCall()` a nuisance call, Baileys reports that back as a
+  `reject` status event on the same call, indistinguishable on the
+  wire from the contact's own phone declining it. Counting it again
+  as a fresh "unanswered call" would double-count a call this app
+  already turned into a strike a moment earlier. `call-pipeline.ts`
+  tracks call ids it rejected itself in a plain in-memory `Set`,
+  checked (and cleared) on the matching `reject`/`accept` event.
+  Deliberately not persisted: a call resolves within seconds, so an
+  entry's lifetime is always short, and a `reject` event that never
+  arrives for some `offer` we tried to reject just leaves a few bytes
+  sitting in memory until the process restarts — a call id, not
+  anything worth building expiry logic for.
+- *A per-contact threshold override, not a fixed global number.* The
+  motivating case is explicitly asymmetric: two unanswered calls from
+  most contacts is unremarkable, but the same two calls from someone
+  already harassing you should count immediately.
+  `monitored_contacts.call_nuisance_threshold` is a nullable override
+  (null = use the global `NUISANCE_CALL_THRESHOLD`), resolved by
+  `getEffectiveNuisanceThreshold` — the same null-means-default
+  convention `context` already uses on the same table. The
+  block-escalation threshold (`NUISANCE_CALL_STRIKE_THRESHOLD`)
+  stays global-only, matching `STRIKE_THRESHOLD`'s own precedent — the
+  ask was specifically about how much *tolerance* a contact gets
+  before being flagged, not a second per-contact number to tune how
+  quickly a flagged contact gets blocked.
+- *Audit log reuse, not a second log table.* Call events reuse
+  `audit_log` via the same synthetic-message trick
+  `moderation-pipeline.ts` already uses for `warning_sent` (a
+  descriptive `message` string, a faked `Classification`), with new
+  `action` values (`call_received`, `call_unanswered`,
+  `call_nuisance_warned`, …) rather than a dedicated table. A
+  rejected/unanswered call has no message content to preserve the way
+  a deleted message does, so the permanence argument for a separate
+  table doesn't apply here — and reusing `audit_log` means the
+  existing per-contact history view and message explorer pick up call
+  events for free.
+- *Unverified against a real call.* Baileys exposes `sock.ev.on('call',
+  ...)` and `sock.rejectCall()`, and both ride the same linked-device
+  connection `block()`/`unblock()` already use successfully — but
+  neither had ever been exercised in this codebase before this
+  feature. `src/prototype/test-nuisance-calls.ts` (`npm run
+  prototype:nuisance-calls`) exists specifically to confirm the event
+  shape and that a rejected call actually stops ringing, the same way
+  `test-block-unblock.ts` validates block/unblock — see README
+  "Validating nuisance-call handling".
