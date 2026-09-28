@@ -7,11 +7,8 @@ export interface StatTileDef {
   key: StatKey;
   label: string;
   icon: LucideIcon;
-  // A rising count is a bad sign (errors) rather than the system doing its job.
-  upIsBad?: boolean;
   // Only classifier errors are flagged red — a block/deletion is the system working as intended.
   warnWhenNonZero?: boolean;
-  allClearText?: string;
 }
 
 export const STAT_TILES: Record<StatKey, StatTileDef> = {
@@ -19,7 +16,7 @@ export const STAT_TILES: Record<StatKey, StatTileDef> = {
   activeBlocks: { key: 'activeBlocks', label: 'Blocked', icon: Ban },
   totalFlaggedDeleted: { key: 'totalFlaggedDeleted', label: 'Deleted', icon: Trash2 },
   totalWarningsSent: { key: 'totalWarningsSent', label: 'Warnings', icon: TriangleAlert },
-  totalClassifierErrors: { key: 'totalClassifierErrors', label: 'Errors', icon: CircleAlert, upIsBad: true, warnWhenNonZero: true, allClearText: 'All clear' },
+  totalClassifierErrors: { key: 'totalClassifierErrors', label: 'Errors', icon: CircleAlert, warnWhenNonZero: true },
   totalLogged: { key: 'totalLogged', label: 'Logged', icon: ScrollText },
 };
 

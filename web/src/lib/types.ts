@@ -57,8 +57,6 @@ export interface Stats {
   totalWarningsSent: number;
   totalClassifierErrors: number;
   byCategory: { category: string; count: number }[];
-  // Change in each counter over the trend window; not reported by the server yet.
-  trend?: Partial<Record<'monitoredCount' | 'activeBlocks' | 'totalLogged' | 'totalFlaggedDeleted' | 'totalWarningsSent' | 'totalClassifierErrors', number>>;
 }
 
 // Matches every action moderation-pipeline.ts/call-pipeline.ts's logMessage() can record.

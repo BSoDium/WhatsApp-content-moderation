@@ -25,7 +25,7 @@ export function StatsCards({ stats }: { stats: Stats | null }) {
     <div className="space-y-3">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {CARD_KEYS.map((key) => (
-          <StatTile key={key} def={STAT_TILES[key]} value={tileValue(stats, key)} delta={stats.trend?.[key]} />
+          <StatTile key={key} def={STAT_TILES[key]} value={tileValue(stats, key)} />
         ))}
       </dl>
 

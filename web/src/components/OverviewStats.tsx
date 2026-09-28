@@ -37,7 +37,7 @@ export function OverviewStats() {
     <div>
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {OVERVIEW_KEYS.map((key) => (
-          <StatTile key={key} def={STAT_TILES[key]} value={tileValue(stats, key)} delta={stats.trend?.[key]} />
+          <StatTile key={key} def={STAT_TILES[key]} value={tileValue(stats, key)} />
         ))}
       </dl>
       {error && <p className="mt-1 text-xs text-muted-foreground">Showing last known values — {error}</p>}

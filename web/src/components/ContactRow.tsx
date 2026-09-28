@@ -47,11 +47,11 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
         <div className="flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
           <span className="min-w-0 truncate">{relativeTime(contact.lastMessageAt)}</span>
           <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
-            <Separator orientation="vertical" className="h-3" />
+            <Separator orientation="vertical" className="h-3.5 bg-muted-foreground/50" />
             {strikeCount} {strikeCount === 1 ? 'strike' : 'strikes'}
           </span>
           <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
-            <Separator orientation="vertical" className="h-3" />
+            <Separator orientation="vertical" className="h-3.5 bg-muted-foreground/50" />
             {block ? 'Blocked' : 'Not blocked'}
           </span>
         </div>
@@ -60,7 +60,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon-lg"
               aria-label={`View message history for ${contact.name}`}
               onClick={(event) => {
@@ -73,19 +73,21 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
           </TooltipTrigger>
           <TooltipContent>Message history</TooltipContent>
         </Tooltip>
-        <Button
-          variant={monitored ? 'default' : 'outline'}
-          size="lg"
-          className="w-32 justify-between"
-          title={selfBlocked ? label : undefined}
-          aria-label={label}
-          aria-pressed={monitored}
-          disabled={pending || selfBlocked}
-          onClick={handleToggle}
-        >
-          {monitored ? 'Moderated' : 'Moderate'}
-          {monitored ? <ShieldCheck data-icon="inline-end" /> : <ShieldOff data-icon="inline-end" />}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={monitored ? 'default' : 'ghost'}
+              size="icon-lg"
+              aria-label={label}
+              aria-pressed={monitored}
+              disabled={pending || selfBlocked}
+              onClick={handleToggle}
+            >
+              {monitored ? <ShieldCheck /> : <ShieldOff />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{label}</TooltipContent>
+        </Tooltip>
       </div>
     </li>
   );
