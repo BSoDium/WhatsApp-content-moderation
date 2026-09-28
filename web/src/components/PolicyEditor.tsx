@@ -40,7 +40,12 @@ export function PolicyEditor({ open, onOpenChange }: PolicyEditorProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent size="wide" className="gap-0" aria-describedby="policy-editor-description">
+      <SheetContent
+        size="wide"
+        className="gap-0"
+        aria-describedby="policy-editor-description"
+        resizable={{ id: 'policy-editor', defaultWidth: 640, min: 420, max: 1000, label: 'Resize policy editor' }}
+      >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Moderation policy</SheetTitle>
           <SheetDescription id="policy-editor-description">

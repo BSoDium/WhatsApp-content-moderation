@@ -90,7 +90,12 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent size="wide" className="gap-0" aria-describedby="settings-panel-description">
+      <SheetContent
+        size="wide"
+        className="gap-0"
+        aria-describedby="settings-panel-description"
+        resizable={{ id: 'settings-panel', defaultWidth: 640, min: 420, max: 900, label: 'Resize settings panel' }}
+      >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription id="settings-panel-description">

@@ -22,11 +22,10 @@ auth_info*/
 *.sqlite-shm
 .env
 
-# The app itself no longer reads this (the policy lives in SQLite now — see
-# docs/decisions.md's "Dropping `.env`, `config/policy.md`, and first-boot
-# file imports"), but anyone upgrading from an older release can still have
-# a real one on disk, describing a real person — never let it get swept up
-# by a broad `git add`.
+# The moderation policy now lives in SQLite (src/store/settings.ts), not this
+# file — but an operator upgrading from an older release may still have a
+# real config/policy.md on disk with a real, possibly personal policy in it.
+# Keep it gitignored defensively even though the app no longer reads it.
 config/policy.md
 
 # Opt-in local override to build from source instead of pulling the

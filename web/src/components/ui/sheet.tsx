@@ -5,7 +5,23 @@ import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { ResizeHandle } from "@/components/ResizeHandle"
+import { useResizableWidth } from "@/lib/useResizableWidth"
+import { useMediaQuery } from "@/lib/useMediaQuery"
 import { XIcon } from "lucide-react"
+
+// Below this, a "wide" sheet stays the full-width mobile overlay it always
+// was — resizing (and its handle) only makes sense once there's slack
+// either side of the panel to resize into.
+const RESIZABLE_QUERY = "(min-width: 640px)"
+
+export interface SheetResizableConfig {
+  id: string
+  defaultWidth: number
+  min: number
+  max: number
+  label?: string
+}
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -51,18 +67,35 @@ function SheetContent({
   side = "right",
   size = "default",
   showCloseButton = true,
+  resizable,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   size?: "default" | "wide"
   showCloseButton?: boolean
+  resizable?: SheetResizableConfig
 }) {
+  const canResize = useMediaQuery(RESIZABLE_QUERY) && (side === "left" || side === "right")
+  // A handle on a right-anchored panel sits on its LEFT edge (dragging
+  // left grows it); on a left-anchored panel it's the mirror image.
+  const { width, handleProps } = useResizableWidth({
+    id: resizable?.id ?? `sheet-${side}`,
+    defaultWidth: resizable?.defaultWidth ?? 640,
+    min: resizable?.min ?? 420,
+    max: resizable?.max ?? 1100,
+    side: side === "right" ? "left" : "right",
+    label: resizable?.label ?? "Resize panel",
+  })
+  const isResizable = size === "wide" && resizable !== undefined
+  const resizeActive = isResizable && canResize
+
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         data-side={side}
+        style={resizeActive ? { width, maxWidth: "none" } : undefined}
         className={cn(
           "fixed z-50 flex flex-col gap-4 bg-popover bg-clip-padding text-sm text-popover-foreground shadow-lg transition duration-200 ease-in-out data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-3/4 data-[side=left]:border-r data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-3/4 data-[side=right]:border-l data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-[side=bottom]:data-open:slide-in-from-bottom-10 data-[side=left]:data-open:slide-in-from-left-10 data-[side=right]:data-open:slide-in-from-right-10 data-[side=top]:data-open:slide-in-from-top-10 data-closed:animate-out data-closed:fade-out-0 data-[side=bottom]:data-closed:slide-out-to-bottom-10 data-[side=left]:data-closed:slide-out-to-left-10 data-[side=right]:data-closed:slide-out-to-right-10 data-[side=top]:data-closed:slide-out-to-top-10",
           // Scoped with the same data-[side=] variant as the defaults above so cn()'s tailwind-merge dedup drops the conflicting default, instead of the two competing on CSS specificity.
@@ -72,6 +105,9 @@ function SheetContent({
         )}
         {...props}
       >
+        {resizeActive && (
+          <ResizeHandle {...handleProps} className={cn("absolute inset-y-0", side === "right" ? "left-0" : "right-0")} />
+        )}
         {children}
         {showCloseButton && (
           <SheetPrimitive.Close data-slot="sheet-close" asChild>

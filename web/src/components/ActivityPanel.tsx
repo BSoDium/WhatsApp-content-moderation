@@ -19,7 +19,12 @@ export function ActivityPanel({ open, onOpenChange, initialContactId, contacts }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent size="wide" className="gap-0" aria-describedby="activity-panel-description">
+      <SheetContent
+        size="wide"
+        className="gap-0"
+        aria-describedby="activity-panel-description"
+        resizable={{ id: 'activity-panel', defaultWidth: 768, min: 480, max: 1200, label: 'Resize activity panel' }}
+      >
         <SheetHeader className="border-b border-border">
           <SheetTitle>Moderation activity</SheetTitle>
           <SheetDescription id="activity-panel-description">
