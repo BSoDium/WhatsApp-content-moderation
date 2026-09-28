@@ -3,8 +3,8 @@
 # pull the latest commit (keeps scripts/*.sh and the compose files current)
 # and restart the app service against the latest published image — pass
 # --build to instead rebuild from your local source (needs
-# docker-compose.override.yml, see docker-compose.override.yml.example).
-# The packaged deploy (a bare docker-compose.yml with no repo checkout) has
+# compose.override.yml, see compose.override.yml.example).
+# The packaged deploy (a bare compose.yml with no repo checkout) has
 # no local commits to pull — just `docker compose pull app && docker compose
 # up -d app` directly. auth_info/ and data/ are gitignored and untouched by
 # this either way.

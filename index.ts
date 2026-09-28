@@ -52,7 +52,7 @@ if (RAW_CONTROL_PORT && (!Number.isInteger(CONTROL_PORT) || CONTROL_PORT <= 0)) 
 if (!ALLOWED_TAILSCALE_LOGIN) {
   // Deliberately a plain, unmissable banner rather than a structured pino
   // log line: this app no longer refuses to start over a missing Tailscale
-  // login (see control-server.ts), and the packaged docker-compose.yml
+  // login (see control-server.ts), and the packaged compose.yml
   // ships with ALLOWED_TAILSCALE_LOGIN commented out — a JSON log line
   // alone is easy to scroll past in `docker compose logs`.
   printWarningBanner([
