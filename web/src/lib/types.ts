@@ -22,12 +22,13 @@ export interface RosterEntry {
   paused: boolean;
   strikeCount: number;
   block: { unblockAt: number } | null;
+  callNuisance: { unansweredCount: number; strikeCount: number; threshold: number; thresholdOverride: number | null };
 }
 
 // Matches src/store/settings.ts's SettingDef/SettingView shape.
 export interface Setting {
   key: string;
-  section: 'general' | 'classifier' | 'warning' | 'strikes';
+  section: 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
   label: string;
   description: string;
   type: 'string' | 'int' | 'float' | 'bool';
@@ -62,8 +63,21 @@ export interface Stats {
   byCategory: { category: string; count: number }[];
 }
 
-// Matches every action moderation-pipeline.ts's logMessage() can record.
-export type AuditAction = 'none' | 'delete+warn' | 'warning_sent' | 'classifier_error' | 'action_failed' | 'shadow';
+// Matches every action moderation-pipeline.ts/call-pipeline.ts's logMessage() can record.
+export type AuditAction =
+  | 'none'
+  | 'delete+warn'
+  | 'warning_sent'
+  | 'classifier_error'
+  | 'action_failed'
+  | 'shadow'
+  | 'call_received'
+  | 'call_unanswered'
+  | 'call_answered'
+  | 'call_nuisance_warned'
+  | 'call_reject_failed'
+  | 'call_warn_failed'
+  | 'call_shadow';
 
 export interface AuditLogEntry {
   id: number;

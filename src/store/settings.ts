@@ -8,7 +8,7 @@ import type { SettingRecord } from '../types.ts';
 
 const logger = createLogger('settings');
 
-export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes';
+export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';
 
 export interface SettingDef {
@@ -159,6 +159,41 @@ export const SETTINGS: readonly SettingDef[] = [
     type: 'int',
     default: '7000',
     min: 0,
+  },
+  {
+    key: 'NUISANCE_CALL_THRESHOLD',
+    section: 'calls',
+    label: 'Nuisance call threshold',
+    description: 'Unanswered calls tolerated before further calls from that contact are treated as harassment. Overridable per contact.',
+    type: 'int',
+    default: '2',
+    min: 0,
+  },
+  {
+    key: 'NUISANCE_CALL_STRIKE_THRESHOLD',
+    section: 'calls',
+    label: 'Nuisance call strike threshold',
+    description: 'Nuisance-flagged calls before a block is triggered — independent from the message strike threshold.',
+    type: 'int',
+    default: '3',
+    min: 1,
+  },
+  {
+    key: 'NUISANCE_CALL_AUTO_REJECT',
+    section: 'calls',
+    label: 'Auto-reject nuisance calls',
+    description: 'Reject the call itself once it crosses the threshold, in addition to sending the warning. Turn off to only ever send the warning and let the call keep ringing.',
+    type: 'bool',
+    default: 'true',
+  },
+  {
+    key: 'NUISANCE_CALL_WARNING_MESSAGE',
+    section: 'calls',
+    label: 'Nuisance call warning message',
+    description: "Sent to a contact once their calls are flagged as nuisance. {strikes} and {threshold} are replaced with the contact's current call-strike count and NUISANCE_CALL_STRIKE_THRESHOLD.",
+    type: 'string',
+    default: "Please stop calling repeatedly without a reply — this is strike {strikes} of {threshold}. Further calls may result in you being blocked.",
+    required: true,
   },
 ];
 

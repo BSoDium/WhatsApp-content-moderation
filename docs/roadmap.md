@@ -41,3 +41,7 @@ got `HANDOFF.md` retired in the first place.
   hardware" for why this matters and isn't just a formality.
 - Ship shadow mode first (#7) and watch its log for false positives before
   enabling real deletion/blocking.
+- Nuisance call detection is newer than the rest and hasn't been confirmed
+  against a real call yet — run `npm run prototype:nuisance-calls` against a
+  second number first (see README "Validating nuisance-call handling")
+  before relying on the auto-reject.

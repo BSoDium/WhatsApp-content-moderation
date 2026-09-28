@@ -46,10 +46,16 @@ export interface MonitoredContactRecord {
   escalation_enabled: number;
   added_at: number;
   context: string | null;
+  call_nuisance_threshold: number | null;
 }
 
 export interface StrikeRecord {
   count: number;
+}
+
+export interface CallStrikeRecord {
+  unanswered_count: number;
+  strike_count: number;
 }
 
 export interface SettingRecord {

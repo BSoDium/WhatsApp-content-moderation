@@ -23,3 +23,7 @@ export function block(sock: WASocket, jid: string) {
 export function unblock(sock: WASocket, jid: string) {
   return sock.updateBlockStatus(jid, 'unblock');
 }
+
+export function rejectCall(sock: WASocket, callId: string, callFrom: string) {
+  return sock.rejectCall(callId, callFrom);
+}

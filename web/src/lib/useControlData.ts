@@ -147,7 +147,38 @@ export function useControlData(initialSelectedId: string | null = null) {
     [refreshRoster],
   );
 
+  // Same throw-on-failure contract as setContext above, for the same reason: ContactDetailPanel's own save-on-blur field state needs the failure itself, not just the shared banner.
+  const setCallNuisanceThreshold = useCallback(
+    async function setCallNuisanceThreshold(contactId: string, threshold: number | null): Promise<true> {
+      try {
+        await apiFetch(`/api/roster/${encodeURIComponent(contactId)}/call-nuisance-threshold`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threshold }),
+        });
+        await refreshRoster();
+        return true;
+      } catch (error: unknown) {
+        throw new Error(errorMessage(error));
+      }
+    },
+    [refreshRoster],
+  );
+
   const dismissError = useCallback(() => setError(null), []);
 
-  return { contacts, roster, selectedId, setSelectedId, error, dismissError, setMonitored, runCommand, setEscalation, setContext, initialLoadComplete };
+  return {
+    contacts,
+    roster,
+    selectedId,
+    setSelectedId,
+    error,
+    dismissError,
+    setMonitored,
+    runCommand,
+    setEscalation,
+    setContext,
+    setCallNuisanceThreshold,
+    initialLoadComplete,
+  };
 }

@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ArrowLeft, CircleAlert, History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,6 +19,7 @@ interface ContactDetailPanelProps {
   onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
   onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
   onSetContext: (contactId: string, context: string) => Promise<true>;
+  onSetCallNuisanceThreshold: (contactId: string, threshold: number | null) => Promise<true>;
   onViewHistory: (contactId: string) => void;
 }
 
@@ -32,7 +34,7 @@ export interface ContactDetailPanelHandle {
   discard: () => void;
 }
 
-type ContextSaveState = 'idle' | 'saving' | 'saved' | 'error';
+type FieldSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 // How long the "Saved" confirmation stays up before fading back to idle —
 // long enough to register, short enough not to linger and look stuck.
@@ -43,16 +45,97 @@ function normalizeContext(context: string): string {
   return context.trim();
 }
 
+interface CallNuisanceThresholdFieldProps {
+  contactId: string;
+  thresholdOverride: number | null;
+  // The *effective* threshold (override ?? global default) — only usable as "the current default" in the placeholder/description when no override is set; once one is set this no longer reflects the global value at all, and the roster API doesn't separately expose the raw global setting.
+  effectiveThreshold: number;
+  disabled: boolean;
+  onSave: (contactId: string, threshold: number | null) => Promise<true>;
+}
+
+// A single-field, save-on-blur override (empty = "use the global default"), simpler than the moderation-context textarea above: one atomic value, no multi-line draft worth guarding against an accidental navigate-away.
+function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThreshold, disabled, onSave }: CallNuisanceThresholdFieldProps) {
+  const [draft, setDraft] = useState(thresholdOverride !== null ? String(thresholdOverride) : '');
+  const lastSynced = useRef(thresholdOverride);
+  const [saveState, setSaveState] = useState<FieldSaveState>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const savedConfirmationTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (lastSynced.current === thresholdOverride) return;
+    lastSynced.current = thresholdOverride;
+    setDraft(thresholdOverride !== null ? String(thresholdOverride) : '');
+  }, [thresholdOverride]);
+
+  useEffect(() => () => clearTimeout(savedConfirmationTimeout.current), []);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    const next = trimmed === '' ? null : Number(trimmed);
+    if (next !== null && (!Number.isInteger(next) || next < 0)) {
+      setError('Must be a non-negative whole number, or empty to use the default.');
+      return;
+    }
+    if (next === lastSynced.current) return;
+    setError(null);
+    setSaveState('saving');
+    try {
+      await onSave(contactId, next);
+      lastSynced.current = next;
+      setSaveState('saved');
+      clearTimeout(savedConfirmationTimeout.current);
+      savedConfirmationTimeout.current = setTimeout(() => setSaveState('idle'), SAVED_CONFIRMATION_MS);
+    } catch (err) {
+      setSaveState('idle');
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const description =
+    thresholdOverride === null
+      ? `Unanswered calls tolerated before further calls are flagged. Empty uses the global default (currently ${effectiveThreshold}).`
+      : 'Unanswered calls tolerated before further calls are flagged. Empty uses the global default.';
+
+  return (
+    <SettingRow
+      title="Nuisance call threshold"
+      description={description}
+      control={
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={0}
+            step={1}
+            placeholder={String(effectiveThreshold)}
+            className="w-20"
+            value={draft}
+            disabled={disabled}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              if (error) setError(null);
+            }}
+            onBlur={commit}
+          />
+          {saveState === 'saving' && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />}
+          {saveState === 'saved' && <span className="text-xs text-muted-foreground">Saved</span>}
+        </div>
+      }
+      error={error}
+    />
+  );
+}
+
 // The caller mounts this with `key={contact.id}` so `message` resets by
 // remounting on a new selection, rather than needing an effect to reset it.
 export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
-  { contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onViewHistory },
+  { contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onViewHistory },
   ref,
 ) {
   const [message, setMessage] = useState('');
   const [pending, setPending] = useState(() => new Set());
   const [contextDraft, setContextDraft] = useState(entry?.context ?? '');
-  const [contextSaveState, setContextSaveState] = useState<ContextSaveState>('idle');
+  const [contextSaveState, setContextSaveState] = useState<FieldSaveState>('idle');
   const [contextError, setContextError] = useState<string | null>(null);
   // The last server value this draft was synced from — same "no unsaved
   // edit in progress" check SettingsPanel/PolicyEditor use, so a live
@@ -194,6 +277,26 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
                 View
               </Button>
             }
+          />
+        </section>
+
+        <section className="rounded-xl border border-border bg-card px-4">
+          <SettingRow
+            title="Nuisance calls"
+            description="Call strikes toward auto-block, and unanswered calls since the last one that got through."
+            control={
+              <span className="tabular-nums">
+                {entry?.callNuisance.strikeCount ?? 0} strikes · {entry?.callNuisance.unansweredCount ?? 0} unanswered
+              </span>
+            }
+          />
+          <Separator />
+          <CallNuisanceThresholdField
+            contactId={contact.id}
+            thresholdOverride={entry?.callNuisance.thresholdOverride ?? null}
+            effectiveThreshold={entry?.callNuisance.threshold ?? 0}
+            disabled={!monitored}
+            onSave={onSetCallNuisanceThreshold}
           />
         </section>
 

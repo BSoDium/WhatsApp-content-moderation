@@ -1,6 +1,8 @@
 import { createLogger } from '../cli/logger.ts';
 import { getStrikeCount } from '../store/strikes.ts';
 import { getActiveBlock } from '../store/blocks.ts';
+import { getCallState } from '../store/call-strikes.ts';
+import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
 import { resolveUnblock } from '../pipeline/unblock-resolution.ts';
 
@@ -30,7 +32,7 @@ const logger = createLogger('manual-override');
  * @param {{ unblock: (contactId: string) => Promise<void> }} deps
  * @returns {{
  *   isPaused: (contactId: string) => boolean,
- *   getStatus: (contactId: string) => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null },
+ *   getStatus: (contactId: string) => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null, callNuisance: { unansweredCount: number, strikeCount: number, threshold: number } },
  *   runCommand: (contactId: string, command: 'pause' | 'resume' | 'unblock') => Promise<string | null>,
  * }}
  */
@@ -44,10 +46,25 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
   }
 
   // Structured form of "status" for a JSON caller (src/web/control-server.ts).
-  function getStatus(contactId: string): { paused: boolean; strikeCount: number; block: { unblockAt: number } | null } {
+  function getStatus(contactId: string): {
+    paused: boolean;
+    strikeCount: number;
+    block: { unblockAt: number } | null;
+    callNuisance: { unansweredCount: number; strikeCount: number; threshold: number };
+  } {
     const strikeCount = getStrikeCount(contactId);
     const activeBlock = getActiveBlock(contactId);
-    return { paused: isPaused(contactId), strikeCount, block: activeBlock ? { unblockAt: activeBlock.unblock_at } : null };
+    const callState = getCallState(contactId);
+    return {
+      paused: isPaused(contactId),
+      strikeCount,
+      block: activeBlock ? { unblockAt: activeBlock.unblock_at } : null,
+      callNuisance: {
+        unansweredCount: callState.unansweredCount,
+        strikeCount: callState.strikeCount,
+        threshold: getEffectiveNuisanceThreshold(contactId),
+      },
+    };
   }
 
   async function runCommand(contactId: string, command: OverrideCommand): Promise<string | null> {

@@ -3,10 +3,9 @@ import { classifyMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog } from '../store/audit-log.ts';
-import { createBlock, getActiveBlock } from '../store/blocks.ts';
-import { isEscalationEnabled, getMonitored } from '../store/monitored-contacts.ts';
-import { emitControlEvent } from '../store/events.ts';
+import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
+import { maybeBlockContact } from './escalation.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from '../types.ts';
 
@@ -30,9 +29,6 @@ interface BurstActions {
 }
 
 type ConversationMessage = { from: 'me' | 'them'; text: string };
-
-// Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
-const MIN_BLOCK_MS = 60 * 1000;
 
 const logger = createLogger('pipeline');
 
@@ -114,54 +110,6 @@ export async function handleBurst(burst: Burst, actions: BurstActions): Promise<
  */
 export function pendingBursts(): Promise<unknown>[] {
   return [...contactQueues.values()];
-}
-
-// Symmetric jitter in [-ms, +ms], applied once at block time — see docs/decisions.md "Trigger, duration, and jitter (issue #8 design)".
-function jitter(ms: number): number {
-  return Math.round((Math.random() * 2 - 1) * ms);
-}
-
-/**
- * Blocks contactId once strikeCount crosses STRIKE_THRESHOLD, unless they
- * already have an active block. Logs two distinct failure modes: block()
- * (the external call) throwing means nothing happened and the next flagged
- * message will retry cleanly, but block() succeeding and createBlock (the
- * local record) then throwing leaves the contact actually blocked with no
- * row for unblock-scheduler.js to ever find — that needs a searchable log
- * line of its own, not a generic "block failed" that reads as a no-op.
- *
- * @returns {Promise<boolean>} whether contactId ends this call blocked, so
- *   a caller iterating several messages in one burst can skip the
- *   getActiveBlock read once a block's already succeeded this burst.
- */
-async function maybeBlockContact(contactId: string, strikeCount: number, strikeThreshold: number, block: BurstActions['block']): Promise<boolean> {
-  if (strikeCount < strikeThreshold) return false;
-  if (getActiveBlock(contactId)) return true;
-
-  if (!isEscalationEnabled(contactId)) {
-    logger.info({ contactId, strikeCount }, 'strike threshold crossed but escalation is disabled for this contact; skipping block');
-    return false;
-  }
-
-  const blockDurationMs = getNumberSetting('BLOCK_DURATION_MS');
-  const blockJitterMs = getNumberSetting('BLOCK_JITTER_MS');
-  const unblockAt = Date.now() + Math.max(blockDurationMs + jitter(Math.min(blockJitterMs, blockDurationMs)), MIN_BLOCK_MS);
-  let blockedOnWhatsApp = false;
-  try {
-    await block(contactId);
-    blockedOnWhatsApp = true;
-    createBlock(contactId, unblockAt);
-    emitControlEvent('roster');
-    logger.info({ contactId, strikeCount, unblockAt }, 'contact blocked');
-    return true;
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    const message = blockedOnWhatsApp
-      ? 'contact was blocked on WhatsApp but the local block record failed to save — will not auto-unblock, needs manual intervention'
-      : 'block failed';
-    logger.error({ contactId, error }, message);
-    return false;
-  }
 }
 
 async function runBurst(

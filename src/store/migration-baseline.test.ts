@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,8 +21,10 @@ const { getPhotoCache, setPhotoCache } = await import('./contact-photos.ts');
 const { createContactDirectory, canonicalContactId } = await import('../whatsapp/contact-directory.ts');
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
-const [BASELINE] = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
-const BASELINE_ROW = { hash: BASELINE.hash, created_at: BASELINE.folderMillis };
+// All real migrations in drizzle/, not just the baseline — a database that's actually been fully migrated (as opposed to one that adopted the baseline without running it) ends up with every one of these recorded, whatever gets added to drizzle/ next.
+const REAL_MIGRATIONS = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER });
+const [BASELINE] = REAL_MIGRATIONS;
+const ALL_MIGRATION_ROWS = REAL_MIGRATIONS.map((migration) => ({ hash: migration.hash, created_at: migration.folderMillis }));
 
 const createdPaths: string[] = [process.env.DB_PATH];
 const createdDirs: string[] = [];
@@ -35,7 +37,7 @@ after(() => {
   for (const dir of createdDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-// Every table/column/index the pre-ORM schema had once fully migrated, written out independently of schema.ts.
+// Every table/column/index the pre-ORM schema had once fully migrated, written out independently of schema.ts. Deliberately does NOT include anything a post-baseline Drizzle migration (e.g. 0001's call_strikes table) has since added — this is "fully caught up on pre-ORM history alone," which is what a raw pre-ORM SQL fixture below can actually reach. See FULLY_MIGRATED_SHAPE below for the real end state once such a fixture is booted through the actual app and every migration runs.
 const EXPECTED_SHAPE = {
   audit_log: {
     columns: ['action text', 'category text', 'classification_ok integer', 'contact_id text', 'created_at integer', 'direction text', 'error text', 'flagged integer', 'id integer', 'message text', 'reason text'],
@@ -59,6 +61,19 @@ const EXPECTED_SHAPE = {
   },
   strikes: {
     columns: ['contact_id text', 'count integer', 'updated_at integer'],
+    indexes: [],
+  },
+};
+
+// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added (currently just 0001's call_strikes table and monitored_contacts.call_nuisance_threshold) — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
+const FULLY_MIGRATED_SHAPE = {
+  ...EXPECTED_SHAPE,
+  call_strikes: {
+    columns: ['contact_id text', 'strike_count integer', 'unanswered_count integer', 'updated_at integer'],
+    indexes: [],
+  },
+  monitored_contacts: {
+    columns: ['added_at integer', 'call_nuisance_threshold integer', 'contact_id text', 'context text', 'escalation_enabled integer'],
     indexes: [],
   },
 };
@@ -287,21 +302,21 @@ test('fresh database: the bootstrap leaves the baseline to the migrator, which c
     assert.deepEqual(tableNames(db), []);
 
     openNodeSqliteOrm(db).migrate(MIGRATIONS_FOLDER);
-    assert.deepEqual(shapeOf(db), EXPECTED_SHAPE);
-    assert.deepEqual(migrationRows(db), [BASELINE_ROW]);
+    assert.deepEqual(shapeOf(db), FULLY_MIGRATED_SHAPE);
+    assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);
   });
 });
 
-test('fresh database through the real startup path, restarted twice, stays at one recorded migration', () => {
+test('fresh database through the real startup path, restarted twice, stays at every migration recorded exactly once', () => {
   const path = newDbPath('fresh-startup');
   const first = startup(path);
-  assert.deepEqual(shapeOf(first), EXPECTED_SHAPE);
-  assert.deepEqual(migrationRows(first), [BASELINE_ROW]);
+  assert.deepEqual(shapeOf(first), FULLY_MIGRATED_SHAPE);
+  assert.deepEqual(migrationRows(first), ALL_MIGRATION_ROWS);
 
   addMonitored(ALICE);
   setContext(ALICE, ALICE_CONTEXT);
-  assert.deepEqual(migrationRows(startup(path)), [BASELINE_ROW]);
-  assert.deepEqual(migrationRows(startup(path)), [BASELINE_ROW]);
+  assert.deepEqual(migrationRows(startup(path)), ALL_MIGRATION_ROWS);
+  assert.deepEqual(migrationRows(startup(path)), ALL_MIGRATION_ROWS);
   assert.equal(getMonitored(ALICE)?.context, ALICE_CONTEXT);
 });
 
@@ -317,10 +332,10 @@ for (const [label, statements] of Object.entries(UP_TO_DATE_FIXTURES)) {
     const { before, legacyContactsDdl } = withConnection(path, (db) => ({ before: dumpTables(db), legacyContactsDdl: tableDdl(db, 'contacts') }));
 
     const db = startup(path);
+    // Not a byte-for-byte dumpTables comparison against `before`: this fixture is only up to date with pre-ORM history, so the real startup path still runs 0001 on top of the adopted baseline, same as any other pre-ORM database — assertPreserved is the right invariant here (existing rows untouched, anything new is NULL/empty).
     assertPreserved(before, db);
-    assert.deepEqual(dumpTables(db), before, 'an up-to-date database must come through byte-for-byte');
-    assert.deepEqual(shapeOf(db), EXPECTED_SHAPE);
-    assert.deepEqual(migrationRows(db), [BASELINE_ROW]);
+    assert.deepEqual(shapeOf(db), FULLY_MIGRATED_SHAPE);
+    assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);
     assert.equal(tableDdl(db, 'contacts'), legacyContactsDdl, 'the baseline CREATE TABLE must not have been run');
   });
 }
@@ -336,8 +351,8 @@ for (const [label, statements] of Object.entries(OUTDATED_FIXTURES)) {
 
     const db = startup(copyOf(fixture));
     assertPreserved(before, db);
-    assert.deepEqual(shapeOf(db), EXPECTED_SHAPE);
-    assert.deepEqual(migrationRows(db), [BASELINE_ROW]);
+    assert.deepEqual(shapeOf(db), FULLY_MIGRATED_SHAPE);
+    assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);
   });
 }
 
@@ -364,7 +379,13 @@ test('every store module reads and writes an adopted up-to-date database correct
   assert.equal(stats.totalClassifierErrors, 1);
   assert.deepEqual(stats.byCategory, [{ category: 'spam', count: 1 }]);
 
-  assert.deepEqual(getMonitored(ALICE), { contactId: ALICE, escalationEnabled: true, addedAt: 1690000000000, context: ALICE_CONTEXT });
+  assert.deepEqual(getMonitored(ALICE), {
+    contactId: ALICE,
+    escalationEnabled: true,
+    addedAt: 1690000000000,
+    context: ALICE_CONTEXT,
+    callNuisanceThreshold: null,
+  });
   assert.equal(getMonitored(BOB)?.escalationEnabled, false);
   assert.deepEqual(listMonitored().map((m) => m.contactId), [ALICE, BOB]);
 
@@ -410,12 +431,12 @@ test('restarting on an adopted database is a no-op: no errors, no re-seeding, no
   const firstRun = dumpTables(startup(path));
   const second = startup(path);
   assert.deepEqual(dumpTables(second), firstRun);
-  assert.deepEqual(migrationRows(second), [BASELINE_ROW]);
+  assert.deepEqual(migrationRows(second), ALL_MIGRATION_ROWS);
   assert.equal(resolveMigrationBaseline(second, MIGRATIONS_FOLDER), 'already-tracked');
 
   const third = startup(path);
   assert.deepEqual(dumpTables(third), firstRun);
-  assert.deepEqual(migrationRows(third), [BASELINE_ROW]);
+  assert.deepEqual(migrationRows(third), ALL_MIGRATION_ROWS);
 });
 
 test('an empty __drizzle_migrations table next to pre-ORM tables still adopts rather than re-running the baseline', () => {
@@ -426,8 +447,9 @@ test('an empty __drizzle_migrations table next to pre-ORM tables still adopts ra
 
   withConnection(copyOf(fixture), (db) => assert.equal(resolveMigrationBaseline(db, MIGRATIONS_FOLDER), 'adopted'));
   const db = startup(path);
-  assert.deepEqual(dumpTables(db), before);
-  assert.deepEqual(migrationRows(db), [BASELINE_ROW]);
+  // Not a strict dumpTables equality against `before`, for the same reason as the up-to-date-fixtures loop above: adoption only means the baseline itself isn't re-run, not that nothing after it runs either.
+  assertPreserved(before, db);
+  assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);
 });
 
 test('a pre-ORM database that does not match the baseline is refused and left untouched', () => {
@@ -454,14 +476,23 @@ test('a pre-ORM database that does not match the baseline is refused and left un
 test('a migration generated after the baseline still runs on an adopted database', () => {
   const folder = mkdtempSync(join(tmpdir(), 'wcm-migrations-'));
   createdDirs.push(folder);
-  cpSync(MIGRATIONS_FOLDER, folder, { recursive: true });
-  const journalPath = join(folder, 'meta/_journal.json');
-  const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
-  const [baselineEntry] = journal.entries;
-  // Timestamped long before "now": a seed that used the adoption time instead of the baseline's own timestamp would skip it.
-  journal.entries.push({ ...baselineEntry, idx: 1, when: baselineEntry.when + 1, tag: '0001_future' });
-  writeFileSync(journalPath, JSON.stringify(journal));
+  mkdirSync(join(folder, 'meta'));
+  // Deliberately NOT a copy of the real drizzle/ folder (which may already have its own migrations after the baseline by now) — a synthetic baseline-plus-one-future-migration folder, so this test's meaning ("a migration generated after the baseline") stays correct regardless of how many real migrations exist on top of the baseline when it runs. loadBaseline() (migration-baseline.ts) always reads meta/0000_snapshot.json by that fixed path, so it has to come along with the baseline SQL.
+  copyFileSync(join(MIGRATIONS_FOLDER, '0000_baseline.sql'), join(folder, '0000_baseline.sql'));
+  copyFileSync(join(MIGRATIONS_FOLDER, 'meta/0000_snapshot.json'), join(folder, 'meta/0000_snapshot.json'));
   writeFileSync(join(folder, '0001_future.sql'), 'ALTER TABLE `contacts` ADD `future_column` text;');
+  writeFileSync(
+    join(folder, 'meta/_journal.json'),
+    JSON.stringify({
+      version: '7',
+      dialect: 'sqlite',
+      entries: [
+        { idx: 0, version: '6', when: BASELINE.folderMillis, tag: '0000_baseline', breakpoints: true },
+        // Timestamped long before "now": a seed that used the adoption time instead of the baseline's own timestamp would skip it.
+        { idx: 1, version: '6', when: BASELINE.folderMillis + 1, tag: '0001_future', breakpoints: true },
+      ],
+    }),
+  );
 
   const statements = OUTDATED_FIXTURES['last ran b44a8ac: no contacts.photo_url/photo_fetched_at'];
   withConnection(copyOf(buildFixture(statements)), (db) => {

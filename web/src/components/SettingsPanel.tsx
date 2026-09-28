@@ -19,9 +19,10 @@ const SECTION_TITLES: Record<Setting['section'], string> = {
   classifier: 'Classifier',
   warning: 'Warning messages',
   strikes: 'Strikes & blocking',
+  calls: 'Nuisance calls',
 };
 
-const SECTION_ORDER: Setting['section'][] = ['general', 'classifier', 'warning', 'strikes'];
+const SECTION_ORDER: Setting['section'][] = ['general', 'classifier', 'warning', 'strikes', 'calls'];
 
 // How long the "Saved" confirmation stays up before fading back to idle —
 // same value ContactDetailPanel uses for the same kind of confirmation.

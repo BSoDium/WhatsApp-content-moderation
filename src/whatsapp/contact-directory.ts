@@ -310,6 +310,8 @@ export function createContactDirectory() {
     sock.ev.on('contacts.upsert', (entries) => ingest(entries));
     sock.ev.on('contacts.update', (entries) => ingest(entries));
     sock.ev.on('messages.upsert', ({ messages }) => ingestMessages(messages));
+    // WhatsApp's own lid<->phone-number pairing channel, independent of any message ever being exchanged — without this, a contact whose first-ever interaction is a call (not a message) can stay unresolved to their phone-number-keyed roster row.
+    sock.ev.on('lid-mapping.update', ({ pn, lid }) => ingest([{ id: pn, lid }]));
   }
 
   function get(contactId: string) {
