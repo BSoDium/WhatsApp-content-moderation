@@ -189,8 +189,8 @@ export const SETTINGS: readonly SettingDef[] = [
   {
     key: 'NUISANCE_CALL_WARNING_MESSAGE',
     section: 'calls',
-    label: 'Nuisance call warning message',
-    description: "Sent to a contact once their calls are flagged as nuisance. {strikes} and {threshold} are replaced with the contact's current call-strike count and NUISANCE_CALL_STRIKE_THRESHOLD.",
+    label: 'Nuisance call fallback warning',
+    description: "Sent instead of a generated, same-language warning when generation fails or the contact has no recent messages to match a language from. {strikes} and {threshold} are replaced with the contact's current call-strike count and NUISANCE_CALL_STRIKE_THRESHOLD.",
     type: 'string',
     default: "Please stop calling repeatedly without a reply — this is strike {strikes} of {threshold}. Further calls may result in you being blocked.",
     required: true,
