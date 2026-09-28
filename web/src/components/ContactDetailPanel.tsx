@@ -48,18 +48,13 @@ function normalizeContext(context: string): string {
 interface CallNuisanceThresholdFieldProps {
   contactId: string;
   thresholdOverride: number | null;
-  // The *effective* threshold (override ?? global default) — only usable as
-  // "the current default" in the placeholder/description when no override
-  // is set; once one is set this no longer reflects the global value at all,
-  // and the roster API doesn't separately expose the raw global setting.
+  // The *effective* threshold (override ?? global default) — only usable as "the current default" in the placeholder/description when no override is set; once one is set this no longer reflects the global value at all, and the roster API doesn't separately expose the raw global setting.
   effectiveThreshold: number;
   disabled: boolean;
   onSave: (contactId: string, threshold: number | null) => Promise<true>;
 }
 
-// A single-field, save-on-blur override (empty = "use the global default"),
-// simpler than the moderation-context textarea above: one atomic value, no
-// multi-line draft worth guarding against an accidental navigate-away.
+// A single-field, save-on-blur override (empty = "use the global default"), simpler than the moderation-context textarea above: one atomic value, no multi-line draft worth guarding against an accidental navigate-away.
 function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThreshold, disabled, onSave }: CallNuisanceThresholdFieldProps) {
   const [draft, setDraft] = useState(thresholdOverride !== null ? String(thresholdOverride) : '');
   const lastSynced = useRef(thresholdOverride);

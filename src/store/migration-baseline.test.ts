@@ -332,11 +332,7 @@ for (const [label, statements] of Object.entries(UP_TO_DATE_FIXTURES)) {
     const { before, legacyContactsDdl } = withConnection(path, (db) => ({ before: dumpTables(db), legacyContactsDdl: tableDdl(db, 'contacts') }));
 
     const db = startup(path);
-    // Not a byte-for-byte dumpTables comparison against `before`: this
-    // fixture is only up to date with pre-ORM history, so the real startup
-    // path still runs 0001 on top of the adopted baseline, same as any
-    // other pre-ORM database — assertPreserved is the right invariant here
-    // (existing rows untouched, anything new is NULL/empty).
+    // Not a byte-for-byte dumpTables comparison against `before`: this fixture is only up to date with pre-ORM history, so the real startup path still runs 0001 on top of the adopted baseline, same as any other pre-ORM database — assertPreserved is the right invariant here (existing rows untouched, anything new is NULL/empty).
     assertPreserved(before, db);
     assert.deepEqual(shapeOf(db), FULLY_MIGRATED_SHAPE);
     assert.deepEqual(migrationRows(db), ALL_MIGRATION_ROWS);

@@ -1,7 +1,4 @@
-// Throwaway validation script — see README "Validating nuisance-call handling"
-// (npm run prototype:nuisance-calls). Logs every 'call' event Baileys emits and,
-// with REJECT=1 set, rejects each offer as it arrives — run this against a real
-// second number before trusting the full pipeline built on top of it.
+// Throwaway validation script — see README "Validating nuisance-call handling" (npm run prototype:nuisance-calls). Logs every 'call' event Baileys emits and, with REJECT=1 set, rejects each offer as it arrives — run this against a real second number before trusting the full pipeline built on top of it.
 
 import { connectWhatsApp } from '../whatsapp/connection.ts';
 
