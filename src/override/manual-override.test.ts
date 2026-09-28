@@ -45,7 +45,22 @@ test('getStatus reports pause state, strikes, and the real block field shape', a
   createBlock(contact, unblockAt);
   const override = createManualOverride({ unblock: async () => {} });
 
-  assert.deepEqual(override.getStatus(contact), { paused: false, strikeCount: 2, block: { unblockAt } });
+  assert.deepEqual(override.getStatus(contact), {
+    paused: false,
+    strikeCount: 2,
+    block: { unblockAt },
+    callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2 },
+  });
+});
+
+test('getStatus reports call-nuisance state and the effective threshold', async () => {
+  const contact = 'call-status-check@s.whatsapp.net';
+  const { recordUnansweredCall, recordCallStrike } = await import('../store/call-strikes.ts');
+  recordUnansweredCall(contact);
+  recordCallStrike(contact);
+  const override = createManualOverride({ unblock: async () => {} });
+
+  assert.deepEqual(override.getStatus(contact).callNuisance, { unansweredCount: 1, strikeCount: 1, threshold: 2 });
 });
 
 test('getStatus reports block: null when there is no active block', () => {

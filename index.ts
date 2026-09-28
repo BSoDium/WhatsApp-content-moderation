@@ -21,11 +21,9 @@ import {
   setEscalationEnabled,
   setContext,
   setCallNuisanceThreshold,
-  getEffectiveNuisanceThreshold,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
-import { getCallState } from './src/store/call-strikes.ts';
 import { deleteForMe, sendWarning, block, unblock, rejectCall } from './src/whatsapp/actions.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 import type { IncomingMessage } from './src/types.ts';
