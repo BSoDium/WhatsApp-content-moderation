@@ -11,14 +11,14 @@ export function SignedInUser({ user }: SignedInUserProps) {
 
   return (
     <div className="flex min-w-0 items-center gap-2.5" title={[user.name, subtitle].filter(Boolean).join(' · ')}>
-      <div className="hidden min-w-0 text-right leading-tight lg:block lg:@max-[40rem]:hidden">
-        <p className="truncate text-sm font-medium">{user.name}</p>
-        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
-      </div>
       <Avatar size="lg" className="lg:size-9">
         {user.pictureUrl && <AvatarImage src={user.pictureUrl} alt="" referrerPolicy="no-referrer" />}
         <AvatarFallback style={{ backgroundColor: colorFor(user.login), color: '#fff' }}>{initialsFor(user.name)}</AvatarFallback>
       </Avatar>
+      <div className="hidden min-w-0 leading-tight lg:block lg:@max-[40rem]:hidden">
+        <p className="truncate text-sm font-medium">{user.name}</p>
+        {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
     </div>
   );
 }

@@ -203,20 +203,18 @@ function App() {
               transition={moveTransition}
               className="flex-none px-4 pb-4 lg:px-8 @container"
             >
-              <div className="grid grid-cols-1 gap-x-3 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <div className="flex items-center justify-between gap-3 lg:contents">
-                  <h1 className="min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:col-start-1 lg:row-start-1 lg:@max-[40rem]:text-xl">WhatsApp moderation control</h1>
-                  {meta?.user && (
-                    <div className="shrink-0 lg:col-start-3 lg:row-start-1 lg:self-center">
-                      <SignedInUser user={meta.user} />
-                    </div>
-                  )}
-                </div>
-                <p className="text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-3 lg:row-start-2 lg:truncate">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
+                {meta?.user && (
+                  <div className="col-start-2 row-start-1 min-w-0 lg:col-start-1 lg:mb-4">
+                    <SignedInUser user={meta.user} />
+                  </div>
+                )}
+                <h1 className="col-start-1 row-start-1 min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2 lg:mb-1">WhatsApp moderation control</h1>
+                <p className="col-span-2 row-start-2 text-sm leading-relaxed text-muted-foreground sm:text-base lg:row-start-3 lg:truncate">
                   <span className="lg:@max-[40rem]:hidden">Flip a switch to moderate a contact, or tap their name for detailed controls.</span>
                   <span className="hidden lg:@max-[40rem]:inline">Flip a switch to moderate, or tap a name for details.</span>
                 </p>
-                <div className="mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:flex lg:justify-end lg:gap-0.5 lg:self-center">
+                <div className="col-span-2 row-start-3 mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
                   <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     <span className="lg:@max-[40rem]:sr-only">Settings</span>
