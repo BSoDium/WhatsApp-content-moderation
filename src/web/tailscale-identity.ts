@@ -8,11 +8,13 @@ export interface TailscaleIdentity {
 }
 
 const ENCODED_WORD = /=\?utf-8\?([qb])\?([^?]*)\?=/gi;
+const BETWEEN_ENCODED_WORDS = /(\?=)\s+(?==\?utf-8\?[qb]\?)/gi;
 const TAILNET_SUFFIX = '.ts.net';
 
 // Tailscale Q-encodes non-ASCII values (Go's mime.QEncoding), so "Élodie" arrives as "=?utf-8?q?=C3=89lodie?=".
 function decodeHeaderValue(value: string): string {
-  return value.replace(ENCODED_WORD, (_match, encoding: string, payload: string) => {
+  // RFC 2047: whitespace between adjacent encoded words is a separator, not content.
+  return value.replace(BETWEEN_ENCODED_WORDS, '$1').replace(ENCODED_WORD, (_match, encoding: string, payload: string) => {
     if (encoding.toLowerCase() === 'b') return Buffer.from(payload, 'base64').toString('utf8');
     const bytes = Buffer.from(payload.replace(/_/g, ' ').replace(/=([0-9a-f]{2})/gi, (_hex, code: string) => String.fromCharCode(parseInt(code, 16))), 'latin1');
     return bytes.toString('utf8');

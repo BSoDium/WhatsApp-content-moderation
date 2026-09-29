@@ -4,9 +4,11 @@ import type { ServerStatus } from './types';
 
 const POLL_MS = 5_000;
 
-export function useServerStatus(): { status: ServerStatus | null; failed: boolean } {
+// Server timestamps are compared against the browser clock, so `clockSkewMs` (server minus local, taken at fetch time) has to be added to `Date.now()` before subtracting one.
+export function useServerStatus(): { status: ServerStatus | null; failed: boolean; clockSkewMs: number } {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [failed, setFailed] = useState(false);
+  const [clockSkewMs, setClockSkewMs] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -15,6 +17,7 @@ export function useServerStatus(): { status: ServerStatus | null; failed: boolea
         .then((next) => {
           if (cancelled) return;
           setStatus(next);
+          setClockSkewMs(next.serverTime - Date.now());
           setFailed(false);
         })
         .catch(() => {
@@ -28,5 +31,5 @@ export function useServerStatus(): { status: ServerStatus | null; failed: boolea
     };
   }, []);
 
-  return { status, failed };
+  return { status, failed, clockSkewMs };
 }

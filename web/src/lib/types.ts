@@ -109,5 +109,6 @@ export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'logged-ou
 export interface ServerStatus {
   version: string;
   startedAt: number;
+  serverTime: number;
   whatsapp: { status: WhatsAppStatus; since: number; statusCode: number | null };
 }

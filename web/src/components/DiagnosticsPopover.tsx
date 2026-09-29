@@ -51,8 +51,9 @@ function WhatsAppRow({ status, now }: { status: ServerStatus['whatsapp']; now: n
 }
 
 function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopoverProps) {
-  const { status, failed } = useServerStatus();
-  const now = useNow(CLOCK_TICK_MS);
+  const { status, failed, clockSkewMs } = useServerStatus();
+  const localNow = useNow(CLOCK_TICK_MS);
+  const now = localNow + clockSkewMs;
 
   return (
     <>
@@ -72,7 +73,7 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
           <Badge variant={streamLive ? 'default' : 'secondary'}>{streamLive ? 'Streaming' : 'Polling'}</Badge>
         </Row>
         <Row label="Last refresh">
-          <span className="tabular-nums">{lastRefreshedAt ? `${formatElapsed(now - lastRefreshedAt)} ago` : '—'}</span>
+          <span className="tabular-nums">{lastRefreshedAt ? `${formatElapsed(localNow - lastRefreshedAt)} ago` : '—'}</span>
         </Row>
         {status && (
           <>
@@ -94,7 +95,7 @@ export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="-ml-1.5 h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal" aria-label="Session and diagnostics">
+        <Button variant="ghost" className="-mr-1.5 h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal lg:mr-0 lg:-ml-1.5" aria-label={`${props.user.name} — session and diagnostics`}>
           <SignedInUser user={props.user} />
         </Button>
       </PopoverTrigger>

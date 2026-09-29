@@ -30,6 +30,11 @@ test('decodes Q-encoded and B-encoded non-ASCII names', () => {
   assert.equal(b?.name, 'Éli');
 });
 
+test('joins adjacent encoded words without the separating whitespace', () => {
+  const identity = readTailscaleIdentity(reqWithHeaders({ 'tailscale-user-login': 'a@b.c', 'tailscale-user-name': '=?utf-8?q?=C3=89lodie_?= =?utf-8?q?Negrel?=' }));
+  assert.equal(identity?.name, 'Élodie Negrel');
+});
+
 test('falls back to the login when the display name is missing', () => {
   assert.equal(readTailscaleIdentity(reqWithHeaders({ 'tailscale-user-login': 'alice@example.com' }))?.name, 'alice@example.com');
 });

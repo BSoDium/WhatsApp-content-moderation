@@ -177,6 +177,7 @@ export const FIXTURE_USER: SignedInUser = {
 
 export const FIXTURE_STATUS: ServerStatus = {
   version: '0.1.0',
+  serverTime: Date.now(),
   startedAt: Date.now() - (26 * HOUR_MS + 14 * MINUTE_MS),
   whatsapp: { status: 'open', since: Date.now() - 3 * HOUR_MS, statusCode: null },
 };

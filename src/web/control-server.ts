@@ -421,7 +421,7 @@ async function handleApi(
   }
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'status') {
-    sendJson(res, 200, { version: APP_VERSION, startedAt: STARTED_AT, whatsapp: deps.getConnectionState() });
+    sendJson(res, 200, { version: APP_VERSION, startedAt: STARTED_AT, serverTime: Date.now(), whatsapp: deps.getConnectionState() });
     return true;
   }
 

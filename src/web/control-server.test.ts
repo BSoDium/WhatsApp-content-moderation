@@ -247,6 +247,7 @@ test('GET /api/status reports version, start time and the WhatsApp connection st
     const body = await res.json();
     assert.equal(typeof body.version, 'string');
     assert.equal(typeof body.startedAt, 'number');
+    assert.equal(typeof body.serverTime, 'number');
     assert.deepEqual(body.whatsapp, { status: 'logged-out', since: 42, statusCode: 401 });
   });
 });

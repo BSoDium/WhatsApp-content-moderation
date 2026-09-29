@@ -10,7 +10,7 @@ export function SignedInUser({ user }: SignedInUserProps) {
   const subtitle = user.tailnet ?? (user.name !== user.login ? user.login : null);
 
   return (
-    <span className="flex min-w-0 items-center gap-2.5" title={[user.name, subtitle].filter(Boolean).join(' · ')}>
+    <span className="flex min-w-0 items-center gap-2.5">
       <Avatar size="lg" className="lg:size-9">
         {user.pictureUrl && <AvatarImage src={user.pictureUrl} alt="" referrerPolicy="no-referrer" />}
         <AvatarFallback style={{ backgroundColor: colorFor(user.login), color: '#fff' }}>{initialsFor(user.name)}</AvatarFallback>
