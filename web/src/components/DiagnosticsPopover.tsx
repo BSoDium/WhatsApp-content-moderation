@@ -9,10 +9,12 @@ import { SignedInUser } from '@/components/SignedInUser';
 import { TailscaleLogo } from '@/components/TailscaleLogo';
 import { formatElapsed } from '@/lib/duration';
 import type { ServerStatus, SignedInUser as SignedInUserData, WhatsAppStatus } from '@/lib/types';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useNow } from '@/lib/useNow';
 import { useServerStatus } from '@/lib/useServerStatus';
 
 const CLOCK_TICK_MS = 1000;
+const DESKTOP_QUERY = '(min-width: 1024px)';
 
 interface DiagnosticsPopoverProps {
   // null = connected directly, with no Tailscale identity to show.
@@ -109,6 +111,8 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
 }
 
 export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -120,7 +124,7 @@ export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
           {props.user ? <SignedInUser user={props.user} /> : <DirectConnection />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-80">
+      <PopoverContent align={isDesktop ? 'start' : 'end'} className="w-80">
         <DiagnosticsBody {...props} />
       </PopoverContent>
     </Popover>
