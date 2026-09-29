@@ -1,4 +1,4 @@
-import { test, after } from 'node:test';
+import { test, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { rmSync } from 'node:fs';
@@ -8,7 +8,7 @@ import type { WASocket } from '@whiskeysockets/baileys';
 process.env.DB_PATH = 'data/test-blocklist-sync.test.sqlite';
 
 const { attachBlocklistSync } = await import('./blocklist-sync.ts');
-const { createBlock, getActiveBlock } = await import('../store/blocks.ts');
+const { createBlock, getActiveBlock, getActiveBlocks, markUnblocked } = await import('../store/blocks.ts');
 const { getOrm } = await import('../store/db.ts');
 const { blocks, contacts } = await import('../store/schema.ts');
 const { onControlEvent } = await import('../store/events.ts');
@@ -17,15 +17,20 @@ after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
 });
 
+afterEach(() => {
+  for (const block of getActiveBlocks()) markUnblocked(block.id);
+});
+
 const MINUTE_MS = 60 * 1000;
 
 interface SocketOptions {
   blocklist?: string[];
   lidToPn?: Record<string, string>;
+  pnToLid?: Record<string, string>;
   fetchFails?: boolean;
 }
 
-function makeSocket({ blocklist = [], lidToPn = {}, fetchFails = false }: SocketOptions = {}) {
+function makeSocket({ blocklist = [], lidToPn = {}, pnToLid = {}, fetchFails = false }: SocketOptions = {}) {
   const ev = new EventEmitter();
   const sock = {
     ev,
@@ -36,7 +41,7 @@ function makeSocket({ blocklist = [], lidToPn = {}, fetchFails = false }: Socket
     signalRepository: {
       lidMapping: {
         getPNForLID: async (lid: string) => lidToPn[lid] ?? null,
-        getLIDForPN: async () => null,
+        getLIDForPN: async (pn: string) => pnToLid[pn] ?? null,
       },
     },
   } as unknown as WASocket;
@@ -149,4 +154,25 @@ test('reconcile skips a block made moments ago, which WhatsApp may not list yet'
   await attachBlocklistSync(sock).reconcile();
 
   assert.ok(getActiveBlock(contact));
+});
+
+test('reconcile keeps a block when WhatsApp maps the contact to a lid other than the one the directory recorded', async () => {
+  const contact = '33600000008@s.whatsapp.net';
+  learnLid(contact, '888-stale@lid');
+  blockAged(contact, 5 * MINUTE_MS);
+  const { sock } = makeSocket({ blocklist: ['888-current@lid'], pnToLid: { [contact]: '888-current@lid' } });
+
+  await attachBlocklistSync(sock).reconcile();
+
+  assert.ok(getActiveBlock(contact));
+});
+
+test('reconcile checks a lid-keyed contact directly against the blocklist', async () => {
+  const contact = '999@lid';
+  blockAged(contact, 5 * MINUTE_MS);
+  const { sock } = makeSocket({ blocklist: [] });
+
+  await attachBlocklistSync(sock).reconcile();
+
+  assert.equal(getActiveBlock(contact), undefined);
 });

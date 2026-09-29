@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ContactAvatar } from './ContactAvatar';
 import { SelfModerationNotice } from './SelfModerationNotice';
 import { SettingRow } from './SettingRow';
-import { relativeTime } from '@/lib/contact';
+import { moderationState, relativeTime } from '@/lib/contact';
 import { formatTimestamp } from '@/lib/activity';
 import type { Contact, OverrideCommand, RosterEntry } from '@/lib/types';
 
@@ -182,9 +182,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
-  // A contact that was moderated earlier keeps its strikes and block after being switched off, so they come from the contacts feed, like the list row's.
-  const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
-  const block = entry ? entry.block : (contact.block ?? null);
+  const { strikeCount, block } = moderationState(contact, entry);
   const hasStrikes = strikeCount > 0 || (entry?.callNuisance.strikeCount ?? 0) > 0;
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;

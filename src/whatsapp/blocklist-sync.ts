@@ -24,9 +24,9 @@ async function contactIdsFor(sock: WASocket, jid: string): Promise<string[]> {
 
 async function jidsFor(sock: WASocket, contactId: string): Promise<string[]> {
   const jids = new Set([contactId]);
-  const lid = lookupLid(contactId);
-  if (lid) jids.add(lid);
-  else {
+  const directoryLid = lookupLid(contactId);
+  if (directoryLid) jids.add(directoryLid);
+  if (!contactId.endsWith('@lid')) {
     try {
       const mapped = await sock.signalRepository.lidMapping.getLIDForPN(contactId);
       if (mapped) jids.add(mapped);
@@ -75,7 +75,7 @@ async function reconcile(sock: WASocket): Promise<void> {
 
   for (const block of active) {
     const jids = await jidsFor(sock, block.contact_id);
-    if (jids.length < 2) {
+    if (!block.contact_id.endsWith('@lid') && jids.length < 2) {
       logger.warn({ contactId: block.contact_id }, 'no @lid known for a blocked contact; cannot check it against the WhatsApp blocklist');
       continue;
     }

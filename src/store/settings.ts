@@ -363,7 +363,10 @@ export function ensureDefaultsSeeded(): void {
     .run();
 }
 
-const LEGACY_BOOL_VALUES: Record<string, string> = { true: '1', false: '0' };
+const LEGACY_BOOL_VALUES = new Map([
+  ['true', '1'],
+  ['false', '0'],
+]);
 
 /**
  * Rewrites bool settings stored as 'true'/'false' to '1'/'0'.
@@ -376,7 +379,7 @@ export function normalizeLegacyBoolSettings(): void {
   for (const def of SETTINGS) {
     if (def.type !== 'bool') continue;
     const current = getRawValue(def.key);
-    const normalized = current === undefined ? undefined : LEGACY_BOOL_VALUES[current];
+    const normalized = current === undefined ? undefined : LEGACY_BOOL_VALUES.get(current);
     if (normalized === undefined) continue;
     setRawValue(def.key, normalized);
     logger.info({ key: def.key, from: current, to: normalized }, 'normalized a legacy boolean setting value');
