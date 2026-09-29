@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -6,6 +6,7 @@ import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
+import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
 import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ const DETAIL_PANE_CLOSED_X = `${(((LIST_PANE_MARGIN_BROWSING_PCT + LIST_PANE_WID
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
+const COLLAPSE_RANGE_PX = 120;
 
 // Material 3's "emphasized decelerate" curve.
 const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0, 1];
@@ -151,6 +153,18 @@ function App() {
   }, [panelOpen]);
   const detailInteractive = isDesktop ? desktopDetailReady : panelOpen;
 
+  const listPaneRef = useRef<HTMLElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away, shrinking over the next COLLAPSE_RANGE_PX.
+  const applyCollapse = useCallback((scroller: HTMLElement) => {
+    const headerHeight = headerRef.current?.offsetHeight ?? 0;
+    scroller.style.setProperty('--collapse', String(clamp01((scroller.scrollTop - headerHeight) / COLLAPSE_RANGE_PX)));
+  }, []);
+  useScrollLinkedStyle(listPaneRef, !isDesktop, applyCollapse);
+  useEffect(() => {
+    if (isDesktop) listPaneRef.current?.style.removeProperty('--collapse');
+  }, [isDesktop]);
+
   function showPanel(panel: PanelName, contactId: string | null = null) {
     setSkipInitialPanelAnimation(false);
     setPanelSeq((prev) => ({ ...prev, [panel]: prev[panel] + 1 }));
@@ -191,12 +205,14 @@ function App() {
         {/* The detail pane below is deliberately not a flex item: an absolutely positioned one with a percentage right/width resolves against the wrong containing block in Chrome under this row's overflow-hidden. */}
         <div className="flex min-h-screen">
           <motion.section
+            ref={listPaneRef}
             initial={false}
             animate={listPaneTarget(isDesktop, panelOpen)}
             transition={moveTransition}
-            className="flex h-screen w-full flex-col lg:min-w-[500px]"
+            className="isolate flex h-screen w-full flex-col overflow-y-auto [overflow-anchor:none] lg:min-w-[500px] lg:overflow-visible"
           >
             <motion.div
+              ref={headerRef}
               initial={false}
               animate={headerPaddingTarget(isDesktop, panelOpen)}
               transition={moveTransition}
@@ -262,10 +278,7 @@ function App() {
                 )}
               </AnimatePresence>
             </motion.div>
-            <div className="flex-none px-4 pb-4 lg:px-8">
-              <OverviewStats />
-            </div>
-            <div className="min-h-0 flex-1 px-4 lg:px-8">
+            <div className="flex-none px-4 lg:min-h-0 lg:flex-1 lg:px-8">
               <ContactList
                 contacts={contacts}
                 roster={roster}
@@ -274,6 +287,8 @@ function App() {
                 onToggle={setMonitored}
                 onViewHistory={(contactId) => showPanel('activity', contactId)}
                 initialLoadComplete={initialLoadComplete}
+                stickyTop={<OverviewStats />}
+                isDesktop={isDesktop}
               />
             </div>
           </motion.section>
