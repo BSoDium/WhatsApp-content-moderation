@@ -158,19 +158,23 @@ function App() {
 
   const listPaneRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  // `--collapse` lives on the sticky KPI block, not the scroller: a custom property is inherited, so setting it higher up restyles every contact row on each flip.
+  const stickyRef = useRef<HTMLDivElement>(null);
   // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away. `--collapse` flips between 0 and 1 and the tiles' CSS transitions animate it — scrubbing it with the scroll position re-laid-out the list every frame.
   const applyCollapse = useCallback((scroller: HTMLElement) => {
     const headerHeight = headerRef.current?.offsetHeight ?? 0;
     const pastHeader = scroller.scrollTop - headerHeight;
-    const collapsed = scroller.style.getPropertyValue('--collapse') === '1';
+    const sticky = stickyRef.current;
+    if (!sticky) return;
+    const collapsed = sticky.style.getPropertyValue('--collapse') === '1';
     // Collapsing shortens the pane; without this guard a short list would clamp scrollTop back under EXPAND_BELOW_PX and flip straight back.
     const roomToCollapse = scroller.scrollHeight - scroller.clientHeight - COLLAPSE_HEIGHT_DELTA_PX > headerHeight + COLLAPSE_AFTER_PX;
-    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) scroller.style.setProperty('--collapse', '1');
-    else if (collapsed && pastHeader < EXPAND_BELOW_PX) scroller.style.setProperty('--collapse', '0');
+    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) sticky.style.setProperty('--collapse', '1');
+    else if (collapsed && pastHeader < EXPAND_BELOW_PX) sticky.style.setProperty('--collapse', '0');
   }, []);
   useScrollLinkedStyle(listPaneRef, !isDesktop, applyCollapse);
   useEffect(() => {
-    if (isDesktop) listPaneRef.current?.style.removeProperty('--collapse');
+    if (isDesktop) stickyRef.current?.style.removeProperty('--collapse');
   }, [isDesktop]);
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
@@ -319,6 +323,7 @@ function App() {
                 onViewHistory={(contactId) => showPanel('activity', contactId)}
                 initialLoadComplete={initialLoadComplete}
                 stickyTop={<OverviewStats />}
+                stickyRef={stickyRef}
                 isDesktop={isDesktop}
               />
             </div>

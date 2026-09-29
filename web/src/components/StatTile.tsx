@@ -17,9 +17,10 @@ const CARD_STYLE: CSSProperties = {
   minHeight: `calc(8rem - ${COLLAPSE} * 4.75rem)`,
   padding: `calc(0.75rem - ${COLLAPSE} * 0.375rem) 1rem`,
 };
+// Scaled and faded rather than resized: animating width/height or font-size re-lays-out the tile every frame, which is what made the collapse drop frames.
 const ICON_STYLE: CSSProperties = {
-  width: `calc(4.5rem - ${COLLAPSE} * 4.5rem)`,
-  height: `calc(4.5rem - ${COLLAPSE} * 4.5rem)`,
+  transform: `scale(calc(1 - ${COLLAPSE}))`,
+  transformOrigin: 'top right',
   opacity: `calc(1 - ${COLLAPSE})`,
 };
 // Center of the corner icon: its inset plus half its size. The pattern is masked out around it so the two layers never overlap.
@@ -33,7 +34,11 @@ const PATTERN_STYLE: CSSProperties = {
 const PATTERN_CELL_PX = 36;
 const PATTERN_ICON_PX = 14;
 const PATTERN_ICON_OFFSET_PX = (PATTERN_CELL_PX / 2 - PATTERN_ICON_PX) / 2;
-const VALUE_STYLE: CSSProperties = { fontSize: `calc(2.25rem - ${COLLAPSE} * 0.75rem)` };
+const VALUE_EXPANDED_SCALE = 1.5;
+const VALUE_STYLE: CSSProperties = {
+  transform: `scale(calc(${VALUE_EXPANDED_SCALE} - ${COLLAPSE} * ${VALUE_EXPANDED_SCALE - 1}))`,
+  transformOrigin: 'left bottom',
+};
 interface TileTone {
   card: string;
   value: string;
@@ -94,8 +99,8 @@ export function StatTile({ def, value }: StatTileProps) {
   return (
     <div className={cn(CARD_LAYOUT, 'text-left', tone.card)} style={CARD_STYLE}>
       <IconPattern icon={Icon} className={tone.pattern} />
-      <Icon className={cn('absolute top-3 right-3 transition-[width,height,opacity]', COLLAPSE_EASE, tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
-      <dd className={cn('order-1 leading-none font-bold tracking-tight tabular-nums transition-[font-size]', COLLAPSE_EASE, empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
+      <Icon className={cn('absolute top-3 right-3 size-18 transition-[transform,opacity]', COLLAPSE_EASE, tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
+      <dd className={cn('order-1 text-2xl leading-none font-bold tracking-tight tabular-nums transition-transform', COLLAPSE_EASE, empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
         {value}
       </dd>
       <dt className="order-2 mt-1 text-sm leading-tight font-medium text-muted-foreground">{def.label}</dt>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { Input } from '@/components/ui/input';
 import { matchesQuery } from '@/lib/contact';
@@ -17,6 +17,7 @@ interface ContactListProps {
   onViewHistory: (contactId: string) => void;
   initialLoadComplete: boolean;
   stickyTop?: ReactNode;
+  stickyRef?: RefObject<HTMLDivElement | null>;
   isDesktop: boolean;
 }
 
@@ -31,7 +32,7 @@ const SKELETON_ROW_COUNT = 8;
 const FADE_RANGE_PX = 32;
 const SEARCH_DEBOUNCE_MS = 150;
 
-export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, isDesktop }: ContactListProps) {
+export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, stickyRef, isDesktop }: ContactListProps) {
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLUListElement | null>(null);
@@ -68,7 +69,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
 
   return (
     <div ref={rootRef} className="flex flex-col lg:h-full">
-      <div className="relative z-20 flex-none bg-background pt-2 pb-4 max-lg:sticky max-lg:top-0 lg:pt-0 lg:pb-0">
+      <div ref={stickyRef} className="relative z-20 flex-none bg-background pt-2 pb-4 max-lg:sticky max-lg:top-0 lg:pt-0 lg:pb-0">
         {stickyTop && <div className="pb-4">{stickyTop}</div>}
         <Input
           type="search"
