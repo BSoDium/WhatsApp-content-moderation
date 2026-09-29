@@ -71,6 +71,7 @@ export interface Stats {
 export type AuditAction =
   | 'none'
   | 'delete+warn'
+  | 'delete'
   | 'warning_sent'
   | 'classifier_error'
   | 'action_failed'

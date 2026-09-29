@@ -2,6 +2,8 @@ import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
+import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
+import { templateWarning } from './warning-templates.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
 
 interface CallWarningInput {
@@ -29,6 +31,7 @@ function buildSystemPrompt(language: string): string {
     '3. State the consequence exactly as given below, addressed to the contact as "you".',
     '',
     'Other requirements:',
+    `- ${NO_STRIKE_WORDING_RULE}`,
     `- Write in ${language}.`,
     "- You have not been shown any conversation. Never mention, answer, or take a side on anything the contact wrote or on any person or topic they discussed.",
     '- Exactly ONE short sentence (two only if truly necessary), as brief as a real text message. No bullet points, no markdown, no surrounding quotation marks.',
@@ -38,18 +41,9 @@ function buildSystemPrompt(language: string): string {
 }
 
 function buildUserPrompt({ strikeCount, strikeThreshold }: CallWarningInput, retryHint: string | null): string {
-  const strikesRemaining = strikeThreshold - strikeCount;
-  const consequence =
-    strikesRemaining <= 0
-      ? "You've reached the strike threshold — you are being blocked."
-      : strikesRemaining === 1
-        ? 'This is your last strike before you are blocked — one more nuisance call and you will be blocked.'
-        : `${strikesRemaining} strikes remain before you are blocked.`;
-
   return [
     '# What happened',
-    `Call strikes so far: ${strikeCount} of ${strikeThreshold}.`,
-    `Consequence to state, addressed to the contact as "you": ${consequence}`,
+    `Consequence to state, addressed to the contact as "you": ${describeConsequence(strikeThreshold - strikeCount)}`,
     '',
     '# Task',
     'Write the reply to send back to them now.',
@@ -76,6 +70,9 @@ export async function generateCallWarningMessage(
   try {
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
+
+    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount);
+    if (fixedText) return { ok: true, text: fixedText };
 
     return await generateChecked(async (retryHint) => {
       const response = await ollama.chat({

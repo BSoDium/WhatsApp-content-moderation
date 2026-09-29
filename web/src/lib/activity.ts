@@ -5,11 +5,14 @@ type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 interface ActionMeta {
   label: string;
   badgeVariant: BadgeVariant;
+  description?: string;
+  className?: string;
 }
 
 // Red is reserved for classifier_error/action_failed; a delete is the system working as intended, not a failure needing an alarm color.
 export const ACTION_META: Record<AuditAction, ActionMeta> = {
   'delete+warn': { label: 'Deleted', badgeVariant: 'default' },
+  delete: { label: 'Deleted (grouped)', badgeVariant: 'default', description: 'Deleted without a new strike or warning: same burst, or recently warned' },
   warning_sent: { label: 'Warning sent', badgeVariant: 'secondary' },
   none: { label: 'Passed', badgeVariant: 'outline' },
   classifier_error: { label: 'Classifier error', badgeVariant: 'destructive' },
@@ -27,6 +30,7 @@ export const ACTION_META: Record<AuditAction, ActionMeta> = {
 // Every value the filter's Select offers — the order they're listed in.
 export const ACTION_FILTER_OPTIONS: AuditAction[] = [
   'delete+warn',
+  'delete',
   'warning_sent',
   'none',
   'classifier_error',
@@ -41,7 +45,24 @@ export const ACTION_FILTER_OPTIONS: AuditAction[] = [
   'call_shadow',
 ];
 
-export function actionMeta(action: string): ActionMeta {
+const SHADOW_DESCRIPTION = 'Shadow mode: nothing was done';
+const SHADOW_FLAGGED_CLASS = 'border-dashed border-foreground/70 font-semibold';
+
+// Shadow rows carry the classifier's verdict (`flagged`) even though nothing acted on it; surfacing it is the point of shadow mode.
+const SHADOW_VERDICT_META: Partial<Record<AuditAction, { flagged: ActionMeta; passed: ActionMeta }>> = {
+  shadow: {
+    flagged: { label: 'Would delete', badgeVariant: 'outline', description: SHADOW_DESCRIPTION, className: SHADOW_FLAGGED_CLASS },
+    passed: { label: 'Would pass', badgeVariant: 'outline', description: SHADOW_DESCRIPTION },
+  },
+  call_shadow: {
+    flagged: { label: 'Would warn (call)', badgeVariant: 'outline', description: SHADOW_DESCRIPTION, className: SHADOW_FLAGGED_CLASS },
+    passed: { label: 'Would pass (call)', badgeVariant: 'outline', description: SHADOW_DESCRIPTION },
+  },
+};
+
+export function actionMeta(action: string, flagged?: boolean | null): ActionMeta {
+  const verdictMeta = SHADOW_VERDICT_META[action as AuditAction];
+  if (verdictMeta && flagged !== undefined && flagged !== null) return flagged ? verdictMeta.flagged : verdictMeta.passed;
   return (ACTION_META as Record<string, ActionMeta>)[action] ?? { label: action, badgeVariant: 'outline' };
 }
 

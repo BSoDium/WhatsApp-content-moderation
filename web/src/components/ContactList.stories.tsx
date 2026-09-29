@@ -16,6 +16,7 @@ const meta = {
   args: {
     initialLoadComplete: true,
     selectedId: null,
+    isDesktop: true,
     onSelect: fn(),
     onToggle: fn(async () => {}),
     onViewHistory: fn(),

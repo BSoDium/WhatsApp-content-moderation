@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .DS_Store
 
 # Built frontend bundle (content-hashed filenames; control-server.js reads
@@ -34,3 +34,6 @@ config/policy.md
 # broader glob, so a real compose*.yml a contributor adds on purpose isn't
 # swallowed by accident.
 compose.override.yml
+
+# Local conversation scenarios built from real chats — they describe real people, so they stay off GitHub
+src/simulation/scenarios/*.local.json

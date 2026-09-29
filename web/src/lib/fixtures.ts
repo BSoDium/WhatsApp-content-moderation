@@ -97,6 +97,35 @@ export const FIXTURE_STATS_EMPTY: Stats = {
 
 export const FIXTURE_AUDIT_LOG: AuditLogEntry[] = [
   {
+    id: 7,
+    contactId: 'alice',
+    contactName: 'Alice Moreau',
+    direction: 'them',
+    message:
+      "Hey, I know you said to stop writing, but this is really the last time: you owe me money and I will keep messaging you every single day until it's sorted, so you might as well answer now and save us both the trouble.",
+    classificationOk: true,
+    flagged: true,
+    category: 'harassment',
+    reason: 'Repeated demands after being asked to stop, with an explicit threat to keep contacting the recipient daily',
+    error: null,
+    action: 'shadow',
+    createdAt: Date.now() - 2 * MINUTE_MS,
+  },
+  {
+    id: 6,
+    contactId: 'carol',
+    contactName: 'Carol — Atelier Lumière',
+    direction: 'them',
+    message: 'Thanks, see you Thursday!',
+    classificationOk: true,
+    flagged: false,
+    category: 'none',
+    reason: 'Ordinary scheduling message',
+    error: null,
+    action: 'shadow',
+    createdAt: Date.now() - 6 * MINUTE_MS,
+  },
+  {
     id: 5,
     contactId: 'alice',
     contactName: 'Alice Moreau',

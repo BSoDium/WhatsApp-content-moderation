@@ -5,9 +5,9 @@ export function warningModel(): string {
   return getRawSetting('WARNING_MODEL') || getRawSetting('OLLAMA_MODEL');
 }
 
-// Collapses the formatting a small local model adds (quotes, stray newlines) into the single plain line a text message would be.
+// Collapses the formatting a small local model adds (quotes, stray newlines, emoji) into the single plain line a text message would be.
 function sanitizeWarning(raw: string): string {
-  const collapsed = raw.replace(/\s+/g, ' ').trim();
+  const collapsed = raw.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').replace(/\s+/g, ' ').trim();
   return collapsed.replace(/^["'“‘`]+/, '').replace(/["'”’`]+$/, '').trim();
 }
 

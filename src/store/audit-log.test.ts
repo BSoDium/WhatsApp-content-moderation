@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-audit-log.test.sqlite';
 
-const { logMessage, getAuditLog, getAuditLogPage, getAuditLogStats } = await import('./audit-log.ts');
+const { logMessage, getAuditLog, getAuditLogPage, getAuditLogStats, getLastActionAt } = await import('./audit-log.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -134,4 +134,33 @@ test('getAuditLogStats counts by action, across every contact logged so far in t
   assert.ok(stats.totalClassifierErrors >= 1);
   assert.ok(stats.byCategory.some((entry) => entry.category === 'spam' && entry.count >= 1));
   assert.ok(stats.byCategory.every((entry) => entry.count > 0));
+});
+
+test('getAuditLogStats charts a flagged shadow-mode message by category but not a passed one', () => {
+  const contact = 'gina@s.whatsapp.net';
+  logMessage({ contactId: contact, direction: 'them', message: 'x', classification: { ok: true, flagged: true, category: 'shadow_only_category', reason: '' }, action: 'shadow' });
+  logMessage({ contactId: contact, direction: 'them', message: 'y', classification: { ok: true, flagged: false, category: 'shadow_passed_category', reason: '' }, action: 'shadow' });
+
+  const { byCategory } = getAuditLogStats();
+  assert.ok(byCategory.some((entry) => entry.category === 'shadow_only_category'));
+  assert.ok(byCategory.every((entry) => entry.category !== 'shadow_passed_category'));
+});
+
+test('getLastActionAt returns the newest matching entry for that contact only, or null', () => {
+  const contact = 'hank@s.whatsapp.net';
+  const classification = { ok: true, flagged: false, category: 'none', reason: '' };
+  assert.equal(getLastActionAt(contact, 'warning_sent'), null);
+
+  logMessage({ contactId: contact, direction: 'me', message: 'w', classification, action: 'warning_sent' });
+  logMessage({ contactId: 'someone-else@s.whatsapp.net', direction: 'me', message: 'w', classification, action: 'warning_sent' });
+
+  assert.equal(typeof getLastActionAt(contact, 'warning_sent'), 'number');
+  assert.equal(getLastActionAt(contact, 'delete+warn'), null);
+});
+
+test('getAuditLogStats counts a grouped delete as a deletion', () => {
+  const before = getAuditLogStats().totalFlaggedDeleted;
+  logMessage({ contactId: 'ida@s.whatsapp.net', direction: 'them', message: 'x', classification: { ok: true, flagged: true, category: 'spam', reason: '' }, action: 'delete' });
+
+  assert.equal(getAuditLogStats().totalFlaggedDeleted, before + 1);
 });

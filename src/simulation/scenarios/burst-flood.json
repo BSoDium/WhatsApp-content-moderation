@@ -1,0 +1,38 @@
+{
+  "name": "One violation sent as four quick messages",
+  "description": "All four land in one burst: expect a single strike and a single warning, but every message deleted.",
+  "policy": "Flag any message that insults the recipient (name-calling, contempt) or demands money aggressively. Do not flag polite messages, questions, or ordinary logistics.",
+  "flagWords": [
+    "idiot",
+    "nul",
+    "imbécile"
+  ],
+  "settings": {
+    "BUFFER_WINDOW_MS": "60",
+    "STRIKE_THRESHOLD": "3",
+    "STRIKE_COOLDOWN_MS": "1000"
+  },
+  "messages": [
+    {
+      "text": "Tu es vraiment un idiot"
+    },
+    {
+      "text": "Franchement nul",
+      "afterMs": 20
+    },
+    {
+      "text": "Un imbécile complet",
+      "afterMs": 20
+    },
+    {
+      "text": "Réponds-moi idiot",
+      "afterMs": 20
+    }
+  ],
+  "expect": {
+    "strikes": 1,
+    "warnings": 1,
+    "deletions": 4,
+    "blocks": 0
+  }
+}
