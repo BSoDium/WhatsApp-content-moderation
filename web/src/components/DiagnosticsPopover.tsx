@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { DirectAccessWarning } from '@/components/DirectAccessWarning';
 import { DirectConnection } from '@/components/DirectConnection';
 import { SignedInUser } from '@/components/SignedInUser';
+import { TailscaleLogo } from '@/components/TailscaleLogo';
 import { formatElapsed } from '@/lib/duration';
 import type { ServerStatus, SignedInUser as SignedInUserData, WhatsAppStatus } from '@/lib/types';
 import { useNow } from '@/lib/useNow';
@@ -62,10 +63,15 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
   return (
     <>
       {user ? (
-        <PopoverHeader>
-          <PopoverTitle>{user.name}</PopoverTitle>
-          <PopoverDescription className="truncate">{user.login}</PopoverDescription>
-        </PopoverHeader>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground" aria-hidden="true">
+            <TailscaleLogo className="size-[18px]" />
+          </span>
+          <PopoverHeader className="min-w-0">
+            <PopoverTitle className="truncate">{user.name}</PopoverTitle>
+            <PopoverDescription className="truncate">{user.login}</PopoverDescription>
+          </PopoverHeader>
+        </div>
       ) : (
         <DirectAccessWarning />
       )}
