@@ -181,7 +181,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
-  const hasStrikes = entry !== undefined && (entry.strikeCount > 0 || entry.callNuisance.strikeCount > 0 || entry.callNuisance.unansweredCount > 0);
+  const hasStrikes = entry !== undefined && (entry.strikeCount > 0 || entry.callNuisance.strikeCount > 0);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 

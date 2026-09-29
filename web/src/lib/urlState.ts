@@ -53,8 +53,13 @@ export function historyIndex(): number {
   return marker?.navIndex ?? 0;
 }
 
-function sameState(a: UrlState, b: UrlState): boolean {
+export function sameUrlState(a: UrlState, b: UrlState): boolean {
   return a.contactId === b.contactId && a.openPanel === b.openPanel && a.activityContactId === b.activityContactId;
+}
+
+// `activityContactId` only means something while the Activity panel is open, so it is dropped otherwise to keep states comparable.
+export function toUrlState(contactId: string | null, openPanel: PanelName | null, activityContactId: string | null): UrlState {
+  return { contactId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null };
 }
 
 function buildUrl({ contactId, openPanel, activityContactId }: UrlState): string {
@@ -111,7 +116,7 @@ export function writeUrlState(state: UrlState, mode: HistoryMode = 'push'): void
  */
 export function popUrlStateIfPrevious(target: UrlState): boolean {
   const previous = snapshots.get(historyIndex() - 1);
-  if (!previous || !sameState(previous, target)) return false;
+  if (!previous || !sameUrlState(previous, target)) return false;
   window.history.back();
   return true;
 }

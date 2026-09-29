@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,8 @@ import { useAnimatePanes } from '@/lib/useAnimatePanes';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
 import { useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
-import { historyIndex, popUrlStateIfPrevious, readUrlState, writeUrlState, type PanelName, type UrlState } from '@/lib/urlState';
+import { planPopState } from '@/lib/popStatePlan';
+import { historyIndex, popUrlStateIfPrevious, readUrlState, sameUrlState, toUrlState, writeUrlState, type PanelName, type UrlState } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
@@ -93,10 +94,14 @@ function App() {
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [displayedContact, setDisplayedContact] = useState(selectedContact);
 
+  // Set when a back/forward navigation was undone pending the dialog, so confirming lands on the full entry (panel included) and not just its contact.
+  const pendingUrlTarget = useRef<UrlState | null>(null);
+
   function requestSelectContact(nextId: string | null) {
     // Re-selecting the open contact isn't navigation; prompting there would let a reflexive Discard wipe a live edit.
     if (nextId === selectedId) return;
     if (detailPanelRef.current?.hasUnsavedChanges()) {
+      pendingUrlTarget.current = null;
       setPendingSelection(nextId);
       return;
     }
@@ -105,26 +110,30 @@ function App() {
 
   // Closing steps back in history when that is where the user came from, so the in-page arrow and the browser's back button behave the same.
   function navigateToContact(nextId: string | null) {
-    const closingToPrevious = nextId === null && popUrlStateIfPrevious({ contactId: null, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
+    const closingToPrevious = nextId === null && popUrlStateIfPrevious(toUrlState(null, openPanel, activityContactId));
     if (!closingToPrevious) setSelectedId(nextId);
+  }
+
+  function continueNavigation(nextId: string | null, urlTarget: UrlState | null) {
+    if (urlTarget) applyUrlState(urlTarget);
+    else navigateToContact(nextId);
+    pendingUrlTarget.current = null;
+    setPendingSelection(undefined);
   }
 
   async function confirmSaveAndContinue() {
     // Captured before the await: the dialog can be dismissed mid-save, which would leave a stale target.
     const target = pendingSelection;
+    const urlTarget = pendingUrlTarget.current;
     setConfirmSaving(true);
     const ok = await detailPanelRef.current?.save();
     setConfirmSaving(false);
-    if (ok) {
-      navigateToContact(target ?? null);
-      setPendingSelection(undefined);
-    }
+    if (ok) continueNavigation(target ?? null, urlTarget);
   }
 
   function confirmDiscardAndContinue() {
     detailPanelRef.current?.discard();
-    navigateToContact(pendingSelection ?? null);
-    setPendingSelection(undefined);
+    continueNavigation(pendingSelection ?? null, pendingUrlTarget.current);
   }
 
   // Browsers ignore a custom message here and show their own prompt.
@@ -177,7 +186,18 @@ function App() {
   }
 
   function closePanel() {
-    if (!popUrlStateIfPrevious({ contactId: selectedId, openPanel: null, activityContactId: null })) closePanelState();
+    if (!popUrlStateIfPrevious(toUrlState(selectedId, null, null))) closePanelState();
+  }
+
+  const currentUrl = toUrlState(selectedId, openPanel, activityContactId);
+
+  function applyUrlState(target: UrlState) {
+    setSelectedId(target.contactId);
+    if (target.openPanel === null) {
+      if (openPanel !== null) closePanelState();
+    } else if (!sameUrlState(target, { ...currentUrl, contactId: target.contactId })) {
+      showPanel(target.openPanel, target.activityContactId);
+    }
   }
 
   const urlWriteCount = useRef(0);
@@ -186,41 +206,32 @@ function App() {
     const replace = urlWriteCount.current === 0 || replaceNextUrlWrite.current;
     urlWriteCount.current += 1;
     replaceNextUrlWrite.current = false;
-    writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null }, replace ? 'replace' : 'push');
+    writeUrlState(toUrlState(selectedId, openPanel, activityContactId), replace ? 'replace' : 'push');
     lastHistoryIndex.current = historyIndex();
   }, [selectedId, openPanel, activityContactId]);
 
-  const currentUrlState = useRef<UrlState>(initialUrlState);
-  currentUrlState.current = { contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null };
+  // The browser's back/forward buttons: re-derive state from the URL the entry carries. An Effect Event, so it always sees the latest state without re-subscribing every render.
+  const handlePopState = useEffectEvent(() => {
+    const target = readUrlState();
+    const index = historyIndex();
+    const previousIndex = lastHistoryIndex.current;
+    lastHistoryIndex.current = index;
 
-  // The browser's back/forward buttons: re-derive state from the URL the entry carries.
-  useEffect(() => {
-    function handlePopState() {
-      const target = readUrlState();
-      const current = currentUrlState.current;
-      const index = historyIndex();
-      const previousIndex = lastHistoryIndex.current;
-      lastHistoryIndex.current = index;
-
-      if (target.contactId === current.contactId && target.openPanel === current.openPanel && target.activityContactId === current.activityContactId) return;
-
-      // Undo the move rather than silently drop an unsaved moderation-context draft, and let the dialog decide.
-      if (target.contactId !== current.contactId && detailPanelRef.current?.hasUnsavedChanges()) {
-        window.history.go(previousIndex - index);
-        setPendingSelection(target.contactId);
-        return;
-      }
-
-      setSelectedId(target.contactId);
-      if (target.openPanel === null) {
-        if (current.openPanel !== null) closePanelState();
-      } else if (target.openPanel !== current.openPanel || target.activityContactId !== current.activityContactId) {
-        showPanel(target.openPanel, target.activityContactId);
-      }
+    const plan = planPopState({ target, current: currentUrl, hasUnsavedDraft: Boolean(detailPanelRef.current?.hasUnsavedChanges()), previousIndex, index });
+    if (plan.kind === 'ignore') return;
+    if (plan.kind === 'confirm') {
+      if (plan.undoDelta !== 0) window.history.go(plan.undoDelta);
+      pendingUrlTarget.current = target;
+      setPendingSelection(target.contactId);
+      return;
     }
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    applyUrlState(target);
   });
+  useEffect(() => {
+    const listener = () => handlePopState();
+    window.addEventListener('popstate', listener);
+    return () => window.removeEventListener('popstate', listener);
+  }, []);
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
@@ -362,7 +373,9 @@ function App() {
           open={pendingSelection !== undefined}
           onOpenChange={(open) => {
             // Dismissing mid-save can't cancel the request, and the captured target would still navigate, contradicting "Stay".
-            if (!open && !confirmSaving) setPendingSelection(undefined);
+            if (open || confirmSaving) return;
+            pendingUrlTarget.current = null;
+            setPendingSelection(undefined);
           }}
         >
           <AlertDialogContent>
