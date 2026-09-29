@@ -1,18 +1,13 @@
-import { readFileSync } from 'node:fs';
-import { createLogger } from './cli/logger.ts';
+const DEV_VERSION = 'dev';
 
-const logger = createLogger('version');
-
-const UNKNOWN_VERSION = 'unknown';
-
-function readVersion(): string {
-  try {
-    const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-    return typeof version === 'string' ? version : UNKNOWN_VERSION;
-  } catch (err) {
-    logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'could not read app version from package.json');
-    return UNKNOWN_VERSION;
-  }
+/**
+ * The release version comes from the `APP_VERSION` environment variable, which
+ * the container build sets from the git tag. Anything else — a local run, a
+ * test — reports `dev` rather than a stale package.json number.
+ */
+export function resolveAppVersion(raw: string | undefined): string {
+  const version = raw?.trim();
+  return version ? version : DEV_VERSION;
 }
 
-export const APP_VERSION = readVersion();
+export const APP_VERSION = resolveAppVersion(process.env.APP_VERSION);

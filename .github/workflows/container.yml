@@ -62,6 +62,7 @@ jobs:
           # hardware") — no need for multi-arch until that changes.
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: APP_VERSION=${{ steps.meta.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
