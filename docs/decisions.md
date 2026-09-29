@@ -1648,3 +1648,82 @@ the value is raised in Settings.
 
 *Rejected: capping generation with `num_predict`.* It would cut the text at a
 token boundary, reintroducing the mid-sentence truncation this removes.
+
+## One strike and one warning per incident
+
+A contact who sends one violation as several short messages was struck and
+warned once per message: three flagged messages in a burst meant three
+strikes and three warnings, so they reached the block threshold in one go
+and the chat filled with near-identical notices. Passed messages had the
+opposite problem, each decaying a strike, so a run of harmless one-word
+messages erased strikes as fast as they were earned.
+
+**Chosen: an incident, not a message, is the unit.** In `runBurst`
+(`src/pipeline/moderation-pipeline.ts`) only the first flagged message of a
+burst records a strike and sends a warning; every later flagged message is
+still deleted, logged as `delete` (shown as "Deleted (grouped)"), and adds
+nothing. The same applies to a burst arriving within `STRIKE_COOLDOWN_MS`
+(default 5 min) of the contact's last `warning_sent` audit row, which covers a
+contact drip-feeding messages further apart than the buffer window. A cooldown
+that expires lets the next violation strike again, so sustained harassment
+still escalates to a block, roughly one strike per cooldown. A burst with no
+flagged message decays one strike in total.
+
+*The cooldown is derived from the audit log, not stored.* `warning_sent` is
+written exactly when a strike is recorded, so `getLastActionAt` gives the
+timestamp with no schema change. `strikes.updated_at` was rejected because
+decay also writes it.
+
+*Deletion stays streaming.* Classifying the whole burst before acting would
+delay every delete by the total inference time, which on the CPU-only target
+is long, so messages are still deleted as each verdict arrives.
+
+**Warning wording.** The model was told "N strikes remain" and translated it
+literally, alternating "strike" and "frappes" and sometimes miscounting; it also
+called a one-to-one chat a "group" and once emitted an emoji that rendered as
+"Voiture de police :". The consequence is now phrased as repeat offences
+(French "récidive"), the running count is no longer in the prompt, the prompt
+forbids "group" and emoji, asks for under 160 characters and includes one
+example, and `sanitizeWarning` strips emoji. The nuisance-call warning shares
+the same wording (`src/classifier/warning-consequence.ts`).
+
+## Warning templates for known languages
+
+Even with the prompt fixed (see above), `llama3.2:3b` could not write
+grammatical warnings: sampled French had "le prochain récidive vous
+bloquerons" and "de l'account", and Polish was unusable ("Two kolejne
+récidivy powodują blokadę"). Asking it to translate one fixed English sentence
+instead was worse (4 of 6 attempts refused or answered as a chat assistant).
+`mistral` 7B wrote readable French, Polish and Spanish, but it is roughly 3x
+slower on a fast laptop and its speed on the 2-core reference box is
+unmeasured.
+
+**Chosen: fixed, hand-checked text where it exists, the model elsewhere.**
+`src/classifier/warning-templates.ts` holds five strings per language
+(message removed, stop calling, and three consequences: N more, next, final)
+for English, French, Spanish and Polish. `generateWarningMessage` and
+`generateCallWarningMessage` still call `detectLanguage`; if the language has a
+template they return it with no generation call, otherwise they generate as
+before, and the static `WARNING_MESSAGE` remains the last resort. A templated
+warning is also shorter and faster, since it saves the generation call.
+
+*Register is formal in every language* (English neutral, French *vous*,
+Spanish *usted*, Polish impersonal), and no wording gender-marks the contact
+("bloqué", "bloqueado", "zablokowany" are avoided in favour of "un blocage
+sera appliqué"): the notice goes to someone the operator may be in conflict
+with, whose gender and preferred form of address are unknown. The first draft
+mixed registers (*tu* in Spanish, *vous* in French), which read as incoherent.
+
+*Adding a language* is five strings and a test row; nothing else changes.
+The Spanish and Polish wording was drafted by an assistant and needs a fluent
+reader's review before being relied on.
+
+*Known gap:* the fallback to the model only covers languages without a
+template, and the fallback to the static message only fires on failure (error,
+empty, refused, over-long). A model that "succeeds" in a language it writes
+badly, e.g. Swahili, still sends what it wrote; a larger `WARNING_MODEL` is the
+lever for that.
+
+*Rejected: a bilingual English/French default for unknown languages.* It would
+be grammatical, but tells a Polish or Turkish contact nothing they can read
+where the model's attempt at least tries.

@@ -14,7 +14,7 @@ const INPUT = { recentMessages: ['Salut, tu es là ?'], strikeCount: 1, strikeTh
 
 function fakeClient(content) {
   return {
-    chat: async (request) => ({ message: { content: request.format ? JSON.stringify({ language: 'French' }) : content } }),
+    chat: async (request) => ({ message: { content: request.format ? JSON.stringify({ language: 'Swahili' }) : content } }),
   };
 }
 
@@ -29,7 +29,7 @@ test('only language detection sees the recent messages; the warning prompt gets 
   const client = {
     chat: async (request) => {
       requests.push(request);
-      return { message: { content: request.format ? JSON.stringify({ language: 'French' }) : 'ok' } };
+      return { message: { content: request.format ? JSON.stringify({ language: 'Swahili' }) : 'ok' } };
     },
   };
 
@@ -39,7 +39,7 @@ test('only language detection sees the recent messages; the warning prompt gets 
   assert.match(detection.messages[1].content, /Salut, tu es là \?/);
   const generationPrompt = generation.messages.map((m) => m.content).join('\n');
   assert.doesNotMatch(generationPrompt, /Salut, tu es là \?/);
-  assert.match(generationPrompt, /Write in French/);
+  assert.match(generationPrompt, /Write in Swahili/);
 });
 
 test('fails open on an empty response', async () => {
@@ -78,7 +78,7 @@ test('retries once when the first attempt is too long', async () => {
   let generations = 0;
   const client = {
     chat: async (request) => {
-      if (request.format) return { message: { content: JSON.stringify({ language: 'French' }) } };
+      if (request.format) return { message: { content: JSON.stringify({ language: 'Swahili' }) } };
       generations++;
       return { message: { content: generations === 1 ? 'x'.repeat(501) : 'Arrêtez d’appeler.' } };
     },

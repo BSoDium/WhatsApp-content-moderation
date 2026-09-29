@@ -30,7 +30,7 @@ export interface AuditLogStats {
 }
 
 const DEFAULT_PAGE_LIMIT = 50;
-const FLAGGED_DELETED_ACTION = 'delete+warn';
+const FLAGGED_DELETED_ACTIONS = ['delete+warn', 'delete'];
 const SHADOW_ACTION = 'shadow';
 const WARNING_SENT_ACTION = 'warning_sent';
 const CLASSIFIER_ERROR_ACTION = 'classifier_error';
@@ -82,6 +82,17 @@ export function getAuditLog(contactId: string, limit = DEFAULT_PAGE_LIMIT): Audi
     .all();
 }
 
+export function getLastActionAt(contactId: string, action: string): number | null {
+  const row = getOrm()
+    .select({ createdAt: auditLog.created_at })
+    .from(auditLog)
+    .where(and(eq(auditLog.contact_id, contactId), eq(auditLog.action, action)))
+    .orderBy(desc(auditLog.id))
+    .limit(1)
+    .get();
+  return row?.createdAt ?? null;
+}
+
 function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, '\\$&');
 }
@@ -110,8 +121,8 @@ export function getAuditLogPage({ contactId, action, search, before, limit = DEF
     .all();
 }
 
-function countWithAction(action: string): SQL<number | null> {
-  return sql<number | null>`SUM(CASE WHEN ${auditLog.action} = ${action} THEN 1 ELSE 0 END)`;
+function countWithActions(actions: string[]): SQL<number | null> {
+  return sql<number | null>`SUM(CASE WHEN ${inArray(auditLog.action, actions)} THEN 1 ELSE 0 END)`;
 }
 
 /**
@@ -126,9 +137,9 @@ export function getAuditLogStats(): AuditLogStats {
   const counts = orm
     .select({
       totalLogged: count(),
-      totalFlaggedDeleted: countWithAction(FLAGGED_DELETED_ACTION),
-      totalWarningsSent: countWithAction(WARNING_SENT_ACTION),
-      totalClassifierErrors: countWithAction(CLASSIFIER_ERROR_ACTION),
+      totalFlaggedDeleted: countWithActions(FLAGGED_DELETED_ACTIONS),
+      totalWarningsSent: countWithActions([WARNING_SENT_ACTION]),
+      totalClassifierErrors: countWithActions([CLASSIFIER_ERROR_ACTION]),
     })
     .from(auditLog)
     .get();
@@ -137,7 +148,7 @@ export function getAuditLogStats(): AuditLogStats {
   const byCategory = orm
     .select({ category: auditLog.category, count: categoryCount })
     .from(auditLog)
-    .where(and(inArray(auditLog.action, [FLAGGED_DELETED_ACTION, SHADOW_ACTION]), eq(auditLog.flagged, 1), isNotNull(auditLog.category)))
+    .where(and(inArray(auditLog.action, [...FLAGGED_DELETED_ACTIONS, SHADOW_ACTION]), eq(auditLog.flagged, 1), isNotNull(auditLog.category)))
     .groupBy(auditLog.category)
     .orderBy(desc(categoryCount))
     .all() as { category: string; count: number }[];

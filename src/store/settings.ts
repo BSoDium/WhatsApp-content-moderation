@@ -8,6 +8,8 @@ import type { SettingRecord } from '../types.ts';
 
 const logger = createLogger('settings');
 
+const DEFAULT_STRIKE_COOLDOWN_MS = 5 * 60 * 1000;
+
 export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';
 
@@ -123,6 +125,16 @@ export const SETTINGS: readonly SettingDef[] = [
     type: 'int',
     default: '3',
     min: 1,
+  },
+  {
+    key: 'STRIKE_COOLDOWN_MS',
+    section: 'strikes',
+    label: 'Strike cooldown (ms)',
+    description:
+      'After a contact is warned, further flagged messages within this window are still deleted but add no strike and send no new warning, so a contact who sends one violation across several messages is not struck once per message. 0 disables it. Default: 5 min.',
+    type: 'int',
+    default: String(DEFAULT_STRIKE_COOLDOWN_MS),
+    min: 0,
   },
   {
     key: 'BLOCK_DURATION_MS',

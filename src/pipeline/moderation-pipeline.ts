@@ -2,7 +2,7 @@ import { createLogger } from '../cli/logger.ts';
 import { classifyMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
-import { logMessage, getAuditLog } from '../store/audit-log.ts';
+import { logMessage, getAuditLog, getLastActionAt } from '../store/audit-log.ts';
 import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { maybeBlockContact } from './escalation.ts';
@@ -32,6 +32,8 @@ type ConversationMessage = { from: 'me' | 'them'; text: string };
 
 const logger = createLogger('pipeline');
 
+const WARNING_SENT_ACTION = 'warning_sent';
+
 function loadHistory(contactId: string): ConversationMessage[] {
   return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
     .reverse()
@@ -54,7 +56,7 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
 /**
  * Runs one flushed burst of messages from a contact (src/buffer/) through
  * the classifier and acts on each verdict: delete-for-me + a warning reply
- * + a strike for a flagged message, a strike decay for a passed one. Prior
+ * + a strike for a flagged message, a strike decay for a passed burst. Prior
  * audit-log entries seed classifyMessage's history, and earlier messages in
  * this same burst are folded in as they're processed, so a burst is judged
  * as a conversation rather than message-by-message in isolation (see
@@ -62,6 +64,12 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
  * generateWarningMessage — contextual to the actual violation, not a fixed
  * string — with FALLBACK_WARNING_MESSAGE used verbatim if that generation
  * fails open; either way a warning is always sent alongside the delete.
+ *
+ * A burst is one incident: only its first flagged message earns a strike and
+ * a warning; later flagged ones in the same burst, or arriving within
+ * STRIKE_COOLDOWN_MS of the last warning, are deleted and logged as 'delete'
+ * without a new strike or warning. A burst with no flagged message decays
+ * one strike in total, however many messages it held.
  *
  * Fails open per classifyMessage's { ok: false } contract: an
  * unclassifiable message is logged and left alone, never deleted, warned,
@@ -126,6 +134,10 @@ async function runBurst(
   // the actual block decision below always agree, even if this setting is
   // edited mid-burst.
   const strikeThreshold = getNumberSetting('STRIKE_THRESHOLD');
+  // One violation drip-fed across several messages is one incident: once a strike has been recorded and the contact warned (in this burst or within STRIKE_COOLDOWN_MS of the last warning), further flagged messages are only deleted.
+  let incidentOpen = isWithinStrikeCooldown(contactId);
+  let sawFlagged = false;
+  let sawPassed = false;
 
   for (const { text, key, timestamp } of messages) {
     if (isPaused(contactId)) {
@@ -148,8 +160,22 @@ async function runBurst(
     }
 
     if (!classification.flagged) {
-      strikeCount = decayStrike(contactId);
+      sawPassed = true;
       logMessage({ contactId, direction: 'them', message: text, classification, action: 'none' });
+      continue;
+    }
+
+    sawFlagged = true;
+
+    if (incidentOpen) {
+      try {
+        await deleteForMe(contactId, key, timestamp);
+      } catch (err) {
+        logger.error({ contactId, deleteError: String(err) }, 'deleteForMe failed');
+        logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete_failed' });
+        continue;
+      }
+      logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete' });
       continue;
     }
 
@@ -194,13 +220,14 @@ async function runBurst(
     }
 
     strikeCount = recordStrike(contactId);
+    incidentOpen = true;
     logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete+warn' });
     logMessage({
       contactId,
       direction: 'me',
       message: warningText,
       classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
-      action: 'warning_sent',
+      action: WARNING_SENT_ACTION,
     });
     history.push({ from: 'me', text: warningText });
 
@@ -209,5 +236,14 @@ async function runBurst(
     }
   }
 
+  // A whole clean burst decays one strike, not one per message — otherwise a run of short harmless messages would erase strikes as fast as a drip-feeder earns them.
+  if (sawPassed && !sawFlagged) strikeCount = decayStrike(contactId);
+
   return { strikeCount };
+}
+
+function isWithinStrikeCooldown(contactId: string): boolean {
+  const cooldownMs = getNumberSetting('STRIKE_COOLDOWN_MS');
+  const lastWarnedAt = getLastActionAt(contactId, WARNING_SENT_ACTION);
+  return lastWarnedAt !== null && Date.now() - lastWarnedAt < cooldownMs;
 }
