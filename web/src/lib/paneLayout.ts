@@ -18,11 +18,13 @@ export function listPaneTarget(isDesktop: boolean, expanded: boolean, viewportWi
 }
 
 // Closed `x` starts the detail pane's left edge at the browsing list pane's right edge, so both edges travel the same distance.
+// Both layouts must set the same keys: Framer Motion leaves a property at its last value when the next target omits it, so a missing `width` or `x` would carry one breakpoint's geometry into the other.
 export function detailPaneTarget(isDesktop: boolean, expanded: boolean, viewportWidth: number) {
-  if (!isDesktop) return { width: '100%', opacity: 1 };
+  if (!isDesktop) return { width: '100%', x: 0, opacity: 1 };
   const { width, marginLeft } = browsingListPane(viewportWidth);
   const detailLeft = viewportWidth - (viewportWidth * DETAIL_PANE_WIDTH_PCT) / 100;
   return {
+    width: `${DETAIL_PANE_WIDTH_PCT}%`,
     x: expanded ? 0 : marginLeft + width - detailLeft,
     opacity: expanded ? 1 : 0,
   };
