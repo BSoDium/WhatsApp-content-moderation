@@ -118,3 +118,52 @@ test('also treats a refusal written with a typographic apostrophe as a refusal',
 
   assert.equal(result.ok, false);
 });
+
+function scriptedClient(replies) {
+  const generations = [];
+  const client = {
+    chat: async (request) => {
+      if (request.format) return { message: { content: JSON.stringify({ language: 'English' }) } };
+      generations.push(request);
+      return { message: { content: replies[Math.min(generations.length - 1, replies.length - 1)] } };
+    },
+  };
+  return { client, generations };
+}
+
+test('retries once with a shorter-reply instruction when the first attempt is too long', async () => {
+  const { client, generations } = scriptedClient(['x'.repeat(81), 'Short and complete.']);
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.deepEqual(result, { ok: true, text: 'Short and complete.' });
+  assert.equal(generations.length, 2);
+  assert.doesNotMatch(generations[0].messages[1].content, /too long/);
+  assert.match(generations[1].messages[1].content, /too long.*at most 48 characters/);
+});
+
+test('gives up after two attempts and reports the last failure', async () => {
+  const { client, generations } = scriptedClient(['x'.repeat(81)]);
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /too long/);
+  assert.equal(generations.length, 2);
+});
+
+test('does not retry when the model call itself fails', async () => {
+  let generations = 0;
+  const client = {
+    chat: async (request) => {
+      if (request.format) return { message: { content: JSON.stringify({ language: 'English' }) } };
+      generations++;
+      throw new Error('timed out');
+    },
+  };
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+  assert.equal(generations, 1);
+});

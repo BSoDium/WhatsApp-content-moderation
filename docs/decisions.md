@@ -1632,6 +1632,15 @@ reach a real phone, with its default raised to 500: in a sample of nine
 generations one degenerated into a ~3,900-character repetition loop, which the
 ceiling sends to the fallback.
 
+**One retry before falling back.** An over-long, empty or refused attempt is
+retried once (`MAX_ATTEMPTS` in `warning-text.ts`); after an over-long one the
+model is told to answer in one sentence of at most 60% of the ceiling, keeping
+only "automated system" and the consequence. A plain "use fewer words" barely
+moved `llama3.2:3b` (4 of 4 French retries still over a 150-character ceiling);
+naming what to drop got 6 of 6 under it. Transport failures (timeout, Ollama
+down) are not retried, since that would double the wait before the fallback,
+and language detection is not repeated.
+
 *Existing deployments keep their stored value.* Defaults are seeded into the
 settings table once, so an instance that already stored `180` keeps it and
 will fall back to the static message for any warning over 180 characters until

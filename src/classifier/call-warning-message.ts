@@ -2,7 +2,7 @@ import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
-import { checkWarning, warningModel } from './warning-text.ts';
+import { generateChecked, warningModel } from './warning-text.ts';
 
 interface CallWarningInput {
   recentMessages: string[];
@@ -37,7 +37,7 @@ function buildSystemPrompt(language: string): string {
   ].join('\n');
 }
 
-function buildUserPrompt({ strikeCount, strikeThreshold }: CallWarningInput): string {
+function buildUserPrompt({ strikeCount, strikeThreshold }: CallWarningInput, retryHint: string | null): string {
   const strikesRemaining = strikeThreshold - strikeCount;
   const consequence =
     strikesRemaining <= 0
@@ -53,6 +53,7 @@ function buildUserPrompt({ strikeCount, strikeThreshold }: CallWarningInput): st
     '',
     '# Task',
     'Write the reply to send back to them now.',
+    ...(retryHint ? ['', '# Correction', retryHint] : []),
   ].join('\n');
 }
 
@@ -76,16 +77,17 @@ export async function generateCallWarningMessage(
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
 
-    const response = await ollama.chat({
-      model,
-      messages: [
-        { role: 'system', content: buildSystemPrompt(detected.language) },
-        { role: 'user', content: buildUserPrompt(input) },
-      ],
-      options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
-    });
-
-    return checkWarning(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
+    return await generateChecked(async (retryHint) => {
+      const response = await ollama.chat({
+        model,
+        messages: [
+          { role: 'system', content: buildSystemPrompt(detected.language) },
+          { role: 'user', content: buildUserPrompt(input, retryHint) },
+        ],
+        options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
+      });
+      return response.message.content;
+    }, getNumberSetting('WARNING_MAX_LENGTH'));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

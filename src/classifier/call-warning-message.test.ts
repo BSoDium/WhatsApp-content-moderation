@@ -73,3 +73,19 @@ test('fails open instead of truncating a response longer than WARNING_MAX_LENGTH
   assert.equal(result.ok, false);
   assert.match(result.error, /too long/);
 });
+
+test('retries once when the first attempt is too long', async () => {
+  let generations = 0;
+  const client = {
+    chat: async (request) => {
+      if (request.format) return { message: { content: JSON.stringify({ language: 'French' }) } };
+      generations++;
+      return { message: { content: generations === 1 ? 'x'.repeat(501) : 'Arrêtez d’appeler.' } };
+    },
+  };
+
+  const result = await generateCallWarningMessage(INPUT, { client });
+
+  assert.deepEqual(result, { ok: true, text: 'Arrêtez d’appeler.' });
+  assert.equal(generations, 2);
+});
