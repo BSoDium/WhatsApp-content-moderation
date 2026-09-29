@@ -5,6 +5,7 @@ export interface EvalCase {
   message: string;
   history?: ConversationMessage[];
   expectFlagged: boolean;
+  usesContactContext?: boolean;
 }
 
 export const EVAL_CASES: EvalCase[] = [
@@ -32,6 +33,26 @@ export const EVAL_CASES: EvalCase[] = [
     ],
     expectFlagged: false,
   },
+  { name: 'french sign-off "bisous"', message: 'bisous', expectFlagged: false },
+  { name: 'french sign-off "bizou" with emoji', message: 'bizou 😘', expectFlagged: false },
+  { name: 'short remark about a situation, no history', message: 'Un peu stupide.', expectFlagged: false },
+  {
+    name: 'short remark about a situation, one-sided history',
+    message: 'Un peu stupide.',
+    history: [
+      { from: 'them', text: "Je suis à l'hopital" },
+      { from: 'them', text: 'Tu es toujours à la maison?' },
+      { from: 'me', text: 'Votre message a été supprimé car il enfreint les règles de cette conversation.', automated: true },
+      { from: 'them', text: 'Tu es où ?' },
+      { from: 'me', text: 'Votre message a été supprimé car il enfreint les règles de cette conversation.', automated: true },
+      { from: 'them', text: "Tu restes à la maison parce qu'il y a tes affaires?" },
+      { from: 'them', text: 'Moi non plus!' },
+    ],
+    expectFlagged: false,
+  },
+  { name: 'name-calling with implied address (fr)', message: 'espèce de connard', expectFlagged: true },
+  { name: 'direct "you are stupid" (fr)', message: "t'es vraiment stupide toi", expectFlagged: true },
+  { name: 'direct "you are stupid" (en)', message: 'you are so stupid', expectFlagged: true },
   { name: 'insult aimed at me (fr)', message: "t'es qu'une merde, personne ne veut te parler", expectFlagged: true },
   { name: 'insult aimed at me (en)', message: "you're pathetic and everyone knows it", expectFlagged: true },
   {
@@ -59,4 +80,32 @@ export const EVAL_CASES: EvalCase[] = [
     ],
     expectFlagged: true,
   },
+];
+
+const withContext = (name: string, message: string, expectFlagged: boolean): EvalCase => ({
+  name: `contact context: ${name}`,
+  message,
+  expectFlagged,
+  usesContactContext: true,
+});
+
+export const CONTACT_CONTEXT_EVAL_CASES: EvalCase[] = [
+  withContext('asks me to call mom', "Tu peux appeler maman pour lui dire que je l'aime ?", true),
+  withContext('asks me to bring her back', "Est-ce que tu peux parler à ta mère pour qu'elle revienne ?", true),
+  withContext('asks me to get them back together', "Aide-moi à me remettre avec elle, tu es le seul qui peut", true),
+  withContext('asks for emotional help', "J'ai besoin que tu m'aides, je ne vais pas bien du tout", true),
+  withContext('complains I have not replied', 'Pourquoi tu ne réponds pas ?? Ça fait 10 minutes !!', true),
+  withContext('demands an instant reply', 'Réponds-moi tout de suite', true),
+  withContext('guilt trip', "Tu m'ignores, tu es un mauvais fils", true),
+  withContext('guilt trip: abandonment', 'Tu me laisses tomber comme tout le monde', true),
+  withContext('threat', 'Tu vas le regretter si tu ne réponds pas', true),
+  withContext('where are you', 'Tu es où ?', false),
+  withContext('still at home', 'Tu es toujours à la maison?', false),
+  withContext('hospital', "Je suis à l'hopital", false),
+  withContext('asks about my plans', "Tu restes à la maison parce qu'il y a tes affaires?", false),
+  withContext('short remark', 'Moi non plus!', false),
+  withContext('everyday question', 'Tu as mangé ?', false),
+  withContext('plans', 'On se voit dimanche ?', false),
+  withContext('passing mention of mom', "J'ai croisé ta mère au marché, elle avait l'air en forme", false),
+  withContext('goodnight', 'Bonne nuit, à demain.', false),
 ];

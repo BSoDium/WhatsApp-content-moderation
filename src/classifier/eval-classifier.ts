@@ -2,16 +2,22 @@
 
 import { readFileSync } from 'node:fs';
 import { classifyMessage } from './classifier.ts';
-import { EVAL_CASES } from './eval-cases.ts';
+import { CONTACT_CONTEXT_EVAL_CASES, EVAL_CASES } from './eval-cases.ts';
 
 const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
 const POLICY_FILE = process.env.EVAL_POLICY_FILE;
+const CONTEXT_FILE = process.env.EVAL_CONTEXT_FILE;
 
 const policy = POLICY_FILE ? readFileSync(POLICY_FILE, 'utf8') : undefined;
+const contactContext = CONTEXT_FILE ? readFileSync(CONTEXT_FILE, 'utf8').trim() : undefined;
+const cases = contactContext ? [...EVAL_CASES, ...CONTACT_CONTEXT_EVAL_CASES] : EVAL_CASES;
 let failures = 0;
 
-for (const { name, message, history, expectFlagged } of EVAL_CASES) {
-  const result = await classifyMessage({ message, history, model: MODEL }, { policy });
+for (const { name, message, history, expectFlagged, usesContactContext } of cases) {
+  const result = await classifyMessage(
+    { message, history, model: MODEL, contactContext: usesContactContext ? contactContext : undefined },
+    { policy },
+  );
 
   if (!result.ok) {
     failures++;
@@ -24,5 +30,5 @@ for (const { name, message, history, expectFlagged } of EVAL_CASES) {
   console.log(`${passed ? 'ok   ' : 'WRONG'}  ${name} — flagged=${result.flagged} (${result.category}: ${result.reason})`);
 }
 
-console.log(`\n${EVAL_CASES.length - failures}/${EVAL_CASES.length} as expected (${MODEL})`);
+console.log(`\n${cases.length - failures}/${cases.length} as expected (${MODEL})`);
 process.exit(failures === 0 ? 0 : 1);
