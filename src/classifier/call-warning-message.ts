@@ -3,6 +3,7 @@ import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
+import { templateWarning } from './warning-templates.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
 
 interface CallWarningInput {
@@ -69,6 +70,9 @@ export async function generateCallWarningMessage(
   try {
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
+
+    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount);
+    if (fixedText) return { ok: true, text: fixedText };
 
     return await generateChecked(async (retryHint) => {
       const response = await ollama.chat({

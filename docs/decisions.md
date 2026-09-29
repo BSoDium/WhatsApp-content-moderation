@@ -1686,3 +1686,37 @@ called a one-to-one chat a "group" and once emitted an emoji that rendered as
 forbids "group" and emoji, asks for under 160 characters and includes one
 example, and `sanitizeWarning` strips emoji. The nuisance-call warning shares
 the same wording (`src/classifier/warning-consequence.ts`).
+
+## Warning templates for known languages
+
+Even with the prompt fixed (see above), `llama3.2:3b` could not write
+grammatical warnings: sampled French had "le prochain récidive vous
+bloquerons" and "de l'account", and Polish was unusable ("Two kolejne
+récidivy powodują blokadę"). Asking it to translate one fixed English sentence
+instead was worse (4 of 6 attempts refused or answered as a chat assistant).
+`mistral` 7B wrote readable French, Polish and Spanish, but it is roughly 3x
+slower on a fast laptop and its speed on the 2-core reference box is
+unmeasured.
+
+**Chosen: fixed, hand-checked text where it exists, the model elsewhere.**
+`src/classifier/warning-templates.ts` holds five strings per language
+(message removed, stop calling, and three consequences: N more, next, final)
+for English, French, Spanish and Polish. `generateWarningMessage` and
+`generateCallWarningMessage` still call `detectLanguage`; if the language has a
+template they return it with no generation call, otherwise they generate as
+before, and the static `WARNING_MESSAGE` remains the last resort. A templated
+warning is also shorter and faster, since it saves the generation call.
+
+*Adding a language* is five strings and a test row; nothing else changes.
+The Spanish and Polish wording was drafted by an assistant and needs a fluent
+reader's review before being relied on.
+
+*Known gap:* the fallback to the model only covers languages without a
+template, and the fallback to the static message only fires on failure (error,
+empty, refused, over-long). A model that "succeeds" in a language it writes
+badly, e.g. Swahili, still sends what it wrote; a larger `WARNING_MODEL` is the
+lever for that.
+
+*Rejected: a bilingual English/French default for unknown languages.* It would
+be grammatical, but tells a Polish or Turkish contact nothing they can read
+where the model's attempt at least tries.

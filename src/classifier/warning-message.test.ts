@@ -15,7 +15,7 @@ after(() => {
 
 const INPUT = { message: 'you should be scared', strikeCount: 1, strikeThreshold: 3 };
 
-function fakeClient(content, language = 'English') {
+function fakeClient(content, language = 'Swahili') {
   return {
     chat: async (request) => ({ message: { content: request.format ? JSON.stringify({ language }) : content } }),
   };
@@ -80,7 +80,7 @@ test('the warning model is never shown the flagged message, only its detected la
   const client = {
     chat: async (request) => {
       requests.push(request);
-      return { message: { content: request.format ? JSON.stringify({ language: 'French' }) : 'Stop.' } };
+      return { message: { content: request.format ? JSON.stringify({ language: 'Swahili' }) : 'Stop.' } };
     },
   };
 
@@ -90,7 +90,7 @@ test('the warning model is never shown the flagged message, only its detected la
   assert.match(detection.messages[1].content, /phrase secrète du contact/);
   const generationPrompt = generation.messages.map((m) => m.content).join('\n');
   assert.doesNotMatch(generationPrompt, /phrase secrète du contact/);
-  assert.match(generationPrompt, /Write in French/);
+  assert.match(generationPrompt, /Write in Swahili/);
 });
 
 test('fails open when the language cannot be detected', async () => {
@@ -123,7 +123,7 @@ function scriptedClient(replies) {
   const generations = [];
   const client = {
     chat: async (request) => {
-      if (request.format) return { message: { content: JSON.stringify({ language: 'English' }) } };
+      if (request.format) return { message: { content: JSON.stringify({ language: 'Swahili' }) } };
       generations.push(request);
       return { message: { content: replies[Math.min(generations.length - 1, replies.length - 1)] } };
     },
@@ -156,7 +156,7 @@ test('does not retry when the model call itself fails', async () => {
   let generations = 0;
   const client = {
     chat: async (request) => {
-      if (request.format) return { message: { content: JSON.stringify({ language: 'English' }) } };
+      if (request.format) return { message: { content: JSON.stringify({ language: 'Swahili' }) } };
       generations++;
       throw new Error('timed out');
     },
@@ -193,4 +193,35 @@ test('strips emoji from the generated warning', async () => {
   const result = await generateWarningMessage(INPUT, { client });
 
   assert.deepEqual(result, { ok: true, text: 'Message removed by an automated system.' });
+});
+
+function detectionOnlyClient(language) {
+  const requests = [];
+  const client = {
+    chat: async (request) => {
+      requests.push(request);
+      if (request.format) return { message: { content: JSON.stringify({ language }) } };
+      throw new Error('the warning model must not be called for a templated language');
+    },
+  };
+  return { client, requests };
+}
+
+test('a language with a template gets its fixed text without any generation call', async () => {
+  const { client, requests } = detectionOnlyClient('French');
+
+  const result = await generateWarningMessage({ ...INPUT, strikeCount: 1, strikeThreshold: 3 }, { client });
+
+  assert.equal(result.ok, true);
+  assert.match(result.text, /Après 2 récidives supplémentaires, vous serez bloqué\.$/);
+  assert.equal(requests.length, 1);
+});
+
+test('a language without a template is written by the warning model', async () => {
+  const { client, generations } = scriptedClient(['Ujumbe wako umeondolewa.']);
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.deepEqual(result, { ok: true, text: 'Ujumbe wako umeondolewa.' });
+  assert.equal(generations.length, 1);
 });

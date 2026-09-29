@@ -4,6 +4,7 @@ import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
+import { templateWarning } from './warning-templates.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -58,8 +59,10 @@ function buildUserPrompt({ strikeCount, strikeThreshold }: WarningMessageInput, 
  * Generates the warning sent to a contact whose message was just flagged and
  * deleted, written in that message's language, telling the contact plainly
  * that an automated system is watching and will block them if it continues.
- * The warning model never sees the flagged message (only detectLanguage
- * does), so it can't engage with the conversation.
+ * A language with a hand-written entry in warning-templates.ts gets that
+ * fixed text, with no generation call at all; any other language is written
+ * by the warning model. That model never sees the flagged message (only
+ * detectLanguage does), so it can't engage with the conversation.
  *
  * Fails open by design, same contract as classifyMessage: any error (Ollama
  * unreachable, malformed/empty response, timeout) returns { ok: false }
@@ -82,6 +85,9 @@ export async function generateWarningMessage(
   try {
     const detected = await detectLanguage(input.message, ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
+
+    const fixedText = templateWarning(detected.language, 'message', input.strikeThreshold - input.strikeCount);
+    if (fixedText) return { ok: true, text: fixedText };
 
     return await generateChecked(async (retryHint) => {
       const response = await ollama.chat({
