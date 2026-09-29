@@ -105,7 +105,7 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
             return `Unblock failed: ${outcome.error}`;
           }
           if (outcome.status === 'already-resolved') {
-            logger.warn({ contactId, blockId: block.id }, 'block was already marked unblocked (overlapping request or scheduler tick)');
+            logger.warn({ contactId, blockId: block.id }, 'block was already marked unblocked (overlapping request, scheduler tick, or an unblock made from the phone)');
             return 'Contact was already unblocked.';
           }
           logger.info({ contactId, blockId: block.id }, 'contact manually unblocked via manual override');

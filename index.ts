@@ -8,11 +8,12 @@ import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
+import { attachBlocklistSync } from './src/whatsapp/blocklist-sync.ts';
 import { createProfilePhotos } from './src/whatsapp/profile-photos.ts';
 import { createControlServer, getControlAppUrl } from './src/web/control-server.ts';
 import { printWarningBanner, printSuccessBanner } from './src/cli/terminal-output.ts';
 import { closeDb } from './src/store/db.ts';
-import { ensureDefaultsSeeded, migrateShadowModeFromEnv } from './src/store/settings.ts';
+import { ensureDefaultsSeeded, migrateShadowModeFromEnv, normalizeLegacyBoolSettings } from './src/store/settings.ts';
 import {
   listMonitored,
   isMonitored,
@@ -68,6 +69,7 @@ if (!ALLOWED_TAILSCALE_LOGIN) {
 const logger = createLogger('index');
 
 let sock: WASocket | undefined;
+let blocklistSync: ReturnType<typeof attachBlocklistSync> | undefined;
 
 function currentSocket(): WASocket {
   if (!sock) throw new Error('WhatsApp socket is not connected');
@@ -130,6 +132,7 @@ async function start() {
   // Must run before anything else touches a moderation-tuning setting, so
   // every read downstream sees a real value instead of racing an empty table.
   ensureDefaultsSeeded();
+  normalizeLegacyBoolSettings();
 
   controlServer = createControlServer({
     manualOverride,
@@ -151,6 +154,7 @@ async function start() {
     onSocket: (s: WASocket) => {
       sock = s;
       contactDirectory.attach(s);
+      blocklistSync = attachBlocklistSync(s);
       s.ev.on('messages.upsert', ({ messages, type }) => {
         for (const msg of messages) {
           // Reconciled the same way the directory is (@lid vs. phone-number
@@ -187,6 +191,7 @@ async function start() {
       ]);
       // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(currentSocket(), jid) });
+      blocklistSync?.reconcile().catch((err: unknown) => logger.error({ error: err instanceof Error ? err.message : String(err) }, 'blocklist reconcile failed'));
     },
     onReconnectFailed: () => setConnectionState('offline'),
     onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => {

@@ -28,7 +28,7 @@ export async function runTick(actions: UnblockActions): Promise<void> {
       case 'already-resolved':
         logger.warn(
           { contactId: record.contact_id, blockId: record.id },
-          'block was already marked unblocked (overlapping tick or manual override)',
+          'block was already marked unblocked (overlapping tick, manual override, or an unblock made from the phone)',
         );
         break;
       case 'failed':
