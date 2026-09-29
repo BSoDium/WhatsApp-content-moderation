@@ -207,7 +207,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
   }
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col overflow-y-auto px-4 pt-4 pb-16 lg:min-w-[500px] lg:px-8">
+    <div className="flex h-full w-full min-w-0 flex-col overflow-y-auto px-4 pt-4 pb-16 lg:min-w-[500px] lg:px-8 lg:pt-[27px]">
       <div className="mb-6 flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Back to contact list" className="-ml-2">
           <ArrowLeft />
