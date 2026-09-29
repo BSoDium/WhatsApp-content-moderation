@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .DS_Store
 
 # Built frontend bundle (content-hashed filenames; control-server.js reads

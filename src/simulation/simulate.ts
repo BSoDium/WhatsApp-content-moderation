@@ -12,7 +12,8 @@ const stub = args.includes('--stub');
 const modelIndex = args.indexOf('--model');
 const model = modelIndex === -1 ? undefined : args[modelIndex + 1];
 const modelOverride: Record<string, string> = model ? { OLLAMA_MODEL: model } : {};
-const requested = args.filter((arg, index) => !arg.startsWith('--') && index !== modelIndex + 1);
+const modelValueIndex = modelIndex === -1 ? -1 : modelIndex + 1;
+const requested = args.filter((arg, index) => !arg.startsWith('--') && index !== modelValueIndex);
 
 const workDir = mkdtempSync(join(tmpdir(), 'moderation-sim-'));
 process.env.DB_PATH = join(workDir, 'sim.sqlite');
