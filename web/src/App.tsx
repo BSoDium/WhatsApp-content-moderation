@@ -9,8 +9,8 @@ import { detailPaneTarget, listPaneTarget } from '@/lib/paneLayout';
 import { useAnimatePanes } from '@/lib/useAnimatePanes';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
-import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
-import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
+import { useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
+import { historyIndex, popUrlStateIfPrevious, readUrlState, writeUrlState, type PanelName, type UrlState } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
@@ -22,7 +22,6 @@ import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { OpenAccessBanner } from '@/components/OpenAccessBanner';
 import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
@@ -31,7 +30,10 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
-const COLLAPSE_RANGE_PX = 120;
+const COLLAPSE_AFTER_PX = 48;
+const EXPAND_BELOW_PX = 0;
+// How much shorter the KPI block gets when collapsed (see StatTile's COLLAPSE styles).
+const COLLAPSE_HEIGHT_DELTA_PX = 80;
 
 // Material 3's "emphasized decelerate" curve.
 const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0, 1];
@@ -75,8 +77,13 @@ function App() {
   // Driven by the id, not the resolved contact, so a deep-linked load doesn't animate open once contacts arrive.
   const panelOpen = selectedId !== null;
 
+  // A stale deep-link id is corrected in place: making it a back stop would trap the back button on a link that instantly undoes itself.
+  const replaceNextUrlWrite = useRef(false);
   useEffect(() => {
-    if (contactsLoaded && contacts.length > 0 && selectedId !== null && !selectedContact) setSelectedId(null);
+    if (contactsLoaded && contacts.length > 0 && selectedId !== null && !selectedContact) {
+      replaceNextUrlWrite.current = true;
+      setSelectedId(null);
+    }
   }, [contactsLoaded, contacts, selectedId, selectedContact, setSelectedId]);
 
   const detailPanelRef = useRef<ContactDetailPanelHandle>(null);
@@ -92,7 +99,13 @@ function App() {
       setPendingSelection(nextId);
       return;
     }
-    setSelectedId(nextId);
+    navigateToContact(nextId);
+  }
+
+  // Closing steps back in history when that is where the user came from, so the in-page arrow and the browser's back button behave the same.
+  function navigateToContact(nextId: string | null) {
+    const closingToPrevious = nextId === null && popUrlStateIfPrevious({ contactId: null, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
+    if (!closingToPrevious) setSelectedId(nextId);
   }
 
   async function confirmSaveAndContinue() {
@@ -102,14 +115,14 @@ function App() {
     const ok = await detailPanelRef.current?.save();
     setConfirmSaving(false);
     if (ok) {
-      setSelectedId(target ?? null);
+      navigateToContact(target ?? null);
       setPendingSelection(undefined);
     }
   }
 
   function confirmDiscardAndContinue() {
     detailPanelRef.current?.discard();
-    setSelectedId(pendingSelection ?? null);
+    navigateToContact(pendingSelection ?? null);
     setPendingSelection(undefined);
   }
 
@@ -135,10 +148,15 @@ function App() {
 
   const listPaneRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away, shrinking over the next COLLAPSE_RANGE_PX.
+  // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away. `--collapse` flips between 0 and 1 and the tiles' CSS transitions animate it — scrubbing it with the scroll position re-laid-out the list every frame.
   const applyCollapse = useCallback((scroller: HTMLElement) => {
     const headerHeight = headerRef.current?.offsetHeight ?? 0;
-    scroller.style.setProperty('--collapse', String(clamp01((scroller.scrollTop - headerHeight) / COLLAPSE_RANGE_PX)));
+    const pastHeader = scroller.scrollTop - headerHeight;
+    const collapsed = scroller.style.getPropertyValue('--collapse') === '1';
+    // Collapsing shortens the pane; without this guard a short list would clamp scrollTop back under EXPAND_BELOW_PX and flip straight back.
+    const roomToCollapse = scroller.scrollHeight - scroller.clientHeight - COLLAPSE_HEIGHT_DELTA_PX > headerHeight + COLLAPSE_AFTER_PX;
+    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) scroller.style.setProperty('--collapse', '1');
+    else if (collapsed && pastHeader < EXPAND_BELOW_PX) scroller.style.setProperty('--collapse', '0');
   }, []);
   useScrollLinkedStyle(listPaneRef, !isDesktop, applyCollapse);
   useEffect(() => {
@@ -152,14 +170,56 @@ function App() {
     setOpenPanel(panel);
   }
 
-  function closePanel() {
+  function closePanelState() {
     setSkipInitialPanelAnimation(false);
     setOpenPanel(null);
   }
 
+  function closePanel() {
+    if (!popUrlStateIfPrevious({ contactId: selectedId, openPanel: null, activityContactId: null })) closePanelState();
+  }
+
+  const urlWriteCount = useRef(0);
+  const lastHistoryIndex = useRef(historyIndex());
   useEffect(() => {
-    writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
+    const replace = urlWriteCount.current === 0 || replaceNextUrlWrite.current;
+    urlWriteCount.current += 1;
+    replaceNextUrlWrite.current = false;
+    writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null }, replace ? 'replace' : 'push');
+    lastHistoryIndex.current = historyIndex();
   }, [selectedId, openPanel, activityContactId]);
+
+  const currentUrlState = useRef<UrlState>(initialUrlState);
+  currentUrlState.current = { contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null };
+
+  // The browser's back/forward buttons: re-derive state from the URL the entry carries.
+  useEffect(() => {
+    function handlePopState() {
+      const target = readUrlState();
+      const current = currentUrlState.current;
+      const index = historyIndex();
+      const previousIndex = lastHistoryIndex.current;
+      lastHistoryIndex.current = index;
+
+      if (target.contactId === current.contactId && target.openPanel === current.openPanel && target.activityContactId === current.activityContactId) return;
+
+      // Undo the move rather than silently drop an unsaved moderation-context draft, and let the dialog decide.
+      if (target.contactId !== current.contactId && detailPanelRef.current?.hasUnsavedChanges()) {
+        window.history.go(previousIndex - index);
+        setPendingSelection(target.contactId);
+        return;
+      }
+
+      setSelectedId(target.contactId);
+      if (target.openPanel === null) {
+        if (current.openPanel !== null) closePanelState();
+      } else if (target.openPanel !== current.openPanel || target.activityContactId !== current.activityContactId) {
+        showPanel(target.openPanel, target.activityContactId);
+      }
+    }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  });
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
@@ -201,7 +261,7 @@ function App() {
               className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
-                {meta?.user && (
+                {meta && (meta.user || !meta.authRequired) && (
                   <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
                     <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
                   </div>
@@ -226,18 +286,6 @@ function App() {
                 </div>
               </div>
               <AnimatePresence initial={false}>
-                {meta && !meta.authRequired && (
-                  <motion.div
-                    key="open-access-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
-                    <OpenAccessBanner />
-                  </motion.div>
-                )}
                 {shadowMode && (
                   <motion.div
                     key="shadow-mode-banner"

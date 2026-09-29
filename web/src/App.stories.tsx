@@ -49,6 +49,15 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         return { ok: true };
       },
     },
+    {
+      method: 'POST',
+      match: /^\/api\/roster\/[^/]+\/reset-strikes$/,
+      bodyFn: (path) => {
+        const id = decodeURIComponent(path.split('/')[3]);
+        roster = roster.map((entry) => (entry.id === id ? { ...entry, strikeCount: 0, callNuisance: { ...entry.callNuisance, unansweredCount: 0, strikeCount: 0 } } : entry));
+        return { message: 'Strikes reset.' };
+      },
+    },
     { match: '/api/meta', body: { authRequired: true, user: FIXTURE_USER } },
     { match: '/api/status', body: FIXTURE_STATUS },
     { match: '/api/stats', body: FIXTURE_STATS },
@@ -92,8 +101,7 @@ export const NoContactsModerated: Story = {
   decorators: [withMockApi(controlDataRoutes([]))],
 };
 
-// authRequired: false surfaces OpenAccessBanner (App.tsx) — the app is
-// reachable without Tailscale identity, which is worth calling out.
+// authRequired: false swaps the signed-in user badge for the amber direct-connection one (DiagnosticsPopover).
 export const OpenAccess: Story = {
   decorators: [
     withMockApi(controlDataRoutes(FIXTURE_ROSTER).map((route) => (route.match === '/api/meta' ? { ...route, body: { authRequired: false, user: null } } : route))),
