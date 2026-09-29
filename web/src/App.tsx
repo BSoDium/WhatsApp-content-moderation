@@ -4,6 +4,7 @@ import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useViewportWidth } from '@/lib/useViewportWidth';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
 import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
@@ -24,18 +25,10 @@ import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
-const LIST_PANE_WIDTH_BROWSING_PCT = 60;
-const LIST_PANE_MARGIN_BROWSING_PCT = 20;
 const LIST_PANE_WIDTH_OPEN_PCT = 50;
-const LIST_PANE_MARGIN_OPEN_PCT = 0;
-const LIST_PANE_WIDTH_BROWSING = `${LIST_PANE_WIDTH_BROWSING_PCT}%`;
-const LIST_PANE_MARGIN_BROWSING = `${LIST_PANE_MARGIN_BROWSING_PCT}%`;
-const LIST_PANE_WIDTH_OPEN = `${LIST_PANE_WIDTH_OPEN_PCT}%`;
-const LIST_PANE_MARGIN_OPEN = `${LIST_PANE_MARGIN_OPEN_PCT}%`;
-// Must match the detail pane's `lg:w-[50%]` class; Tailwind's static scanning can't share the literal.
-const DETAIL_PANE_WIDTH_PCT = 50;
-// Closed `x` (a percentage of the pane's own width) starts the detail pane's left edge at the list pane's right edge, so both edges travel the same distance.
-const DETAIL_PANE_CLOSED_X = `${(((LIST_PANE_MARGIN_BROWSING_PCT + LIST_PANE_WIDTH_BROWSING_PCT) - DETAIL_PANE_WIDTH_PCT) / DETAIL_PANE_WIDTH_PCT) * 100}%`;
+// The list column's content is at most this wide; the pane adds the same 2rem of side padding (`lg:px-8`) each side, which is also the least margin the content keeps on narrow desktops.
+const CONTENT_MAX_WIDTH_PX = 896;
+const PANE_SIDE_PADDING_PX = 32;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -46,18 +39,23 @@ const MOVE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
 
-function listPaneTarget(isDesktop: boolean, expanded: boolean) {
-  if (!isDesktop) return { width: '100%', marginLeft: '0%' };
-  return {
-    width: expanded ? LIST_PANE_WIDTH_OPEN : LIST_PANE_WIDTH_BROWSING,
-    marginLeft: expanded ? LIST_PANE_MARGIN_OPEN : LIST_PANE_MARGIN_BROWSING,
-  };
+function browsingListPane(viewportWidth: number) {
+  const width = Math.min(viewportWidth, CONTENT_MAX_WIDTH_PX + 2 * PANE_SIDE_PADDING_PX);
+  return { width, marginLeft: (viewportWidth - width) / 2 };
 }
 
-function detailPaneTarget(isDesktop: boolean, expanded: boolean) {
+function listPaneTarget(isDesktop: boolean, expanded: boolean, viewportWidth: number) {
+  if (!isDesktop) return { width: '100%', marginLeft: 0 };
+  if (expanded) return { width: (viewportWidth * LIST_PANE_WIDTH_OPEN_PCT) / 100, marginLeft: 0 };
+  return browsingListPane(viewportWidth);
+}
+
+// Closed `x` starts the detail pane's left edge at the browsing list pane's right edge, so both edges travel the same distance.
+function detailPaneTarget(isDesktop: boolean, expanded: boolean, viewportWidth: number) {
   if (!isDesktop) return { width: '100%', opacity: 1 };
+  const { width, marginLeft } = browsingListPane(viewportWidth);
   return {
-    x: expanded ? '0%' : DETAIL_PANE_CLOSED_X,
+    x: expanded ? 0 : marginLeft + width - viewportWidth / 2,
     opacity: expanded ? 1 : 0,
   };
 }
@@ -146,6 +144,7 @@ function App() {
   }, []);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const viewportWidth = useViewportWidth();
   const reduceMotion = useReducedMotion();
   // On desktop the detail pane is only reachable by keyboard/screen reader once its open transition completes.
   const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
@@ -195,7 +194,7 @@ function App() {
         <div className="flex min-h-screen">
           <motion.section
             initial={false}
-            animate={listPaneTarget(isDesktop, panelOpen)}
+            animate={listPaneTarget(isDesktop, panelOpen, viewportWidth)}
             transition={moveTransition}
             className="flex h-screen w-full flex-col lg:min-w-[500px]"
           >
@@ -203,7 +202,7 @@ function App() {
               initial={false}
               animate={headerPaddingTarget(isDesktop, panelOpen)}
               transition={moveTransition}
-              className="flex-none px-4 pb-4 lg:px-8 @container"
+              className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
                 {meta?.user && (
@@ -212,22 +211,21 @@ function App() {
                   </div>
                 )}
                 <h1 className="col-start-1 row-start-1 min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2 lg:mb-1">WhatsApp moderation control</h1>
-                <p className="col-span-2 row-start-2 text-sm leading-relaxed text-muted-foreground sm:text-base lg:row-start-3 lg:truncate">
-                  <span className="lg:@max-[40rem]:hidden">Flip a switch to moderate a contact, or tap their name for detailed controls.</span>
-                  <span className="hidden lg:@max-[40rem]:inline">Flip a switch to moderate, or tap a name for details.</span>
+                <p className="col-span-2 row-start-2 text-sm leading-relaxed text-muted-foreground sm:text-base lg:row-start-3">
+                  Flip a switch to moderate a contact, or tap their name for detailed controls.
                 </p>
                 <div className="col-span-2 row-start-3 mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
                   <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Settings</span>
+                    <span>Settings</span>
                   </Button>
                   <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Policy</span>
+                    <span>Policy</span>
                   </Button>
                   <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Activity</span>
+                    <span>Activity</span>
                   </Button>
                 </div>
               </div>
@@ -289,7 +287,7 @@ function App() {
 
         <motion.section
           initial={false}
-          animate={detailPaneTarget(isDesktop, panelOpen)}
+          animate={detailPaneTarget(isDesktop, panelOpen, viewportWidth)}
           transition={{ x: moveTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);

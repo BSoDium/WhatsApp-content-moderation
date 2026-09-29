@@ -15,7 +15,7 @@ export function SignedInUser({ user }: SignedInUserProps) {
         {user.pictureUrl && <AvatarImage src={user.pictureUrl} alt="" referrerPolicy="no-referrer" />}
         <AvatarFallback style={{ backgroundColor: colorFor(user.login), color: '#fff' }}>{initialsFor(user.name)}</AvatarFallback>
       </Avatar>
-      <span className="hidden min-w-0 text-left leading-tight lg:block lg:@max-[40rem]:hidden">
+      <span className="hidden min-w-0 text-left leading-tight lg:block">
         <span className="block truncate text-sm font-medium">{user.name}</span>
         {subtitle && <span className="block truncate text-xs font-normal text-muted-foreground">{subtitle}</span>}
       </span>
