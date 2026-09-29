@@ -6,6 +6,7 @@ import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.t
 import { handleCallEvent, pendingCallEvents } from './src/pipeline/call-pipeline.ts';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
+import { extractEditedMessage } from './src/pipeline/edited-message.ts';
 import { extractOutgoingMessage, recordOutgoingMessage } from './src/pipeline/outgoing-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
@@ -173,6 +174,19 @@ async function start() {
 
           const outgoing = extractOutgoingMessage(msg, type);
           if (outgoing) recordOutgoingMessage(contactId, outgoing);
+        }
+      });
+      // An edit is a fresh message as far as moderation goes: a benign message can be edited into a harmful one after it already passed.
+      s.ev.on('messages.update', (updates) => {
+        for (const update of updates) {
+          const edited = extractEditedMessage(update, ALLOW_SELF);
+          if (!edited) continue;
+
+          const contactId = canonicalMessageContactId(update.key);
+          if (!contactId || !isMonitored(contactId) || manualOverride.isPaused(contactId)) continue;
+
+          logger.info({ contactId }, 'message edited; queued for reclassification');
+          buffer.push(contactId, edited);
         }
       });
       s.ev.on('call', (calls) => {

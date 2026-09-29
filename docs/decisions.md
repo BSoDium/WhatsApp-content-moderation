@@ -126,6 +126,24 @@ classified or acted on) so history reads as a real two-sided conversation.
   `*.sqlite*` (already gitignored) alongside the contact's. Rows are only
   written for contacts on the roster, and only text.
 
+## Edited messages are reclassified
+
+A message that passes and is then edited into something harmful used to slip
+through, since only `messages.upsert` fed the buffer. Baileys surfaces an
+edit as a `messages.update` carrying `editedMessage`, keyed to the original
+message id, so `extractEditedMessage` turns it into the same buffer-ready
+shape and the pipeline treats it as a new message. A flagged edit is deleted
+via the original key.
+
+- **The edit's timestamp is passed to `deleteForMe`**, not the original
+  message's, which an edit event doesn't carry. Untested against a real
+  edit-then-delete; check it on the first live flagged edit.
+- **No dedupe by message id.** The audit log has no message-id column, so a
+  re-delivered edit would be classified twice. Adding one is a migration;
+  deferred until a duplicate delivery is actually observed.
+- **The user's own edits are ignored** (unless `TEST_ALLOW_SELF`), like the
+  user's own messages are for classification.
+
 ## Manual override channel (issue #9)
 
 The pause/status/unblock routines exist (`src/override/manual-override.ts`),
