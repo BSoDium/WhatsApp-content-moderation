@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useViewportWidth } from '@/lib/useViewportWidth';
+import { detailPaneTarget, listPaneTarget } from '@/lib/paneLayout';
+import { useAnimatePanes } from '@/lib/useAnimatePanes';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
 import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
@@ -25,10 +27,6 @@ import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
-const LIST_PANE_WIDTH_OPEN_PCT = 50;
-// The list column's content is at most this wide; the pane adds the same 2rem of side padding (`lg:px-8`) each side, which is also the least margin the content keeps on narrow desktops.
-const CONTENT_MAX_WIDTH_PX = 896;
-const PANE_SIDE_PADDING_PX = 32;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -38,27 +36,6 @@ const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0
 const MOVE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
-
-function browsingListPane(viewportWidth: number) {
-  const width = Math.min(viewportWidth, CONTENT_MAX_WIDTH_PX + 2 * PANE_SIDE_PADDING_PX);
-  return { width, marginLeft: (viewportWidth - width) / 2 };
-}
-
-function listPaneTarget(isDesktop: boolean, expanded: boolean, viewportWidth: number) {
-  if (!isDesktop) return { width: '100%', marginLeft: 0 };
-  if (expanded) return { width: (viewportWidth * LIST_PANE_WIDTH_OPEN_PCT) / 100, marginLeft: 0 };
-  return browsingListPane(viewportWidth);
-}
-
-// Closed `x` starts the detail pane's left edge at the browsing list pane's right edge, so both edges travel the same distance.
-function detailPaneTarget(isDesktop: boolean, expanded: boolean, viewportWidth: number) {
-  if (!isDesktop) return { width: '100%', opacity: 1 };
-  const { width, marginLeft } = browsingListPane(viewportWidth);
-  return {
-    x: expanded ? 0 : marginLeft + width - viewportWidth / 2,
-    opacity: expanded ? 1 : 0,
-  };
-}
 
 function headerPaddingTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { paddingTop: HEADER_PT_MOBILE };
@@ -145,6 +122,7 @@ function App() {
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const viewportWidth = useViewportWidth();
+  const actionVariant = isDesktop ? 'ghost' : 'outline';
   const reduceMotion = useReducedMotion();
   // On desktop the detail pane is only reachable by keyboard/screen reader once its open transition completes.
   const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
@@ -171,11 +149,7 @@ function App() {
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
-  const panelOpenRef = useRef(panelOpen);
-  const paneTransition = panelOpenRef.current === panelOpen ? INSTANT_TRANSITION : moveTransition;
-  useEffect(() => {
-    panelOpenRef.current = panelOpen;
-  }, [panelOpen]);
+  const paneTransition = useAnimatePanes(panelOpen, viewportWidth) ? moveTransition : INSTANT_TRANSITION;
   // Banners present with the first data are part of the settled layout; only later ones animate.
   const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
@@ -221,15 +195,15 @@ function App() {
                   Flip a switch to moderate a contact, or tap their name for detailed controls.
                 </p>
                 <div className="col-span-2 row-start-3 mt-4 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
-                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     <span>Settings</span>
                   </Button>
-                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
                     <span>Policy</span>
                   </Button>
-                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
                     <span>Activity</span>
                   </Button>
