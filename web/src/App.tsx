@@ -212,7 +212,7 @@ function App() {
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
                 {meta?.user && (
-                  <div className="col-start-2 row-start-1 min-w-0 lg:col-start-1 lg:mb-4">
+                  <div className="col-start-2 row-start-1 flex min-w-0 lg:col-start-1 lg:mb-4">
                     <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
                   </div>
                 )}

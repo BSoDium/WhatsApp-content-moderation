@@ -96,7 +96,7 @@ export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal lg:-ml-1.5" aria-label={`${props.user.name} — session and diagnostics`}>
+        <Button variant="ghost" className="-my-2 h-auto max-w-full min-w-0 justify-start rounded-lg p-1 font-normal lg:-ml-1.5 lg:my-0 lg:p-1.5" aria-label={`${props.user.name} — session and diagnostics`}>
           <SignedInUser user={props.user} />
         </Button>
       </PopoverTrigger>
