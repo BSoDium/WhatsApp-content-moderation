@@ -1707,6 +1707,13 @@ template they return it with no generation call, otherwise they generate as
 before, and the static `WARNING_MESSAGE` remains the last resort. A templated
 warning is also shorter and faster, since it saves the generation call.
 
+*Register is formal in every language* (English neutral, French *vous*,
+Spanish *usted*, Polish impersonal), and no wording gender-marks the contact
+("bloqué", "bloqueado", "zablokowany" are avoided in favour of "un blocage
+sera appliqué"): the notice goes to someone the operator may be in conflict
+with, whose gender and preferred form of address are unknown. The first draft
+mixed registers (*tu* in Spanish, *vous* in French), which read as incoherent.
+
 *Adding a language* is five strings and a test row; nothing else changes.
 The Spanish and Polish wording was drafted by an assistant and needs a fluent
 reader's review before being relied on.

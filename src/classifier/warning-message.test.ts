@@ -213,7 +213,7 @@ test('a language with a template gets its fixed text without any generation call
   const result = await generateWarningMessage({ ...INPUT, strikeCount: 1, strikeThreshold: 3 }, { client });
 
   assert.equal(result.ok, true);
-  assert.match(result.text, /Après 2 récidives supplémentaires, vous serez bloqué\.$/);
+  assert.match(result.text, /Un blocage sera appliqué après 2 récidives supplémentaires\.$/);
   assert.equal(requests.length, 1);
 });
 

@@ -9,6 +9,7 @@ interface WarningTemplate {
 }
 
 // Keyed by the names in language.ts's LANGUAGES. Each language is wording someone who reads it has checked: a small model's grammar in these languages was not good enough to send (see docs/decisions.md), so adding one means writing these five strings, nothing else.
+// Formal register in every language (vous, usted, impersonal Polish), and no gendered forms of the contact ("bloqué", "zablokowany"): the notice goes to someone the operator may be in conflict with, and their gender and preferred address are unknown.
 const TEMPLATES: Record<string, WarningTemplate> = {
   English: {
     removedMessage: "Your message was removed for breaking this conversation's rules. This is an automated message, not the account owner.",
@@ -18,26 +19,26 @@ const TEMPLATES: Record<string, WarningTemplate> = {
     consequenceFinal: 'This is your final warning: you can now be blocked at any time.',
   },
   French: {
-    removedMessage: 'Votre message a été supprimé car il enfreint les règles de cette conversation. Ceci est un message automatique, pas du propriétaire du compte.',
-    stopCalling: 'Merci de ne plus appeler de façon répétée sans réponse. Ceci est un message automatique, pas du propriétaire du compte.',
-    consequenceMany: (remaining) => `Après ${remaining} récidives supplémentaires, vous serez bloqué.`,
-    consequenceNext: 'À la prochaine récidive, vous serez bloqué.',
-    consequenceFinal: 'Ceci est votre dernier avertissement : vous pouvez être bloqué à tout moment.',
+    removedMessage: 'Votre message a été supprimé car il enfreint les règles de cette conversation. Ceci est un message automatique, non envoyé par le propriétaire du compte.',
+    stopCalling: 'Merci de ne plus appeler de façon répétée sans réponse. Ceci est un message automatique, non envoyé par le propriétaire du compte.',
+    consequenceMany: (remaining) => `Un blocage sera appliqué après ${remaining} récidives supplémentaires.`,
+    consequenceNext: 'Un blocage sera appliqué dès la prochaine récidive.',
+    consequenceFinal: 'Ceci est votre dernier avertissement : un blocage peut être appliqué à tout moment.',
   },
   Spanish: {
-    removedMessage: 'Tu mensaje fue eliminado por incumplir las reglas de esta conversación. Este es un mensaje automático, no del propietario de la cuenta.',
-    stopCalling: 'Por favor, deja de llamar repetidamente sin respuesta. Este es un mensaje automático, no del propietario de la cuenta.',
-    consequenceMany: (remaining) => `Serás bloqueado tras ${remaining} reincidencias más.`,
-    consequenceNext: 'La próxima reincidencia supondrá tu bloqueo.',
-    consequenceFinal: 'Esta es tu última advertencia: puedes ser bloqueado en cualquier momento.',
+    removedMessage: 'Su mensaje fue eliminado por incumplir las reglas de esta conversación. Este es un mensaje automático, no enviado por el propietario de la cuenta.',
+    stopCalling: 'Por favor, deje de llamar repetidamente sin respuesta. Este es un mensaje automático, no enviado por el propietario de la cuenta.',
+    consequenceMany: (remaining) => `Se aplicará un bloqueo tras ${remaining} reincidencias más.`,
+    consequenceNext: 'Se aplicará un bloqueo en la próxima reincidencia.',
+    consequenceFinal: 'Esta es su última advertencia: se puede aplicar un bloqueo en cualquier momento.',
   },
   Polish: {
-    removedMessage: 'Twoja wiadomość została usunięta, ponieważ łamie zasady tej rozmowy. To wiadomość automatyczna, nie od właściciela konta.',
-    stopCalling: 'Przestań dzwonić wielokrotnie bez odpowiedzi. To wiadomość automatyczna, nie od właściciela konta.',
+    removedMessage: 'Wiadomość została usunięta, ponieważ narusza zasady tej rozmowy. To wiadomość automatyczna, niewysłana przez właściciela konta.',
+    stopCalling: 'Prosimy nie dzwonić wielokrotnie bez odpowiedzi. To wiadomość automatyczna, niewysłana przez właściciela konta.',
     // "razy" is correct after every numeral from 2 up, which sidesteps Polish's three plural forms.
-    consequenceMany: (remaining) => `Zostaniesz zablokowany, jeśli powtórzy się to jeszcze ${remaining} razy.`,
-    consequenceNext: 'Jeśli to się powtórzy, zostaniesz zablokowany.',
-    consequenceFinal: 'To ostatnie ostrzeżenie: możesz zostać zablokowany w każdej chwili.',
+    consequenceMany: (remaining) => `Blokada zostanie zastosowana, jeśli naruszenie powtórzy się jeszcze ${remaining} razy.`,
+    consequenceNext: 'Blokada zostanie zastosowana, jeśli naruszenie się powtórzy.',
+    consequenceFinal: 'To ostatnie ostrzeżenie: blokada może zostać zastosowana w każdej chwili.',
   },
 };
 

@@ -32,6 +32,16 @@ test('never uses the word strike or calls the conversation a group', () => {
   }
 });
 
+test('French and Spanish stay in the formal register and out of gendered forms', () => {
+  const french = templateWarning('French', 'message', 2)!;
+  assert.match(french, /\b(votre|vos)\b/i);
+  assert.doesNotMatch(french, /\b(ton|ta|tes|tu)\b|bloqué/i);
+
+  const spanish = templateWarning('Spanish', 'message', 2)!;
+  assert.match(spanish, /\bSu\b/);
+  assert.doesNotMatch(spanish, /\b(tu|tus|eres|deja)\b|bloqueado/i);
+});
+
 test('an unknown language has no template', () => {
   assert.equal(templateWarning('Swahili', 'message', 2), null);
 });
