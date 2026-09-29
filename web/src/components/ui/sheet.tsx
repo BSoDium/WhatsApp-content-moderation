@@ -21,6 +21,12 @@ export interface SheetResizableConfig {
   label?: string
 }
 
+// The handle is the sheet's first tabbable child, so Radix's default autofocus would land on it and paint its focus ring on every open.
+function focusContentInstead(event: Event) {
+  event.preventDefault()
+  ;(event.currentTarget as HTMLElement | null)?.focus({ preventScroll: true })
+}
+
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }
@@ -109,6 +115,7 @@ function SheetContent({
             "data-[side=left]:w-full data-[side=right]:w-full data-[side=left]:sm:max-w-2xl data-[side=right]:sm:max-w-2xl data-[side=left]:md:max-w-3xl data-[side=right]:md:max-w-3xl",
           className
         )}
+        onOpenAutoFocus={resizeActive ? focusContentInstead : undefined}
         {...props}
       >
         {resizeActive && (
