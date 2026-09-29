@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { relativeTime } from '@/lib/contact';
+import { moderationState, relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -28,8 +28,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
   const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
-  const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
-  const block = entry ? entry.block : contact.block ?? null;
+  const { strikeCount, block } = moderationState(contact, entry);
   const strikeLabel = `${strikeCount} ${strikeCount === 1 ? 'strike' : 'strikes'}`;
   const blockLabel = block ? 'Blocked' : 'Not blocked';
 

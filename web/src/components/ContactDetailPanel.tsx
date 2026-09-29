@@ -6,8 +6,9 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { ContactAvatar } from './ContactAvatar';
+import { SelfModerationNotice } from './SelfModerationNotice';
 import { SettingRow } from './SettingRow';
-import { relativeTime } from '@/lib/contact';
+import { moderationState, relativeTime } from '@/lib/contact';
 import { formatTimestamp } from '@/lib/activity';
 import type { Contact, OverrideCommand, RosterEntry } from '@/lib/types';
 
@@ -181,7 +182,8 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
-  const hasStrikes = entry !== undefined && (entry.strikeCount > 0 || entry.callNuisance.strikeCount > 0);
+  const { strikeCount, block } = moderationState(contact, entry);
+  const hasStrikes = strikeCount > 0 || (entry?.callNuisance.strikeCount ?? 0) > 0;
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
@@ -217,158 +219,160 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
         </div>
       </div>
 
-      <div className="space-y-4">
-        <section className="rounded-xl border border-border bg-muted/40 px-4">
-          <SettingRow
-            title="Moderate this contact"
-            description={
-              selfBlocked
-                ? "This is your own account — it can't be moderated. Set TEST_ALLOW_SELF=1 to test the pipeline against messages you send yourself."
-                : contact.isSelf && !contact.allowSelf && monitored
+      {selfBlocked ? (
+        <SelfModerationNotice />
+      ) : (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-border bg-muted/40 px-4">
+            <SettingRow
+              title="Moderate this contact"
+              description={
+                contact.isSelf && !contact.allowSelf && monitored
                   ? 'This was enabled for self-testing (TEST_ALLOW_SELF=1) — you can turn it off, but re-enabling it needs that setting again.'
                   : monitored
                     ? undefined
                     : 'Start tracking strikes and enable auto-blocking for this contact.'
-            }
-            control={
-              <Switch
-                checked={monitored}
-                disabled={pending.has('monitor') || selfBlocked}
-                onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
-              />
-            }
-          />
-        </section>
+              }
+              control={
+                <Switch
+                  checked={monitored}
+                  disabled={pending.has('monitor')}
+                  onCheckedChange={(checked) => withPending('monitor', () => onToggleMonitor(contact.id, checked))}
+                />
+              }
+            />
+          </section>
 
-        <section className="rounded-xl border border-border bg-card px-4">
-          <SettingRow
-            title="Strikes"
-            description={hasStrikes ? 'Reset after unblocking. Also clears call strikes.' : undefined}
-            control={
-              <div className="flex items-center gap-3">
-                <span className="tabular-nums">{entry?.strikeCount ?? 0}</span>
-                <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
-                  Reset
+          <section className="rounded-xl border border-border bg-card px-4">
+            <SettingRow
+              title="Strikes"
+              description={hasStrikes ? 'Reset after unblocking. Also clears call strikes.' : undefined}
+              control={
+                <div className="flex items-center gap-3">
+                  <span className="tabular-nums">{strikeCount}</span>
+                  <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
+                    Reset
+                  </Button>
+                </div>
+              }
+            />
+            <Separator />
+            <SettingRow
+              title="Block"
+              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : undefined}
+              control={
+                block ? (
+                  <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
+                    Unblock
+                  </Button>
+                ) : (
+                  <span className="text-muted-foreground">Not blocked</span>
+                )
+              }
+            />
+            <Separator />
+            <SettingRow
+              title="Message history"
+              description="Includes anything already deleted."
+              control={
+                <Button variant="outline" size="sm" onClick={() => onViewHistory(contact.id)}>
+                  <History data-icon="inline-start" />
+                  View
+                </Button>
+              }
+            />
+          </section>
+
+          <section className="rounded-xl border border-border bg-card px-4">
+            <SettingRow
+              title="Nuisance calls"
+              description="Call strikes toward auto-block, and unanswered calls since the last one that got through."
+              control={
+                <span className="tabular-nums">
+                  {entry?.callNuisance.strikeCount ?? 0} strikes · {entry?.callNuisance.unansweredCount ?? 0} unanswered
+                </span>
+              }
+            />
+            <Separator />
+            <CallNuisanceThresholdField
+              contactId={contact.id}
+              thresholdOverride={entry?.callNuisance.thresholdOverride ?? null}
+              effectiveThreshold={entry?.callNuisance.threshold ?? 0}
+              disabled={!monitored}
+              onSave={onSetCallNuisanceThreshold}
+            />
+          </section>
+
+          <section className="rounded-xl border border-border bg-card px-4">
+            <SettingRow
+              title="Paused"
+              description="Temporarily stop moderating without losing strike history."
+              control={
+                <Switch
+                  checked={Boolean(entry?.paused)}
+                  disabled={!monitored || pending.has('pause')}
+                  onCheckedChange={(checked) => withPending('pause', () => runAndReport(checked ? 'pause' : 'resume'))}
+                />
+              }
+            />
+            <Separator />
+            <SettingRow
+              title="Escalation"
+              description="Automatically block this contact after too many strikes."
+              control={
+                <Switch
+                  checked={entry?.escalationEnabled ?? true}
+                  disabled={!monitored || pending.has('escalation')}
+                  onCheckedChange={(checked) => withPending('escalation', () => onSetEscalation(contact.id, checked))}
+                />
+              }
+            />
+          </section>
+
+          {monitored && (
+            <section className="rounded-xl border border-border bg-card px-4 py-3.5">
+              <p className="font-medium leading-6">Moderation context</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Extra guidance folded into the classifier prompt for this contact only, alongside the global policy. Be concrete: name the topics, words or requests to flag, e.g. "flag any mention of my mother (mom, maman) or requests to contact her." Vague rules are easy for a small model to miss."
+              </p>
+              <Textarea
+                id="moderation-context"
+                className="mt-3"
+                rows={3}
+                placeholder="No extra context for this contact."
+                value={contextDraft}
+                disabled={contextSaveState === 'saving'}
+                aria-describedby="moderation-context-status"
+                onChange={(e) => {
+                  setContextDraft(e.target.value);
+                  if (contextSaveState === 'saved' || contextSaveState === 'error') setContextSaveState('idle');
+                }}
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p id="moderation-context-status" aria-live="polite" className="flex min-h-[1.25em] items-center gap-1.5 text-sm text-muted-foreground">
+                  {contextSaveState === 'saving' && (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      Saving…
+                    </>
+                  )}
+                  {contextSaveState === 'saved' && 'Saved'}
+                  {contextSaveState === 'error' && (
+                    <span className="flex items-center gap-1.5 text-destructive">
+                      <CircleAlert className="size-3.5" aria-hidden="true" />
+                      Couldn't save{contextError ? `: ${contextError}` : ''}
+                    </span>
+                  )}
+                  {contextSaveState === 'idle' && contextDirty && 'Unsaved changes'}
+                </p>
+                <Button size="sm" onClick={saveContext} disabled={!contextDirty || contextSaveState === 'saving'} aria-busy={contextSaveState === 'saving'}>
+                  {contextSaveState === 'saving' ? 'Saving…' : contextSaveState === 'error' ? 'Retry save' : 'Save'}
                 </Button>
               </div>
-            }
-          />
-          <Separator />
-          <SettingRow
-            title="Block"
-            description={entry?.block ? `Until ${formatTimestamp(entry.block.unblockAt)}` : undefined}
-            control={
-              entry?.block ? (
-                <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
-                  Unblock
-                </Button>
-              ) : (
-                <span className="text-muted-foreground">Not blocked</span>
-              )
-            }
-          />
-          <Separator />
-          <SettingRow
-            title="Message history"
-            description="Includes anything already deleted."
-            control={
-              <Button variant="outline" size="sm" onClick={() => onViewHistory(contact.id)}>
-                <History data-icon="inline-start" />
-                View
-              </Button>
-            }
-          />
-        </section>
-
-        <section className="rounded-xl border border-border bg-card px-4">
-          <SettingRow
-            title="Nuisance calls"
-            description="Call strikes toward auto-block, and unanswered calls since the last one that got through."
-            control={
-              <span className="tabular-nums">
-                {entry?.callNuisance.strikeCount ?? 0} strikes · {entry?.callNuisance.unansweredCount ?? 0} unanswered
-              </span>
-            }
-          />
-          <Separator />
-          <CallNuisanceThresholdField
-            contactId={contact.id}
-            thresholdOverride={entry?.callNuisance.thresholdOverride ?? null}
-            effectiveThreshold={entry?.callNuisance.threshold ?? 0}
-            disabled={!monitored}
-            onSave={onSetCallNuisanceThreshold}
-          />
-        </section>
-
-        <section className="rounded-xl border border-border bg-card px-4">
-          <SettingRow
-            title="Paused"
-            description="Temporarily stop moderating without losing strike history."
-            control={
-              <Switch
-                checked={Boolean(entry?.paused)}
-                disabled={!monitored || pending.has('pause')}
-                onCheckedChange={(checked) => withPending('pause', () => runAndReport(checked ? 'pause' : 'resume'))}
-              />
-            }
-          />
-          <Separator />
-          <SettingRow
-            title="Escalation"
-            description="Automatically block this contact after too many strikes."
-            control={
-              <Switch
-                checked={entry?.escalationEnabled ?? true}
-                disabled={!monitored || pending.has('escalation')}
-                onCheckedChange={(checked) => withPending('escalation', () => onSetEscalation(contact.id, checked))}
-              />
-            }
-          />
-        </section>
-
-        {monitored && (
-          <section className="rounded-xl border border-border bg-card px-4 py-3.5">
-            <p className="font-medium leading-6">Moderation context</p>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Extra guidance folded into the classifier prompt for this contact only, alongside the global policy. Be concrete: name the topics, words or requests to flag, e.g. "flag any mention of my mother (mom, maman) or requests to contact her." Vague rules are easy for a small model to miss."
-            </p>
-            <Textarea
-              id="moderation-context"
-              className="mt-3"
-              rows={3}
-              placeholder="No extra context for this contact."
-              value={contextDraft}
-              disabled={contextSaveState === 'saving'}
-              aria-describedby="moderation-context-status"
-              onChange={(e) => {
-                setContextDraft(e.target.value);
-                if (contextSaveState === 'saved' || contextSaveState === 'error') setContextSaveState('idle');
-              }}
-            />
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <p id="moderation-context-status" aria-live="polite" className="flex min-h-[1.25em] items-center gap-1.5 text-sm text-muted-foreground">
-                {contextSaveState === 'saving' && (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                    Saving…
-                  </>
-                )}
-                {contextSaveState === 'saved' && 'Saved'}
-                {contextSaveState === 'error' && (
-                  <span className="flex items-center gap-1.5 text-destructive">
-                    <CircleAlert className="size-3.5" aria-hidden="true" />
-                    Couldn't save{contextError ? `: ${contextError}` : ''}
-                  </span>
-                )}
-                {contextSaveState === 'idle' && contextDirty && 'Unsaved changes'}
-              </p>
-              <Button size="sm" onClick={saveContext} disabled={!contextDirty || contextSaveState === 'saving'} aria-busy={contextSaveState === 'saving'}>
-                {contextSaveState === 'saving' ? 'Saving…' : contextSaveState === 'error' ? 'Retry save' : 'Save'}
-              </Button>
-            </div>
-          </section>
-        )}
-      </div>
+            </section>
+          )}
+        </div>
+      )}
 
       <p className="mt-4 min-h-[1.5em] text-sm text-muted-foreground">{message}</p>
     </div>

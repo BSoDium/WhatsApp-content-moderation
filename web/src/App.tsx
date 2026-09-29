@@ -20,6 +20,7 @@ import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
+import { SignedInUserSkeleton } from '@/components/SignedInUser';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { BannerReveal } from '@/components/BannerReveal';
@@ -158,19 +159,23 @@ function App() {
 
   const listPaneRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
+  // `--collapse` lives on the sticky KPI block, not the scroller: a custom property is inherited, so setting it higher up restyles every contact row on each flip.
+  const stickyRef = useRef<HTMLDivElement>(null);
   // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away. `--collapse` flips between 0 and 1 and the tiles' CSS transitions animate it — scrubbing it with the scroll position re-laid-out the list every frame.
   const applyCollapse = useCallback((scroller: HTMLElement) => {
     const headerHeight = headerRef.current?.offsetHeight ?? 0;
     const pastHeader = scroller.scrollTop - headerHeight;
-    const collapsed = scroller.style.getPropertyValue('--collapse') === '1';
+    const sticky = stickyRef.current;
+    if (!sticky) return;
+    const collapsed = sticky.style.getPropertyValue('--collapse') === '1';
     // Collapsing shortens the pane; without this guard a short list would clamp scrollTop back under EXPAND_BELOW_PX and flip straight back.
     const roomToCollapse = scroller.scrollHeight - scroller.clientHeight - COLLAPSE_HEIGHT_DELTA_PX > headerHeight + COLLAPSE_AFTER_PX;
-    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) scroller.style.setProperty('--collapse', '1');
-    else if (collapsed && pastHeader < EXPAND_BELOW_PX) scroller.style.setProperty('--collapse', '0');
+    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) sticky.style.setProperty('--collapse', '1');
+    else if (collapsed && pastHeader < EXPAND_BELOW_PX) sticky.style.setProperty('--collapse', '0');
   }, []);
   useScrollLinkedStyle(listPaneRef, !isDesktop, applyCollapse);
   useEffect(() => {
-    if (isDesktop) listPaneRef.current?.style.removeProperty('--collapse');
+    if (isDesktop) stickyRef.current?.style.removeProperty('--collapse');
   }, [isDesktop]);
 
   function showPanel(panel: PanelName, contactId: string | null = null) {
@@ -272,9 +277,9 @@ function App() {
               className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
-                {meta && (meta.user || !meta.authRequired) && (
+                {(!metaSettled || (meta && (meta.user || !meta.authRequired))) && (
                   <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
-                    <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
+                    {meta ? <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} /> : <SignedInUserSkeleton />}
                   </div>
                 )}
                 <h1 className="col-start-1 row-start-1 mb-1 min-w-0 self-start text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2">WhatsApp moderation control</h1>
@@ -319,6 +324,7 @@ function App() {
                 onViewHistory={(contactId) => showPanel('activity', contactId)}
                 initialLoadComplete={initialLoadComplete}
                 stickyTop={<OverviewStats />}
+                stickyRef={stickyRef}
                 isDesktop={isDesktop}
               />
             </div>

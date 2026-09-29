@@ -63,14 +63,17 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
   return (
     <>
       {user ? (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border p-2 text-foreground" aria-hidden="true">
-            <TailscaleLogo className="size-full" />
-          </span>
-          <PopoverHeader className="min-w-0 gap-0 leading-snug">
-            <PopoverTitle className="truncate">{user.name}</PopoverTitle>
-            <PopoverDescription className="truncate">{user.login}</PopoverDescription>
-          </PopoverHeader>
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted-foreground/70">Authenticated through Tailscale</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border p-2 text-foreground" aria-hidden="true">
+              <TailscaleLogo className="size-full" />
+            </span>
+            <PopoverHeader className="min-w-0 gap-0 leading-snug">
+              <PopoverTitle className="truncate">{user.name}</PopoverTitle>
+              <PopoverDescription className="truncate">{user.login}</PopoverDescription>
+            </PopoverHeader>
+          </div>
         </div>
       ) : (
         <DirectAccessWarning />

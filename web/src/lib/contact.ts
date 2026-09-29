@@ -1,4 +1,4 @@
-import type { Contact } from './types';
+import type { Contact, RosterEntry } from './types';
 
 // A small fixed palette, not a full HSL wheel, so colors stay legible against both light and dark surfaces without per-theme tuning.
 const AVATAR_COLORS = ['#1d7874', '#c65102', '#5b3a9e', '#0f6e94', '#a8325e', '#2f7a3f', '#8a5a00', '#3f51b5'];
@@ -46,4 +46,12 @@ export function matchesQuery(contact: Contact, query: string): boolean {
   if (contact.name.toLowerCase().includes(query)) return true;
   const digits = digitsOnly(query);
   return digits.length > 0 && contact.id.split('@')[0].includes(digits);
+}
+
+// Strikes and a block outlive the roster row, so a contact switched off after being blocked is only described by the contacts feed.
+export function moderationState(contact: Contact, entry: RosterEntry | undefined): { strikeCount: number; block: { unblockAt: number } | null } {
+  return {
+    strikeCount: entry?.strikeCount ?? contact.strikeCount ?? 0,
+    block: entry ? entry.block : (contact.block ?? null),
+  };
 }

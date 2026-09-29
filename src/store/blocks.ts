@@ -29,6 +29,13 @@ export function getActiveBlock(contactId: string): BlockRecord | undefined {
 }
 
 /**
+ * Returns every block record that hasn't been resolved yet.
+ */
+export function getActiveBlocks(): BlockRecord[] {
+  return getOrm().select().from(blocks).where(isNull(blocks.unblocked_at)).all();
+}
+
+/**
  * Returns how many contacts are currently blocked, for the control app's
  * activity stats panel.
  */

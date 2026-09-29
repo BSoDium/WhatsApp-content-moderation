@@ -119,6 +119,15 @@ export function canonicalMessageContactId(key: { remoteJid?: string | null; remo
   return reconcileJid(id, resolveAltId(id, key.remoteJidAlt || undefined)).canonicalId;
 }
 
+/**
+ * The @lid form recorded for a canonical contact id, if the directory has
+ * learned one.
+ */
+export function lookupLid(contactId: string): string | null {
+  const row = getOrm().select({ lid: contacts.lid }).from(contacts).where(eq(contacts.contact_id, contactId)).get();
+  return row?.lid ?? null;
+}
+
 function coalesceExisting(column: SQLiteColumn): SQL {
   return sql`COALESCE(${excluded(column)}, ${column})`;
 }

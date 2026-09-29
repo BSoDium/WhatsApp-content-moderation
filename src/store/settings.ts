@@ -196,7 +196,7 @@ export const SETTINGS: readonly SettingDef[] = [
     label: 'Auto-reject nuisance calls',
     description: 'Reject the call itself once it crosses the threshold, in addition to sending the warning. Turn off to only ever send the warning and let the call keep ringing.',
     type: 'bool',
-    default: 'true',
+    default: '1',
   },
   {
     key: 'NUISANCE_CALL_WARNING_MESSAGE',
@@ -361,4 +361,27 @@ export function ensureDefaultsSeeded(): void {
     .values(SETTINGS.map((def) => ({ key: def.key, value: def.default, updated_at: now })))
     .onConflictDoNothing({ target: settings.key })
     .run();
+}
+
+const LEGACY_BOOL_VALUES = new Map([
+  ['true', '1'],
+  ['false', '0'],
+]);
+
+/**
+ * Rewrites bool settings stored as 'true'/'false' to '1'/'0'.
+ * NUISANCE_CALL_AUTO_REJECT was once seeded as 'true', which getBoolSetting
+ * never accepted and validateValue rejects, so an existing database shows
+ * that switch off and never auto-rejects. The seeded value expressed the
+ * intended default (on), so it is carried over as such.
+ */
+export function normalizeLegacyBoolSettings(): void {
+  for (const def of SETTINGS) {
+    if (def.type !== 'bool') continue;
+    const current = getRawValue(def.key);
+    const normalized = current === undefined ? undefined : LEGACY_BOOL_VALUES.get(current);
+    if (normalized === undefined) continue;
+    setRawValue(def.key, normalized);
+    logger.info({ key: def.key, from: current, to: normalized }, 'normalized a legacy boolean setting value');
+  }
 }

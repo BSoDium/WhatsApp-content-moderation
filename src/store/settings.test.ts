@@ -4,9 +4,10 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-settings.test.sqlite';
 
-const { getRawSetting, getNumberSetting, getBoolSetting, setSetting, listSettings, ensureDefaultsSeeded, migrateShadowModeFromEnv, getRawValue, setRawValue } =
+const { getRawSetting, getNumberSetting, getBoolSetting, setSetting, listSettings, ensureDefaultsSeeded, migrateShadowModeFromEnv, normalizeLegacyBoolSettings, getRawValue, setRawValue } =
   await import('./settings.ts');
 const { getDb } = await import('./db.ts');
+const { SETTINGS } = await import('./settings.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -120,6 +121,30 @@ test('migrateShadowModeFromEnv never overwrites an existing row, even if the env
   assert.equal(getRawValue('SHADOW_MODE'), '0');
   delete process.env.SHADOW_MODE;
   setRawValue('SHADOW_MODE', '1'); // restore for tests after this one
+});
+
+test('normalizeLegacyBoolSettings turns a seeded "true" into "1" so the switch reads on', () => {
+  setRawValue('NUISANCE_CALL_AUTO_REJECT', 'true');
+  assert.equal(getBoolSetting('NUISANCE_CALL_AUTO_REJECT'), false);
+
+  normalizeLegacyBoolSettings();
+
+  assert.equal(getRawValue('NUISANCE_CALL_AUTO_REJECT'), '1');
+  assert.equal(getBoolSetting('NUISANCE_CALL_AUTO_REJECT'), true);
+});
+
+test('normalizeLegacyBoolSettings turns "false" into "0" and leaves valid values alone', () => {
+  setRawValue('NUISANCE_CALL_AUTO_REJECT', 'false');
+  setRawValue('SHADOW_MODE', '0');
+
+  normalizeLegacyBoolSettings();
+
+  assert.equal(getRawValue('NUISANCE_CALL_AUTO_REJECT'), '0');
+  assert.equal(getRawValue('SHADOW_MODE'), '0');
+});
+
+test('a fresh install defaults nuisance-call auto-reject to on', () => {
+  assert.equal(SETTINGS.find((def) => def.key === 'NUISANCE_CALL_AUTO_REJECT')?.default, '1');
 });
 
 test('listSettings returns every manifest key with its current value and default', () => {
