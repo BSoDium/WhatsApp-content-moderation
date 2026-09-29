@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { STAT_TILES, tileValue, type StatKey } from '@/lib/statTiles';
-import { StatTile } from './StatTile';
+import { StatTile, StatTileSkeleton } from './StatTile';
 import { useOverviewStats } from '@/lib/useStats';
 
 const OVERVIEW_KEYS: StatKey[] = ['monitoredCount', 'activeBlocks', 'totalFlaggedDeleted', 'totalClassifierErrors'];
@@ -14,7 +14,7 @@ export function OverviewStats() {
     return (
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-hidden="true">
         {Array.from({ length: SKELETON_CHIP_COUNT }, (_, i) => (
-          <div key={i} className="h-32 rounded-xl border border-border bg-muted/50" />
+          <StatTileSkeleton key={i} />
         ))}
       </div>
     );

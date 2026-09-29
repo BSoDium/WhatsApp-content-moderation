@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { History, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { relativeTime } from '@/lib/contact';
@@ -18,6 +18,10 @@ interface ContactRowProps {
   onViewHistory: (contactId: string) => void;
 }
 
+const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
+const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:block';
+const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
+
 export function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
@@ -25,6 +29,8 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
   const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
   const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
   const block = entry ? entry.block : contact.block ?? null;
+  const strikeLabel = `${strikeCount} ${strikeCount === 1 ? 'strike' : 'strikes'}`;
+  const blockLabel = block ? 'Blocked' : 'Not blocked';
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
@@ -38,24 +44,23 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
 
   return (
     <li
-      className={cn('group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 hover:bg-accent', selected && 'bg-accent')}
+      className={cn(ROW_LAYOUT, 'group cursor-pointer hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{contact.name}</p>
-        <div className="flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
-          <span className="min-w-0 truncate">{relativeTime(contact.lastMessageAt)}</span>
-          <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
-            <Separator orientation="vertical" className="h-3.5 bg-muted-foreground/50" />
-            {strikeCount} {strikeCount === 1 ? 'strike' : 'strikes'}
-          </span>
-          <span className="hidden shrink-0 items-center gap-x-2 @lg:flex">
-            <Separator orientation="vertical" className="h-3.5 bg-muted-foreground/50" />
-            {block ? 'Blocked' : 'Not blocked'}
-          </span>
-        </div>
+        <p className="flex min-w-0 items-baseline gap-1.5 font-medium">
+          <span className={cn('truncate', contact.isSelf && SELF_NAME_COLOR)}>{contact.name}</span>
+          {contact.isSelf && <span className="shrink-0 font-normal text-muted-foreground">(You)</span>}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">{relativeTime(contact.lastMessageAt)}</p>
       </div>
+      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground')} title={strikeLabel}>
+        {strikeLabel}
+      </p>
+      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground', block && 'font-medium text-foreground')} title={blockLabel}>
+        {blockLabel}
+      </p>
       <div className="flex shrink-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -90,6 +95,21 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
           <TooltipContent>{label}</TooltipContent>
         </Tooltip>
       </div>
+    </li>
+  );
+}
+
+export function ContactRowSkeleton() {
+  return (
+    <li className={ROW_LAYOUT} aria-hidden="true">
+      <Skeleton className="size-8 shrink-0 rounded-full" />
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-44 max-w-full" />
+      </div>
+      <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
+      <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
+      <Skeleton className="size-10 shrink-0 rounded-lg" />
     </li>
   );
 }

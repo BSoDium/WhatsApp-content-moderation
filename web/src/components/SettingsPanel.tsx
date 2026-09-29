@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Info, Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -27,19 +27,27 @@ const SECTION_ORDER: Setting['section'][] = ['general', 'classifier', 'warning',
 
 function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   return (
-    <span className="flex h-5 items-center gap-1.5 text-sm text-muted-foreground" aria-live="polite">
-      {status === 'saving' && (
+    <span className="flex h-5 items-center gap-1.5 text-sm text-muted-foreground">
+      {status === 'idle' && (
         <>
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Saving
+          <Info className="size-4" aria-hidden="true" />
+          Changes are saved automatically
         </>
       )}
-      {status === 'saved' && (
-        <>
-          <Check className="size-4" aria-hidden="true" />
-          Saved
-        </>
-      )}
+      <span className="flex items-center gap-1.5" aria-live="polite">
+        {status === 'saving' && (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Saving
+          </>
+        )}
+        {status === 'saved' && (
+          <>
+            <Check className="size-4" aria-hidden="true" />
+            Saved
+          </>
+        )}
+      </span>
     </span>
   );
 }

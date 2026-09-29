@@ -1,4 +1,5 @@
 import { Loader2, SearchX } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,22 @@ import type { AuditLogEntry, Contact } from '@/lib/types';
 const ALL_CONTACTS = 'all';
 const ALL_ACTIONS = 'all';
 const SKELETON_ROW_COUNT = 6;
+// Keyed to the table's own width, not the viewport: the sheet is resizable, so a wide screen can still host a narrow table.
+const WIDE_COLUMNS_SHOWN = '@[44rem]:table-cell';
+const WIDE_COLUMNS_HIDDEN = '@[44rem]:hidden';
+
+function FullWidthCell({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <>
+      <TableCell colSpan={4} className={cn('hidden', WIDE_COLUMNS_SHOWN, className)}>
+        {children}
+      </TableCell>
+      <TableCell colSpan={2} className={cn(WIDE_COLUMNS_HIDDEN, className)}>
+        {children}
+      </TableCell>
+    </>
+  );
+}
 
 interface MessageExplorerProps {
   contacts: Contact[];
@@ -82,55 +99,57 @@ export function MessageExplorer({
         />
       </div>
 
-      <div className="rounded-xl border border-border">
+      <div className="@container rounded-xl border border-border">
         {/* table-fixed with explicit column widths: in auto layout, long unwrapped cells force the table wider than its container instead of wrapping. */}
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="hidden sm:w-32 sm:table-cell">When</TableHead>
-              <TableHead className="hidden sm:w-28 sm:table-cell">Contact</TableHead>
-              <TableHead className="w-28 sm:w-32">Action</TableHead>
-              <TableHead>Message</TableHead>
+              <TableHead className={cn('hidden w-44 px-4', WIDE_COLUMNS_SHOWN)}>When</TableHead>
+              <TableHead className={cn('hidden w-36 px-4', WIDE_COLUMNS_SHOWN)}>Contact</TableHead>
+              <TableHead className="w-40 px-4">Action</TableHead>
+              <TableHead className="px-4">Message</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading &&
               Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={4}>
+                  <FullWidthCell>
                     <Skeleton className="h-5 w-full" />
-                  </TableCell>
+                  </FullWidthCell>
                 </TableRow>
               ))}
 
             {!loading && entries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                <FullWidthCell className="py-10 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <SearchX className="size-5" aria-hidden="true" />
                     <span>No activity matches these filters.</span>
                   </div>
-                </TableCell>
+                </FullWidthCell>
               </TableRow>
             )}
 
             {!loading &&
               entries.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">{formatTimestamp(entry.createdAt)}</TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <span className="max-w-28 truncate">{entry.contactName}</span>
+                  <TableCell className={cn('hidden truncate px-4 text-xs text-muted-foreground', WIDE_COLUMNS_SHOWN)} title={formatTimestamp(entry.createdAt)}>
+                    {formatTimestamp(entry.createdAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className={cn('hidden truncate px-4', WIDE_COLUMNS_SHOWN)} title={entry.contactName}>
+                    {entry.contactName}
+                  </TableCell>
+                  <TableCell className="overflow-hidden px-4">
                     <ActionBadge action={entry.action} />
                   </TableCell>
-                  <TableCell className="min-w-0 whitespace-normal">
-                    <p className="text-xs text-muted-foreground sm:hidden">
+                  <TableCell className="min-w-0 overflow-hidden px-4 whitespace-normal">
+                    <p className={cn('truncate text-xs text-muted-foreground', WIDE_COLUMNS_HIDDEN)}>
                       {entry.contactName} · {formatTimestamp(entry.createdAt)}
                     </p>
                     <p className="line-clamp-2 break-words">{entry.message}</p>
                     {entry.reason && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground" title={entry.reason}>
                         {entry.category && entry.category !== 'none' ? `${formatCategory(entry.category)} — ` : ''}
                         {entry.reason}
                       </p>

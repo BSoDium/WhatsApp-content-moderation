@@ -61,3 +61,18 @@ export const Empty: Story = {
     roster: [],
   },
 };
+
+export const Loading: Story = {
+  args: {
+    contacts: [],
+    roster: [],
+    initialLoadComplete: false,
+  },
+};
+
+export const Scrollable: Story = {
+  args: {
+    contacts: [...FIXTURE_CONTACTS, ...FIXTURE_CONTACTS.map((contact) => ({ ...contact, id: `${contact.id}-2`, isSelf: false }))],
+    roster: FIXTURE_ROSTER,
+  },
+};
