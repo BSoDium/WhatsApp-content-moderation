@@ -1615,3 +1615,27 @@ guarantee, which is why the prompt change is the primary fix.
 `WARNING_TIMEOUT_MS`, so the worst case before falling back is twice that.
 Language detection reuses the same model, which is already loaded, so on the
 reference hardware it is the cheaper of the two calls.
+
+## Warnings are sent whole or not at all
+
+`sanitizeWarning` used to hard-truncate a generated warning at
+`WARNING_MAX_LENGTH` (default 180) and append an ellipsis. The three required
+elements of a warning (message removed, sent by an automated system, strikes
+remaining) routinely run 140-250 characters in French, so real contacts
+received sentences cut off mid-word ("…avant que vous soyez b…").
+
+**Chosen: never truncate.** `checkWarning` (`src/classifier/warning-text.ts`)
+now returns `{ ok: false }` for empty, refused and over-long output alike, and
+the existing fail-open path sends the static fallback. A cut-off warning reads
+worse than a generic one. `WARNING_MAX_LENGTH` stays as a ceiling on what may
+reach a real phone, with its default raised to 500: in a sample of nine
+generations one degenerated into a ~3,900-character repetition loop, which the
+ceiling sends to the fallback.
+
+*Existing deployments keep their stored value.* Defaults are seeded into the
+settings table once, so an instance that already stored `180` keeps it and
+will fall back to the static message for any warning over 180 characters until
+the value is raised in Settings.
+
+*Rejected: capping generation with `num_predict`.* It would cut the text at a
+token boundary, reintroducing the mid-sentence truncation this removes.

@@ -7,7 +7,7 @@ process.env.DB_PATH = 'data/test-warning-message.test.sqlite';
 const { setSetting } = await import('../store/settings.ts');
 const { generateWarningMessage } = await import('./warning-message.ts');
 
-setSetting('WARNING_MAX_LENGTH', '20');
+setSetting('WARNING_MAX_LENGTH', '80');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -26,8 +26,7 @@ test('returns ok:true with the sanitized message text', async () => {
 
   const result = await generateWarningMessage(INPUT, { client });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.text.length <= 20, true);
+  assert.deepEqual(result, { ok: true, text: 'Stop sending threats or you will be blocked by this automated system.' });
 });
 
 test('strips surrounding quotes and collapses whitespace/newlines', async () => {
@@ -41,14 +40,21 @@ test('strips surrounding quotes and collapses whitespace/newlines', async () => 
   assert.equal(result.text.includes('  '), false);
 });
 
-test('truncates a response longer than WARNING_MAX_LENGTH', async () => {
-  const client = fakeClient('This is a much longer automated warning message than the configured maximum length allows for.');
+test('never truncates: a response longer than WARNING_MAX_LENGTH fails open to the static fallback', async () => {
+  const client = fakeClient('This is a much longer automated warning message than the configured maximum length of eighty characters allows for.');
 
   const result = await generateWarningMessage(INPUT, { client });
 
-  assert.equal(result.ok, true);
-  assert.equal(result.text.length, 20);
-  assert.equal(result.text.endsWith('…'), true);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /too long/);
+});
+
+test('sends a response exactly at WARNING_MAX_LENGTH in full', async () => {
+  const text = 'x'.repeat(80);
+
+  const result = await generateWarningMessage(INPUT, { client: fakeClient(text) });
+
+  assert.deepEqual(result, { ok: true, text });
 });
 
 test('fails open when the client throws (e.g. Ollama unreachable)', async () => {
@@ -67,18 +73,6 @@ test('fails open when the response is empty after sanitizing', async () => {
 
   assert.equal(result.ok, false);
   assert.match(result.error, /empty warning message/);
-});
-
-test('truncates sanely at the smallest allowed WARNING_MAX_LENGTH (1), instead of returning almost the full message', async () => {
-  setSetting('WARNING_MAX_LENGTH', '1');
-  const client = fakeClient('This message is definitely longer than one character.');
-
-  const result = await generateWarningMessage(INPUT, { client });
-
-  assert.equal(result.ok, true);
-  assert.equal(result.text, '…');
-
-  setSetting('WARNING_MAX_LENGTH', '20'); // restore for any test appended after this one
 });
 
 test('the warning model is never shown the flagged message, only its detected language', async () => {

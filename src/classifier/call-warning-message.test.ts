@@ -66,3 +66,10 @@ test('fails open when the model refuses instead of writing a warning', async () 
 
   assert.equal(result.ok, false);
 });
+
+test('fails open instead of truncating a response longer than WARNING_MAX_LENGTH', async () => {
+  const result = await generateCallWarningMessage(INPUT, { client: fakeClient('x'.repeat(501)) });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /too long/);
+});

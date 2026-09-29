@@ -2,7 +2,7 @@ import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
-import { looksLikeRefusal, sanitizeWarning, warningModel } from './warning-text.ts';
+import { checkWarning, warningModel } from './warning-text.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -94,11 +94,7 @@ export async function generateWarningMessage(
       options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
     });
 
-    const text = sanitizeWarning(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
-    if (!text) throw new Error('empty warning message generated');
-    if (looksLikeRefusal(text)) throw new Error(`model refused to write the warning: ${text}`);
-
-    return { ok: true, text };
+    return checkWarning(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
