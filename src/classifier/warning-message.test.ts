@@ -13,10 +13,12 @@ after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
 });
 
-const INPUT = { message: 'you should be scared', category: 'harassment', reason: 'contains a threat', strikeCount: 1, strikeThreshold: 3 };
+const INPUT = { message: 'you should be scared', strikeCount: 1, strikeThreshold: 3 };
 
-function fakeClient(content) {
-  return { chat: async () => ({ message: { content } }) };
+function fakeClient(content, language = 'English') {
+  return {
+    chat: async (request) => ({ message: { content: request.format ? JSON.stringify({ language }) : content } }),
+  };
 }
 
 test('returns ok:true with the sanitized message text', async () => {
@@ -77,4 +79,40 @@ test('truncates sanely at the smallest allowed WARNING_MAX_LENGTH (1), instead o
   assert.equal(result.text, '…');
 
   setSetting('WARNING_MAX_LENGTH', '20'); // restore for any test appended after this one
+});
+
+test('the warning model is never shown the flagged message, only its detected language', async () => {
+  const requests = [];
+  const client = {
+    chat: async (request) => {
+      requests.push(request);
+      return { message: { content: request.format ? JSON.stringify({ language: 'French' }) : 'Stop.' } };
+    },
+  };
+
+  await generateWarningMessage({ ...INPUT, message: 'phrase secrète du contact' }, { client });
+
+  const [detection, generation] = requests;
+  assert.match(detection.messages[1].content, /phrase secrète du contact/);
+  const generationPrompt = generation.messages.map((m) => m.content).join('\n');
+  assert.doesNotMatch(generationPrompt, /phrase secrète du contact/);
+  assert.match(generationPrompt, /Write in French/);
+});
+
+test('fails open when the language cannot be detected', async () => {
+  const client = { chat: async () => ({ message: { content: 'not json' } }) };
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /language detection failed/);
+});
+
+test('fails open when the model refuses instead of writing a warning', async () => {
+  const client = fakeClient("I can't fulfill this request.");
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /refused/);
 });

@@ -13,7 +13,9 @@ after(() => {
 const INPUT = { recentMessages: ['Salut, tu es là ?'], strikeCount: 1, strikeThreshold: 3 };
 
 function fakeClient(content) {
-  return { chat: async (request) => ({ message: { content }, request }) };
+  return {
+    chat: async (request) => ({ message: { content: request.format ? JSON.stringify({ language: 'French' }) : content } }),
+  };
 }
 
 test('returns the sanitized generated text', async () => {
@@ -22,13 +24,22 @@ test('returns the sanitized generated text', async () => {
   assert.deepEqual(result, { ok: true, text: "Arrêtez d'appeler." });
 });
 
-test('includes the recent messages in the prompt so the model can match their language', async () => {
-  let prompt = '';
-  const client = { chat: async (request) => ((prompt = request.messages[1].content), { message: { content: 'ok' } }) };
+test('only language detection sees the recent messages; the warning prompt gets the detected language instead', async () => {
+  const requests = [];
+  const client = {
+    chat: async (request) => {
+      requests.push(request);
+      return { message: { content: request.format ? JSON.stringify({ language: 'French' }) : 'ok' } };
+    },
+  };
 
   await generateCallWarningMessage(INPUT, { client });
 
-  assert.match(prompt, /Salut, tu es là \?/);
+  const [detection, generation] = requests;
+  assert.match(detection.messages[1].content, /Salut, tu es là \?/);
+  const generationPrompt = generation.messages.map((m) => m.content).join('\n');
+  assert.doesNotMatch(generationPrompt, /Salut, tu es là \?/);
+  assert.match(generationPrompt, /Write in French/);
 });
 
 test('fails open on an empty response', async () => {
@@ -44,5 +55,14 @@ test('fails open when the client throws', async () => {
     },
   };
 
-  assert.deepEqual(await generateCallWarningMessage(INPUT, { client }), { ok: false, error: 'unreachable' });
+  const result = await generateCallWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /unreachable/);
+});
+
+test('fails open when the model refuses instead of writing a warning', async () => {
+  const result = await generateCallWarningMessage(INPUT, { client: fakeClient('Je ne peux pas faire cela.') });
+
+  assert.equal(result.ok, false);
 });

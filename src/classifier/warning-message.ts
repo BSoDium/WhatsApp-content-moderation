@@ -1,12 +1,11 @@
 import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
+import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
-import { sanitizeWarning, warningModel } from './warning-text.ts';
+import { looksLikeRefusal, sanitizeWarning, warningModel } from './warning-text.ts';
 
 interface WarningMessageInput {
   message: string;
-  category: string;
-  reason: string;
   strikeCount: number;
   strikeThreshold: number;
   model?: string;
@@ -18,27 +17,27 @@ interface WarningMessageDependencies {
 
 type WarningMessageResult = { ok: true; text: string } | { ok: false; error: string };
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(language: string): string {
   return [
     "You are an automated content-moderation system running on one specific person's personal WhatsApp account.",
-    'A message from this contact was just detected as violating that policy and has already been deleted from the chat.',
-    'Write the message this system sends back to the contact, right now, in the account owner\'s place.',
+    "A message from this contact was just removed from the chat for breaking the chat's rules.",
+    "Write the notice this system sends back to the contact, right now, in the account owner's place.",
     '',
-    'Every message you write MUST include all three of these, in your own words:',
-    "1. A concrete, specific instruction to stop the exact behavior described below — never generic ('stop sending threatening messages', not 'please be respectful').",
+    'Every notice you write MUST include all three of these, in your own words:',
+    "1. That their message was removed for breaking this chat's rules, with no detail about what the message said or why.",
     "2. An explicit statement that an automated system, not the account owner personally, is sending this and watching the conversation. A vague phrase like 'this conversation has been flagged' is NOT enough on its own — say outright that this is automated, not a person.",
     "3. The consequence exactly as given below, addressed to the contact as \"you\" — it is THEIR ability to message this number that is at stake, never phrase it as \"my account\" or \"the account\" being blocked, since that reads as the account owner's own account and makes no sense.",
     '',
     'Other requirements:',
-    '- Describe the violation using the reason given below, in your own plain words — do not invent a different or more severe-sounding violation than what actually happened.',
-    '- Reply in the same language the message below is written in (e.g. write a French reply for a French message) — never translate to English unless the original message is already in English.',
+    '- You have not been shown the conversation and know nothing about it. Never mention, quote, answer, or take a side on anything the contact wrote or on any person or topic they discussed. You only announce the removal and the consequence.',
+    `- Write in ${language}.`,
     '- Exactly ONE short sentence (two only if truly necessary) — as brief as a real text message, never a paragraph. No bullet points, no headers, no markdown, no surrounding quotation marks.',
     '- Firm and factual, never insulting, sarcastic, or threatening beyond stating the actual consequence.',
     "- Respond with only the message text itself — no preamble like 'Here's a message:'.",
   ].join('\n');
 }
 
-function buildUserPrompt({ message, category, reason, strikeCount, strikeThreshold }: WarningMessageInput): string {
+function buildUserPrompt({ strikeCount, strikeThreshold }: WarningMessageInput): string {
   const strikesRemaining = strikeThreshold - strikeCount;
   const consequence =
     strikesRemaining <= 0
@@ -49,22 +48,20 @@ function buildUserPrompt({ message, category, reason, strikeCount, strikeThresho
 
   return [
     '# What happened',
-    `Flagged message (for language/tone reference — do not quote it back verbatim): ${message}`,
-    `Category: ${category}`,
-    `Reason: ${reason}`,
     `Strikes so far: ${strikeCount} of ${strikeThreshold}.`,
     `Consequence to state, addressed to the contact as "you": ${consequence}`,
     '',
     '# Task',
-    'Write the reply to send back to them now, in the same language as their flagged message above.',
+    'Write the notice to send back to them now.',
   ].join('\n');
 }
 
 /**
- * Generates a contextual warning message to send back to a contact whose
- * message was just flagged and deleted, instead of a single static string —
- * the reply names the actual violation and tells the contact plainly that an
- * automated system is watching and will block them if it continues.
+ * Generates the warning sent to a contact whose message was just flagged and
+ * deleted, written in that message's language, telling the contact plainly
+ * that an automated system is watching and will block them if it continues.
+ * The warning model never sees the flagged message (only detectLanguage
+ * does), so it can't engage with the conversation.
  *
  * Fails open by design, same contract as classifyMessage: any error (Ollama
  * unreachable, malformed/empty response, timeout) returns { ok: false }
@@ -73,7 +70,7 @@ function buildUserPrompt({ message, category, reason, strikeCount, strikeThresho
  * skip sending a warning entirely, since the contact still needs to be told
  * their message was removed.
  *
- * @param {{ message: string, category: string, reason: string, strikeCount: number, strikeThreshold: number, model?: string }} input
+ * @param {{ message: string, strikeCount: number, strikeThreshold: number, model?: string }} input
  * @param {{ client?: Ollama }} [deps] - injectable Ollama client for tests.
  * @returns {Promise<{ ok: true, text: string } | { ok: false, error: string }>}
  */
@@ -85,10 +82,13 @@ export async function generateWarningMessage(
   const ollama = client ?? createOllamaClient(getNumberSetting('WARNING_TIMEOUT_MS'));
 
   try {
+    const detected = await detectLanguage(input.message, ollama, model);
+    if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
+
     const response = await ollama.chat({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: buildSystemPrompt(detected.language) },
         { role: 'user', content: buildUserPrompt(input) },
       ],
       options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
@@ -96,6 +96,7 @@ export async function generateWarningMessage(
 
     const text = sanitizeWarning(response.message.content, getNumberSetting('WARNING_MAX_LENGTH'));
     if (!text) throw new Error('empty warning message generated');
+    if (looksLikeRefusal(text)) throw new Error(`model refused to write the warning: ${text}`);
 
     return { ok: true, text };
   } catch (err) {
