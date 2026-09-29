@@ -33,7 +33,7 @@ To update later: `docker compose pull && docker compose up -d`.
 
 ## Web control app
 
-A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel, a **nuisance calls** block (call strikes, unanswered-call count, and an optional per-contact override of the nuisance call threshold), and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes." The page follows the OS/browser's light/dark preference automatically.
+A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a "Message history" link into the activity panel, a **nuisance calls** block (call strikes, unanswered-call count, and an optional per-contact override of the nuisance call threshold), and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy, written as concrete criteria — see [Writing rules the classifier can follow](#writing-rules-the-classifier-can-follow). The page follows the OS/browser's light/dark preference automatically.
 
 - **Activity panel** — roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message, including anything already deleted, since the audit log is the only remaining record of it.
 - **Policy** — the global moderation policy the classifier judges every message against. Starts as a placeholder ("flag nothing until this is replaced") — write a real one here before trusting this with a real contact.
@@ -94,9 +94,27 @@ Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service �
 
 **Fails open**: any Ollama error, timeout, or malformed response returns `{ ok: false }` rather than a guessed verdict — the message is left alone, never deleted, warned, or struck.
 
+#### Writing rules the classifier can follow
+
+A small model like `llama3.2:3b` matches concrete criteria and misses abstract ones. This applies to both the global policy and a contact's moderation context, so a rule that reads clearly to you can still never fire.
+
+- Name the topics, words and requests to flag, including the words the contact would actually use (`mom, maman, mère`).
+- Describe what the message *does* ("asks me to call her", "asks for moral support") rather than what it is *related to* or *feels like*.
+- Keep each criterion separate, and say what to leave alone if a neighbouring topic keeps false-flagging.
+- Test in shadow mode: send or replay real messages and read the Activity panel's verdict and reason before turning real actions on.
+
+Example, on `llama3.2:3b`, for a contact whose messages about the operator's mother should be flagged:
+
+| Rule | Result |
+| --- | --- |
+| `Any messages related to fixing up the relationship with my mom, or helping them get back in contact with her, should be flagged.` | Flagged none of the messages it was written for. |
+| `Flag the message if it mentions my mother (mom, maman, mère), asks me to contact her, ask her to come back, or reconcile with her; or asks me for moral support, emotional help, or help with their mental health.` | Flagged messages naming her or asking her to come back, with no false positives on everyday messages about food, plans or errands. Still missed a message that only says "tell her…" without naming her, which the conversation history has to disambiguate. |
+
+A larger model follows abstract rules better; change it in Settings, but measure inference time on the target hardware first (see [Reference hardware](#reference-hardware)).
+
 ### Warning messages
 
-The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it names the actual category/reason the message was flagged for and tells the contact plainly that an automated moderation system is watching the chat and will block them if it continues. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if generation fails.
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and how many strikes remain before a block. The warning model never sees the flagged message or the classifier's reason — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
 
 ### Moderation pipeline and block/unblock scheduler
 
