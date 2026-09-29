@@ -19,10 +19,10 @@ interface OutgoingMessage {
 export function extractOutgoingMessage(msg: WAMessage, type: string = 'notify'): OutgoingMessage | null {
   if (type !== 'notify' || !msg.key.fromMe) return null;
 
-  const text = extractMessageText(msg);
+  const text = extractMessageText(msg.message);
   if (!text) return null;
 
-  return { text, timestamp: extractMessageTimestamp(msg) };
+  return { text, timestamp: extractMessageTimestamp(msg.messageTimestamp) };
 }
 
 /**

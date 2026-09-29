@@ -28,17 +28,19 @@ interface ClassifierDependencies {
 // Property order matters here: schema-constrained decoding fills fields in
 // this order, so target/category/reason are written before flagged — the
 // model commits to its reasoning first and then has to make flagged agree
-// with it, instead of guessing flagged cold. target is never read back; it
-// only forces the model to decide who a message is aimed at before judging it.
+// with it, instead of guessing flagged cold. me_was_rude and target are never
+// read back; they force a small model to answer two narrow questions — did
+// Me set a rude tone, who is this aimed at — instead of skipping the history.
 const RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
+    me_was_rude: { type: 'boolean' },
     target: { type: 'string', enum: ['me', 'someone_else', 'no_one'] },
     category: { type: 'string' },
     reason: { type: 'string' },
     flagged: { type: 'boolean' },
   },
-  required: ['target', 'category', 'reason', 'flagged'],
+  required: ['me_was_rude', 'target', 'category', 'reason', 'flagged'],
 };
 
 function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): string {
@@ -47,14 +49,22 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     "You will be shown recent conversation history for context, then the newest incoming message.",
     'Decide only whether that newest message violates the policy below — do not flag anything based on the history alone.',
     '"Me" is the person you protect and "Them" is the contact being moderated. Lines marked as automated warnings were sent by this system, not by Me.',
-    'Profanity or insults only count when aimed at Me. Swearing for emphasis, venting about a third party or a situation, and banter or teasing Me took part in are not violations — use what Me wrote in the history to tell banter from abuse.',
+    'Profanity or insults only count when aimed at Me. Swearing for emphasis and venting about a third party or a situation are not violations.',
+    'If Me was already rude, insulting or teasing in the recent conversation, mutual banter is not a violation either. Only flag it then if the newest message is a real threat, sexually explicit, or keeps pressuring Me after a clear refusal.',
+    '',
+    '# Examples',
+    'Recent conversation: "Me: you missed your bus again, what a dummy 😂" / "Them: haha I overslept". Newest message: "Them: screw you, at least I got up" -> me_was_rude true, banter, flagged false.',
+    'Recent conversation: "Me: thanks, talk later". Newest message: "Them: you are useless and nobody likes you" -> me_was_rude false, aimed at Me, flagged true.',
+    'Recent conversation: (none). Newest message: "Them: this stupid printer is broken again, damn it" -> aimed at no one, flagged false.',
     '',
     '# Policy',
     policy,
     ...(contactContext ? ['', '# Contact-specific context', contactContext] : []),
     '',
-    'Respond with JSON only, matching the given schema. First set "target" to who the newest ' +
-      'message is aimed at: "me", "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
+    'Respond with JSON only, matching the given schema. First set "me_was_rude" to true if a line ' +
+      'written by Me (not an automated warning) in the recent conversation was rude, insulting or ' +
+      'teasing, else false. Then set "target" to who the newest message is aimed at: "me" ' +
+      '(including "you"/"tu"/"toi"), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
       'Then fill in "category" (a short label, e.g. "harassment", "unwanted_contact", or "none" ' +
       'when not flagged) and "reason" (one short sentence), then set "flagged" to agree with the ' +
       'reason you just wrote.',

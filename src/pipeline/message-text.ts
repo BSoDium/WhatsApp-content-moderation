@@ -1,13 +1,13 @@
-import type { WAMessage } from '@whiskeysockets/baileys';
+import type { proto, WAMessage } from '@whiskeysockets/baileys';
 
-export function extractMessageText(msg: WAMessage): string | undefined {
-  return msg.message?.conversation ?? msg.message?.extendedTextMessage?.text ?? undefined;
+export function extractMessageText(message: proto.IMessage | null | undefined): string | undefined {
+  return message?.conversation ?? message?.extendedTextMessage?.text ?? undefined;
 }
 
-export function extractMessageTimestamp(msg: WAMessage): number {
+export function extractMessageTimestamp(messageTimestamp: WAMessage['messageTimestamp']): number {
   // Baileys types messageTimestamp as optional; falling back to "now" rather
   // than letting a missing value through as NaN, which would otherwise flow
   // into deleteForMe's sock.chatModify call and likely make it throw.
-  const rawTimestamp = Number(msg.messageTimestamp);
+  const rawTimestamp = messageTimestamp == null ? NaN : Number(messageTimestamp);
   return Number.isFinite(rawTimestamp) ? rawTimestamp * 1000 : Date.now();
 }

@@ -32,10 +32,10 @@ export function extractIncomingMessage(
   if (!msg.message) return null;
   if (msg.key.fromMe && !allowSelf) return null;
 
-  const text = extractMessageText(msg);
+  const text = extractMessageText(msg.message);
   if (!text) return null;
 
-  return { text, key: msg.key, timestamp: extractMessageTimestamp(msg) };
+  return { text, key: msg.key, timestamp: extractMessageTimestamp(msg.messageTimestamp) };
 }
 import { extractMessageText, extractMessageTimestamp } from './message-text.ts';
 import type { WAMessage } from '@whiskeysockets/baileys';
