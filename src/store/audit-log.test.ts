@@ -135,3 +135,13 @@ test('getAuditLogStats counts by action, across every contact logged so far in t
   assert.ok(stats.byCategory.some((entry) => entry.category === 'spam' && entry.count >= 1));
   assert.ok(stats.byCategory.every((entry) => entry.count > 0));
 });
+
+test('getAuditLogStats charts a flagged shadow-mode message by category but not a passed one', () => {
+  const contact = 'gina@s.whatsapp.net';
+  logMessage({ contactId: contact, direction: 'them', message: 'x', classification: { ok: true, flagged: true, category: 'shadow_only_category', reason: '' }, action: 'shadow' });
+  logMessage({ contactId: contact, direction: 'them', message: 'y', classification: { ok: true, flagged: false, category: 'shadow_passed_category', reason: '' }, action: 'shadow' });
+
+  const { byCategory } = getAuditLogStats();
+  assert.ok(byCategory.some((entry) => entry.category === 'shadow_only_category'));
+  assert.ok(byCategory.every((entry) => entry.category !== 'shadow_passed_category'));
+});

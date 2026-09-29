@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { Input } from '@/components/ui/input';
 import { matchesQuery } from '@/lib/contact';
+import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
 import { fadeAndSlide } from '@/lib/listReorderAnimation';
 import { ContactRow, ContactRowSkeleton } from './ContactRow';
 import type { Contact, RosterEntry } from '@/lib/types';
@@ -15,6 +15,8 @@ interface ContactListProps {
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
   onViewHistory: (contactId: string) => void;
   initialLoadComplete: boolean;
+  stickyTop?: ReactNode;
+  isDesktop: boolean;
 }
 
 function sortedFiltered(contacts: Contact[], query: string): Contact[] {
@@ -25,17 +27,31 @@ function sortedFiltered(contacts: Contact[], query: string): Contact[] {
 }
 
 const SKELETON_ROW_COUNT = 8;
-const SCROLLED_THRESHOLD_PX = 1;
+const FADE_RANGE_PX = 32;
 
-export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete }: ContactListProps) {
+export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, isDesktop }: ContactListProps) {
   const [query, setQuery] = useState('');
-  const [scrolled, setScrolled] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listScrollRef = useRef<HTMLUListElement | null>(null);
   const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
   const rosterById = useMemo(() => new Map(roster.map((entry) => [entry.id, entry])), [roster]);
   const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase()), [contacts, query]);
   const moderated = useMemo(() => filtered.filter((contact) => monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const others = useMemo(() => filtered.filter((contact) => !monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const [listRef, setAnimationsEnabled] = useAutoAnimate(fadeAndSlide);
+  const setListRef = useCallback(
+    (element: HTMLUListElement | null) => {
+      listScrollRef.current = element;
+      listRef(element);
+    },
+    [listRef],
+  );
+
+  // On desktop the list scrolls inside a fixed pane; on mobile the whole pane scrolls and App drives `--fade` from `--collapse` instead.
+  const applyFade = useCallback((scroller: HTMLElement) => {
+    rootRef.current?.style.setProperty('--fade', String(clamp01(scroller.scrollTop / FADE_RANGE_PX)));
+  }, []);
+  useScrollLinkedStyle(listScrollRef, isDesktop, applyFade);
 
   // Animations stay off until the first fetch settles, or auto-animate would play add/reorder for the whole list on every load.
   useEffect(() => {
@@ -48,29 +64,29 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
   }, [initialLoadComplete, setAnimationsEnabled]);
 
   return (
-    <div className="flex h-full flex-col">
-      <Input
-        type="search"
-        placeholder="Search by name or number…"
-        aria-label="Search by name or number"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        className="h-10 flex-none px-4"
-      />
-      <div className="relative mt-4 min-h-0 flex-1">
+    <div ref={rootRef} className="flex flex-col lg:h-full">
+      <div className="relative z-20 flex-none bg-background pt-2 pb-4 max-lg:sticky max-lg:top-0 lg:pt-0 lg:pb-0">
+        {stickyTop && <div className="pb-4">{stickyTop}</div>}
+        <Input
+          type="search"
+          placeholder="Search by name or number…"
+          aria-label="Search by name or number"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="h-10 flex-none px-4"
+        />
         <div
           aria-hidden="true"
-          className={cn(
-            'pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-linear-to-b from-background to-transparent transition-opacity duration-300 ease-out',
-            scrolled ? 'opacity-100' : 'opacity-0',
-          )}
+          style={{ opacity: 'var(--fade, 0)' }}
+          className="pointer-events-none absolute inset-x-0 top-full h-8 bg-linear-to-b from-background to-transparent max-lg:[--fade:var(--collapse,0)] lg:mt-4"
         />
+      </div>
+      <div className="relative min-h-0 flex-1 lg:mt-4">
         <ul
-          ref={listRef}
-          className="@container h-full overflow-y-auto pb-8"
+          ref={setListRef}
+          className="@container pb-8 lg:h-full lg:overflow-y-auto"
           aria-label="Contacts"
           aria-busy={!initialLoadComplete}
-          onScroll={(event) => setScrolled(event.currentTarget.scrollTop > SCROLLED_THRESHOLD_PX)}
         >
           {!initialLoadComplete && Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => <ContactRowSkeleton key={`skeleton-${i}`} />)}
           {initialLoadComplete && filtered.length === 0 && (

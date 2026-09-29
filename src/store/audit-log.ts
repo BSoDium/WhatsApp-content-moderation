@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
@@ -31,6 +31,7 @@ export interface AuditLogStats {
 
 const DEFAULT_PAGE_LIMIT = 50;
 const FLAGGED_DELETED_ACTION = 'delete+warn';
+const SHADOW_ACTION = 'shadow';
 const WARNING_SENT_ACTION = 'warning_sent';
 const CLASSIFIER_ERROR_ACTION = 'classifier_error';
 
@@ -115,9 +116,10 @@ function countWithAction(action: string): SQL<number | null> {
 
 /**
  * All-time counts across every contact, for the control app's activity
- * stats panel. `byCategory` is scoped to actually-flagged-and-deleted
- * messages only (a passed message's category is usually "none" and isn't
- * useful to chart).
+ * stats panel. `byCategory` is scoped to flagged messages only — deleted
+ * ones, plus shadow-mode ones the classifier flagged but nothing acted on,
+ * so the chart isn't empty while shadow mode is on (a passed message's
+ * category is usually "none" and isn't useful to chart).
  */
 export function getAuditLogStats(): AuditLogStats {
   const orm = getOrm();
@@ -135,7 +137,7 @@ export function getAuditLogStats(): AuditLogStats {
   const byCategory = orm
     .select({ category: auditLog.category, count: categoryCount })
     .from(auditLog)
-    .where(and(eq(auditLog.action, FLAGGED_DELETED_ACTION), isNotNull(auditLog.category)))
+    .where(and(inArray(auditLog.action, [FLAGGED_DELETED_ACTION, SHADOW_ACTION]), eq(auditLog.flagged, 1), isNotNull(auditLog.category)))
     .groupBy(auditLog.category)
     .orderBy(desc(categoryCount))
     .all() as { category: string; count: number }[];
