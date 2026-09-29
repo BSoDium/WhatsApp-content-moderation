@@ -7,7 +7,7 @@ export interface StatTileDef {
   key: StatKey;
   label: string;
   icon: LucideIcon;
-  // Tints the tile once its value is above zero. Errors are the only red one — a deletion is the system working as intended, a block is worth a glance, and the monitored roster is the app's own highlight colour.
+  // Tints the tile once its value is above zero. Errors are the only red one — a deletion is the system working as intended, a block or a warning is worth a glance, and the monitored roster is the app's own highlight colour.
   tone?: 'highlight' | 'warning' | 'destructive';
 }
 
@@ -15,7 +15,7 @@ export const STAT_TILES: Record<StatKey, StatTileDef> = {
   monitoredCount: { key: 'monitoredCount', label: 'Monitored', icon: ShieldCheck, tone: 'highlight' },
   activeBlocks: { key: 'activeBlocks', label: 'Blocked', icon: Ban, tone: 'warning' },
   totalFlaggedDeleted: { key: 'totalFlaggedDeleted', label: 'Deleted', icon: Trash2 },
-  totalWarningsSent: { key: 'totalWarningsSent', label: 'Warnings', icon: TriangleAlert },
+  totalWarningsSent: { key: 'totalWarningsSent', label: 'Warnings', icon: TriangleAlert, tone: 'warning' },
   totalClassifierErrors: { key: 'totalClassifierErrors', label: 'Errors', icon: CircleAlert, tone: 'destructive' },
   totalLogged: { key: 'totalLogged', label: 'Logged', icon: ScrollText },
 };
