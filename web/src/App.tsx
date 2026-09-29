@@ -210,17 +210,17 @@ function App() {
               transition={paneTransition}
               className="flex-none px-4 pb-4 lg:px-8"
             >
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
                 {meta?.user && (
-                  <div className="col-start-2 row-start-1 flex min-w-0 lg:col-start-1 lg:mb-4">
+                  <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
                     <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
                   </div>
                 )}
-                <h1 className="col-start-1 row-start-1 min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2 lg:mb-1">WhatsApp moderation control</h1>
-                <p className="col-span-2 row-start-2 text-sm leading-relaxed text-muted-foreground sm:text-base lg:row-start-3">
+                <h1 className="col-start-1 row-start-1 mb-1 min-w-0 self-start text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2">WhatsApp moderation control</h1>
+                <p className="col-start-1 row-start-2 self-start text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-2 lg:row-start-3">
                   Flip a switch to moderate a contact, or tap their name for detailed controls.
                 </p>
-                <div className="col-span-2 row-start-3 mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
+                <div className="col-span-2 row-start-3 mt-4 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
                   <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     <span>Settings</span>
