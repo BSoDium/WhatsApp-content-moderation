@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Info, Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -38,6 +38,12 @@ function SaveStatusIndicator({ status }: { status: SaveStatus }) {
         <>
           <Check className="size-4" aria-hidden="true" />
           Saved
+        </>
+      )}
+      {status === 'idle' && (
+        <>
+          <Info className="size-4" aria-hidden="true" />
+          Changes are saved automatically
         </>
       )}
     </span>

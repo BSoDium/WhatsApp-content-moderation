@@ -199,21 +199,19 @@ function App() {
               transition={moveTransition}
               className="flex-none px-4 pb-4 lg:px-8 @container"
             >
-              <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-start xl:justify-between xl:gap-6">
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-xl leading-tight font-semibold sm:text-2xl">WhatsApp moderation control</h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
-                </div>
-                <div className="grid shrink-0 grid-cols-3 gap-2 xl:flex xl:justify-end">
-                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('settings')}>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                <h1 className="min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:col-start-1 lg:row-start-1">WhatsApp moderation control</h1>
+                <p className="text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-2 lg:row-start-2 lg:truncate">Flip a switch to moderate a contact, or tap their name for detailed controls.</p>
+                <div className="mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:flex lg:justify-end lg:self-center">
+                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     Settings
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('policy')}>
+                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
                     Policy
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-2 xl:h-9 xl:px-3" onClick={() => showPanel('activity')}>
+                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
                     Activity
                   </Button>
