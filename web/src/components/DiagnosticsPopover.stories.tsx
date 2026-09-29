@@ -39,6 +39,11 @@ export const LoggedOut: Story = {
   ],
 };
 
+export const DirectConnection: Story = {
+  args: { user: null },
+  decorators: [withMockApi([{ match: '/api/status', body: FIXTURE_STATUS }])],
+};
+
 export const ServerUnreachable: Story = {
   args: { streamLive: false },
   decorators: [withMockApi([{ match: '/api/status', status: 500, body: { error: 'boom' } }])],

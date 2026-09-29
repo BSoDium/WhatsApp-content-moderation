@@ -3,6 +3,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
+import { DirectAccessWarning } from '@/components/DirectAccessWarning';
+import { DirectConnection } from '@/components/DirectConnection';
 import { SignedInUser } from '@/components/SignedInUser';
 import { formatElapsed } from '@/lib/duration';
 import type { ServerStatus, SignedInUser as SignedInUserData, WhatsAppStatus } from '@/lib/types';
@@ -12,7 +14,8 @@ import { useServerStatus } from '@/lib/useServerStatus';
 const CLOCK_TICK_MS = 1000;
 
 interface DiagnosticsPopoverProps {
-  user: SignedInUserData;
+  // null = connected directly, with no Tailscale identity to show.
+  user: SignedInUserData | null;
   lastRefreshedAt: number | null;
   streamLive: boolean;
 }
@@ -58,13 +61,17 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
 
   return (
     <>
-      <PopoverHeader>
-        <PopoverTitle>{user.name}</PopoverTitle>
-        <PopoverDescription className="truncate">{user.login}</PopoverDescription>
-      </PopoverHeader>
+      {user ? (
+        <PopoverHeader>
+          <PopoverTitle>{user.name}</PopoverTitle>
+          <PopoverDescription className="truncate">{user.login}</PopoverDescription>
+        </PopoverHeader>
+      ) : (
+        <DirectAccessWarning />
+      )}
       <Separator />
       <dl className="flex flex-col gap-2 text-sm">
-        {user.tailnet && (
+        {user?.tailnet && (
           <Row label="Tailnet">
             <span className="truncate font-mono text-xs">{user.tailnet}</span>
           </Row>
@@ -96,8 +103,12 @@ export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="ghost" className="h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal lg:-ml-1.5" aria-label={`${props.user.name} — session and diagnostics`}>
-          <SignedInUser user={props.user} />
+        <Button
+          variant="ghost"
+          className="h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal lg:-ml-1.5"
+          aria-label={props.user ? `${props.user.name} — session and diagnostics` : 'Direct connection, not access-restricted — session and diagnostics'}
+        >
+          {props.user ? <SignedInUser user={props.user} /> : <DirectConnection />}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80">
