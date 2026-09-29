@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { Input } from '@/components/ui/input';
 import { matchesQuery } from '@/lib/contact';
 import { fadeAndSlide } from '@/lib/listReorderAnimation';
-import { ContactRow } from './ContactRow';
+import { ContactRow, ContactRowSkeleton } from './ContactRow';
 import type { Contact, RosterEntry } from '@/lib/types';
 
 interface ContactListProps {
@@ -23,8 +24,12 @@ function sortedFiltered(contacts: Contact[], query: string): Contact[] {
     .sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.name.localeCompare(b.name));
 }
 
+const SKELETON_ROW_COUNT = 8;
+const SCROLLED_THRESHOLD_PX = 1;
+
 export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete }: ContactListProps) {
   const [query, setQuery] = useState('');
+  const [scrolled, setScrolled] = useState(false);
   const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
   const rosterById = useMemo(() => new Map(roster.map((entry) => [entry.id, entry])), [roster]);
   const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase()), [contacts, query]);
@@ -52,36 +57,54 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
         onChange={(event) => setQuery(event.target.value)}
         className="h-10 flex-none px-4"
       />
-      <ul ref={listRef} className="@container mt-4 flex-1 overflow-y-auto pb-8" aria-label="Contacts">
-        {filtered.length === 0 && <li className="py-6 text-center text-muted-foreground">No contacts match your search.</li>}
-        {moderated.length > 0 && <SectionHeading key="heading-moderated">Moderated</SectionHeading>}
-        {moderated.map((contact) => (
-          <ContactRow
-            key={contact.id}
-            contact={contact}
-            monitored={true}
-            selected={contact.id === selectedId}
-            onSelect={onSelect}
-            entry={rosterById.get(contact.id)}
-            onToggle={onToggle}
-            onViewHistory={onViewHistory}
-          />
-        ))}
-        {moderated.length > 0 && others.length > 0 && <li key="divider" role="separator" className="mx-2 my-2 border-t" />}
-        {others.length > 0 && <SectionHeading key="heading-others">Other contacts</SectionHeading>}
-        {others.map((contact) => (
-          <ContactRow
-            key={contact.id}
-            contact={contact}
-            monitored={false}
-            selected={contact.id === selectedId}
-            onSelect={onSelect}
-            entry={rosterById.get(contact.id)}
-            onToggle={onToggle}
-            onViewHistory={onViewHistory}
-          />
-        ))}
-      </ul>
+      <div className="relative mt-4 min-h-0 flex-1">
+        <div
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-linear-to-b from-background to-transparent transition-opacity duration-300 ease-out',
+            scrolled ? 'opacity-100' : 'opacity-0',
+          )}
+        />
+        <ul
+          ref={listRef}
+          className="@container h-full overflow-y-auto pb-8"
+          aria-label="Contacts"
+          aria-busy={!initialLoadComplete}
+          onScroll={(event) => setScrolled(event.currentTarget.scrollTop > SCROLLED_THRESHOLD_PX)}
+        >
+          {!initialLoadComplete && Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => <ContactRowSkeleton key={`skeleton-${i}`} />)}
+          {initialLoadComplete && filtered.length === 0 && (
+            <li className="py-6 text-center text-muted-foreground">{contacts.length === 0 ? 'No contacts yet.' : 'No contacts match your search.'}</li>
+          )}
+          {moderated.length > 0 && <SectionHeading key="heading-moderated">Moderated</SectionHeading>}
+          {moderated.map((contact) => (
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              monitored={true}
+              selected={contact.id === selectedId}
+              onSelect={onSelect}
+              entry={rosterById.get(contact.id)}
+              onToggle={onToggle}
+              onViewHistory={onViewHistory}
+            />
+          ))}
+          {moderated.length > 0 && others.length > 0 && <li key="divider" role="separator" className="mx-2 my-2 border-t" />}
+          {others.length > 0 && <SectionHeading key="heading-others">Other contacts</SectionHeading>}
+          {others.map((contact) => (
+            <ContactRow
+              key={contact.id}
+              contact={contact}
+              monitored={false}
+              selected={contact.id === selectedId}
+              onSelect={onSelect}
+              entry={rosterById.get(contact.id)}
+              onToggle={onToggle}
+              onViewHistory={onViewHistory}
+            />
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

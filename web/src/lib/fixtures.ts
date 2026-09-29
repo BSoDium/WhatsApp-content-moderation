@@ -10,7 +10,7 @@ export const FIXTURE_CONTACTS: Contact[] = [
   { id: 'bob', name: 'Bob Nguyen', lastMessageAt: Date.now() - 32 * MINUTE_MS, isSelf: false, allowSelf: false },
   { id: 'dave', name: 'Dave (market)', lastMessageAt: Date.now() - 26 * HOUR_MS, isSelf: false, allowSelf: false },
   { id: 'erin', name: 'Erin', lastMessageAt: Date.now() - 4 * HOUR_MS, isSelf: false, allowSelf: false },
-  { id: 'me', name: 'You', lastMessageAt: null, isSelf: true, allowSelf: false },
+  { id: 'me', name: 'Elliot', lastMessageAt: null, isSelf: true, allowSelf: false },
 ];
 
 export const FIXTURE_ROSTER: RosterEntry[] = [

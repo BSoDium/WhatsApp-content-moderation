@@ -58,3 +58,12 @@ export const SelfBlocked: Story = {
     selected: false,
   },
 };
+
+export const StrikesAndBlocked: Story = {
+  args: {
+    contact: FIXTURE_CONTACTS[0],
+    monitored: true,
+    entry: { ...FIXTURE_ROSTER[0], strikeCount: 12, block: { unblockAt: Date.now() + 60 * 60 * 1000 } },
+    selected: false,
+  },
+};
