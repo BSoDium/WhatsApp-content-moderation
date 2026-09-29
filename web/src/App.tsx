@@ -170,6 +170,12 @@ function App() {
   }, [selectedId, openPanel, activityContactId]);
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
+  // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
+  const panelOpenRef = useRef(panelOpen);
+  const paneTransition = panelOpenRef.current === panelOpen ? INSTANT_TRANSITION : moveTransition;
+  useEffect(() => {
+    panelOpenRef.current = panelOpen;
+  }, [panelOpen]);
   // Banners present with the first data are part of the settled layout; only later ones animate.
   const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
@@ -195,13 +201,13 @@ function App() {
           <motion.section
             initial={false}
             animate={listPaneTarget(isDesktop, panelOpen, viewportWidth)}
-            transition={moveTransition}
+            transition={paneTransition}
             className="flex h-screen w-full flex-col lg:min-w-[500px]"
           >
             <motion.div
               initial={false}
               animate={headerPaddingTarget(isDesktop, panelOpen)}
-              transition={moveTransition}
+              transition={paneTransition}
               className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
@@ -215,15 +221,15 @@ function App() {
                   Flip a switch to moderate a contact, or tap their name for detailed controls.
                 </p>
                 <div className="col-span-2 row-start-3 mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
-                  <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
+                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
                     <span>Settings</span>
                   </Button>
-                  <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
+                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
                     <span>Policy</span>
                   </Button>
-                  <Button variant="ghost" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
+                  <Button variant={isDesktop ? 'ghost' : 'outline'} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
                     <span>Activity</span>
                   </Button>
@@ -288,7 +294,7 @@ function App() {
         <motion.section
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen, viewportWidth)}
-          transition={{ x: moveTransition, opacity: fadeTransition }}
+          transition={{ x: paneTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
