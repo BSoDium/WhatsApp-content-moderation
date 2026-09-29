@@ -21,6 +21,7 @@ import { ActivityPanel } from '@/components/ActivityPanel';
 import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { BannerReveal } from '@/components/BannerReveal';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 
@@ -227,7 +228,6 @@ function App() {
   // Banners present with the first data are part of the settled layout; only later ones animate.
   const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
-  const bannerTransition = initialDataSettled ? fadeTransition : INSTANT_TRANSITION;
 
   // Keeps the last contact rendered until the close transition finishes (Framer Motion on desktop, 250ms CSS on mobile).
   useLayoutEffect(() => {
@@ -287,28 +287,14 @@ function App() {
               </div>
               <AnimatePresence initial={false}>
                 {shadowMode && (
-                  <motion.div
-                    key="shadow-mode-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
+                  <BannerReveal key="shadow-mode-banner" animate={initialDataSettled}>
                     <ShadowModeBanner onOpenSettings={() => showPanel('settings')} />
-                  </motion.div>
+                  </BannerReveal>
                 )}
                 {error && (
-                  <motion.div
-                    key="error-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
+                  <BannerReveal key="error-banner" animate={initialDataSettled}>
                     <ErrorBanner error={error} onDismiss={dismissError} />
-                  </motion.div>
+                  </BannerReveal>
                 )}
               </AnimatePresence>
             </motion.div>
