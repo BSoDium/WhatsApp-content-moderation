@@ -67,7 +67,7 @@ function DiagnosticsBody({ user, lastRefreshedAt, streamLive }: DiagnosticsPopov
           <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border p-2 text-foreground" aria-hidden="true">
             <TailscaleLogo className="size-full" />
           </span>
-          <PopoverHeader className="min-w-0">
+          <PopoverHeader className="min-w-0 gap-0 leading-snug">
             <PopoverTitle className="truncate">{user.name}</PopoverTitle>
             <PopoverDescription className="truncate">{user.login}</PopoverDescription>
           </PopoverHeader>
