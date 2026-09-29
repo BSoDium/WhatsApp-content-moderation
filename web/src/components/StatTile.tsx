@@ -48,6 +48,12 @@ const NEUTRAL_TONE: TileTone = {
 };
 
 const TONES: Record<NonNullable<StatTileDef['tone']>, TileTone> = {
+  highlight: {
+    card: 'border-emerald-500/45 bg-linear-to-br from-emerald-500/15 to-card to-70%',
+    value: 'text-emerald-600 dark:text-emerald-400',
+    icon: 'text-[color-mix(in_oklab,var(--color-emerald-500)_55%,var(--card))]',
+    pattern: 'text-[color-mix(in_oklab,var(--color-emerald-500)_26%,var(--card))]',
+  },
   warning: {
     card: 'border-warning/45 bg-linear-to-br from-warning/15 to-card to-70%',
     value: 'text-warning',
