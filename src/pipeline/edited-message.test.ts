@@ -40,6 +40,9 @@ test('ignores our own edits unless allowSelf is set', () => {
 
 test('falls back to now when the update carries no timestamp', () => {
   const before = Date.now();
-  const result = extractEditedMessage(editUpdate({ timestamp: undefined }));
-  assert.ok(result.timestamp >= before);
+  for (const timestamp of [undefined, null]) {
+    const update = editUpdate();
+    update.update.messageTimestamp = timestamp;
+    assert.ok(extractEditedMessage(update).timestamp >= before);
+  }
 });
