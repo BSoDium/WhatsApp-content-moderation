@@ -82,9 +82,6 @@ export function getAuditLog(contactId: string, limit = DEFAULT_PAGE_LIMIT): Audi
     .all();
 }
 
-/**
- * When `action` was last logged for a contact, or null if never.
- */
 export function getLastActionAt(contactId: string, action: string): number | null {
   const row = getOrm()
     .select({ createdAt: auditLog.created_at })

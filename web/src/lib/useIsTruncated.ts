@@ -3,12 +3,12 @@ import { useLayoutEffect, useState, type RefObject } from 'react';
 const OVERFLOW_TOLERANCE_PX = 1;
 
 // Clipped means a `[data-truncatable]` descendant overflows (line-clamp or ellipsis). Re-measured on resize, since the containing sheet is resizable.
-// While `measure` is false (e.g. the content is expanded) the last result is kept, so the toggle doesn't vanish once nothing is clipped.
 export function useIsTruncated(containerRef: RefObject<HTMLElement | null>, measure: boolean): boolean {
   const [truncated, setTruncated] = useState(false);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
+    // Not measuring while expanded keeps the last result, so the toggle doesn't vanish once nothing is clipped.
     if (!container || !measure) return;
 
     function check() {

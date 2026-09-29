@@ -8,8 +8,7 @@ interface WarningTemplate {
   consequenceFinal: string;
 }
 
-// Keyed by the names in language.ts's LANGUAGES. Each language is wording someone who reads it has checked: a small model's grammar in these languages was not good enough to send (see docs/decisions.md), so adding one means writing these five strings, nothing else.
-// Formal register in every language (vous, usted, impersonal Polish), and no gendered forms of the contact ("bloqué", "zablokowany"): the notice goes to someone the operator may be in conflict with, and their gender and preferred address are unknown.
+// Hand-checked wording, keyed by the names in language.ts's LANGUAGES: formal in every language and never gender-marking the contact — see docs/decisions.md "Warning templates for known languages".
 const TEMPLATES: Record<string, WarningTemplate> = {
   English: {
     removedMessage: "Your message was removed for breaking this conversation's rules. This is an automated message, not the account owner.",
