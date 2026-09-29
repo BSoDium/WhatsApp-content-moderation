@@ -14,7 +14,7 @@ import { ContactDetailPanel, type ContactDetailPanelHandle } from '@/components/
 import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ActivityPanel } from '@/components/ActivityPanel';
-import { SignedInUser } from '@/components/SignedInUser';
+import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -83,6 +83,8 @@ function App() {
     setContext,
     setCallNuisanceThreshold,
     initialLoadComplete,
+    lastRefreshedAt,
+    streamLive,
   } = useControlData(initialUrlState.contactId);
   const { meta, settled: metaSettled } = useMeta();
   const { shadowMode, settled: shadowModeSettled } = useShadowMode();
@@ -206,7 +208,7 @@ function App() {
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 lg:gap-y-0">
                 {meta?.user && (
                   <div className="col-start-2 row-start-1 min-w-0 lg:col-start-1 lg:mb-4">
-                    <SignedInUser user={meta.user} />
+                    <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
                   </div>
                 )}
                 <h1 className="col-start-1 row-start-1 min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2 lg:mb-1">WhatsApp moderation control</h1>

@@ -102,3 +102,12 @@ export interface AuditLogPage {
   entries: AuditLogEntry[];
   nextBefore: number | null;
 }
+
+export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'logged-out';
+
+// Matches GET /api/status.
+export interface ServerStatus {
+  version: string;
+  startedAt: number;
+  whatsapp: { status: WhatsAppStatus; since: number; statusCode: number | null };
+}

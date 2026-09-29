@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FIXTURE_AUDIT_LOG, FIXTURE_CONTACTS, FIXTURE_ROSTER, FIXTURE_SETTINGS, FIXTURE_STATS, FIXTURE_USER } from '@/lib/fixtures';
+import { FIXTURE_AUDIT_LOG, FIXTURE_CONTACTS, FIXTURE_ROSTER, FIXTURE_SETTINGS, FIXTURE_STATS, FIXTURE_STATUS, FIXTURE_USER } from '@/lib/fixtures';
 import type { RosterEntry } from '@/lib/types';
 import { withMockApi, type MockRoute } from '../.storybook/withMockApi';
 import App from './App';
@@ -50,6 +50,7 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
       },
     },
     { match: '/api/meta', body: { authRequired: true, user: FIXTURE_USER } },
+    { match: '/api/status', body: FIXTURE_STATUS },
     { match: '/api/stats', body: FIXTURE_STATS },
     { match: '/api/settings', bodyFn: () => settings },
     {
