@@ -11,6 +11,7 @@ interface AuditLogInput {
   message: string;
   classification: Classification;
   action: string;
+  createdAt?: number;
 }
 
 export interface AuditLogPageFilter {
@@ -48,9 +49,12 @@ const CLASSIFIER_ERROR_ACTION = 'classifier_error';
  *   classification: { ok: true, flagged: boolean, category: string, reason: string }
  *     | { ok: false, error: string },
  *   action: string,
- * }} entry
+ *   createdAt?: number,
+ * }} entry `createdAt` defaults to now; pass the message's own timestamp so
+ *   history stays in chat order when classification finishes after a later
+ *   message was already logged.
  */
-export function logMessage({ contactId, direction, message, classification, action }: AuditLogInput): void {
+export function logMessage({ contactId, direction, message, classification, action, createdAt = Date.now() }: AuditLogInput): void {
   getOrm()
     .insert(auditLog)
     .values({
@@ -63,7 +67,7 @@ export function logMessage({ contactId, direction, message, classification, acti
       reason: classification.ok ? classification.reason : null,
       error: classification.ok ? null : classification.error,
       action,
-      created_at: Date.now(),
+      created_at: createdAt,
     })
     .run();
   emitControlEvent('audit-log');

@@ -83,6 +83,48 @@ test('contactContext, when given, is folded into the system prompt', async () =>
   assert.match(systemPrompt, /landlord/);
 });
 
+test('history labels the user\'s own messages "Me" and the bot\'s warnings as automated', async () => {
+  let userPrompt;
+  const client = {
+    chat: async ({ messages }) => {
+      userPrompt = messages.find((m) => m.role === 'user').content;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage(
+    {
+      message: 'hey',
+      history: [
+        { from: 'me', text: 'you absolute clown' },
+        { from: 'them', text: 'haha shut up' },
+        { from: 'me', text: 'Please stop.', automated: true },
+      ],
+    },
+    { client, policy: POLICY },
+  );
+
+  assert.match(userPrompt, /^Me: you absolute clown$/m);
+  assert.match(userPrompt, /^Them: haha shut up$/m);
+  assert.match(userPrompt, /^Me \(automated warning, not written by me\): Please stop\.$/m);
+});
+
+test('the request asks for "target" before "flagged" and the prompt limits profanity to Me-directed content', async () => {
+  let request;
+  const client = {
+    chat: async (req) => {
+      request = req;
+      return { message: { content: JSON.stringify({ target: 'no_one', category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage({ message: 'fuck this traffic' }, { client, policy: POLICY });
+
+  const properties = Object.keys(request.format.properties);
+  assert.ok(properties.indexOf('target') < properties.indexOf('flagged'));
+  assert.match(request.messages.find((m) => m.role === 'system').content, /only count when aimed at Me/);
+});
+
 test('omitting contactContext leaves the system prompt without that section', async () => {
   let systemPrompt;
   const client = {
