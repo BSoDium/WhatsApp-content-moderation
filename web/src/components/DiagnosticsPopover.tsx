@@ -109,7 +109,7 @@ export function DiagnosticsPopover(props: DiagnosticsPopoverProps) {
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          className="h-auto max-w-full min-w-0 justify-start rounded-lg py-1.5 pr-3 pl-1.5 font-normal lg:-ml-1.5"
+          className="h-auto max-w-full min-w-0 justify-start rounded-lg p-1.5 font-normal lg:-ml-1.5 lg:pr-3"
           aria-label={props.user ? `${props.user.name} — session and diagnostics` : 'Direct connection, not access-restricted — session and diagnostics'}
         >
           {props.user ? <SignedInUser user={props.user} /> : <DirectConnection />}
