@@ -8,10 +8,11 @@ interface StatTileProps {
   value: number;
 }
 
-// `--collapse` (0 expanded, 1 collapsed) is written by the list pane's scroll handler on mobile; unset elsewhere, so tiles stay fully expanded.
+// `--collapse` (0 expanded, 1 collapsed) is flipped by the list pane's scroll handler on mobile; unset elsewhere, so tiles stay fully expanded. The transitions below animate the flip.
 const COLLAPSE = 'var(--collapse, 0)';
+const COLLAPSE_EASE = 'duration-300 ease-out motion-reduce:transition-none';
 
-const CARD_LAYOUT = 'relative flex flex-col items-start justify-end overflow-hidden rounded-xl border border-border bg-card';
+const CARD_LAYOUT = cn('relative flex flex-col items-start justify-end overflow-hidden rounded-xl border border-border bg-card transition-[min-height,padding]', COLLAPSE_EASE);
 const CARD_STYLE: CSSProperties = {
   minHeight: `calc(8rem - ${COLLAPSE} * 4.75rem)`,
   padding: `calc(0.75rem - ${COLLAPSE} * 0.375rem) 1rem`,
@@ -73,7 +74,7 @@ function IconPattern({ icon: Icon, className }: { icon: StatTileDef['icon']; cla
   const id = useId();
   const half = PATTERN_CELL_PX / 2;
   return (
-    <svg className={cn('pointer-events-none absolute inset-0 size-full', className)} style={PATTERN_STYLE} aria-hidden="true">
+    <svg className={cn('pointer-events-none absolute inset-0 size-full transition-opacity', COLLAPSE_EASE, className)} style={PATTERN_STYLE} aria-hidden="true">
       <defs>
         <pattern id={id} width={PATTERN_CELL_PX} height={PATTERN_CELL_PX} patternUnits="userSpaceOnUse">
           <Icon x={PATTERN_ICON_OFFSET_PX} y={PATTERN_ICON_OFFSET_PX} width={PATTERN_ICON_PX} height={PATTERN_ICON_PX} strokeWidth={1.5} />
@@ -93,8 +94,8 @@ export function StatTile({ def, value }: StatTileProps) {
   return (
     <div className={cn(CARD_LAYOUT, 'text-left', tone.card)} style={CARD_STYLE}>
       <IconPattern icon={Icon} className={tone.pattern} />
-      <Icon className={cn('absolute top-3 right-3', tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
-      <dd className={cn('order-1 leading-none font-bold tracking-tight tabular-nums', empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
+      <Icon className={cn('absolute top-3 right-3 transition-[width,height,opacity]', COLLAPSE_EASE, tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
+      <dd className={cn('order-1 leading-none font-bold tracking-tight tabular-nums transition-[font-size]', COLLAPSE_EASE, empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
         {value}
       </dd>
       <dt className="order-2 mt-1 text-sm leading-tight font-medium text-muted-foreground">{def.label}</dt>

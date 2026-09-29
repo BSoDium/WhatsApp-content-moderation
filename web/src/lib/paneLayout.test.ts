@@ -21,7 +21,14 @@ test('the browsing column is always centered', () => {
 test('below the desktop breakpoint the list is full width and the detail overlays', () => {
   expect(listPaneTarget(false, false, 800)).toEqual({ width: '100%', marginLeft: 0 });
   expect(listPaneTarget(false, true, 800)).toEqual({ width: '100%', marginLeft: 0 });
-  expect(detailPaneTarget(false, true, 800)).toEqual({ width: '100%', opacity: 1 });
+  expect(detailPaneTarget(false, true, 800)).toEqual({ width: '100%', x: 0, opacity: 1 });
+});
+
+test('both breakpoints target the same properties, so crossing one never keeps stale geometry', () => {
+  for (const expanded of [true, false]) {
+    expect(Object.keys(detailPaneTarget(false, expanded, 800)).sort()).toEqual(Object.keys(detailPaneTarget(true, expanded, 1200)).sort());
+    expect(Object.keys(listPaneTarget(false, expanded, 800)).sort()).toEqual(Object.keys(listPaneTarget(true, expanded, 1200)).sort());
+  }
 });
 
 test('with a contact open the list takes the left half', () => {
@@ -29,7 +36,7 @@ test('with a contact open the list takes the left half', () => {
 });
 
 test('the detail pane is at rest (x = 0) and visible when open', () => {
-  expect(detailPaneTarget(true, true, 1200)).toEqual({ x: 0, opacity: 1 });
+  expect(detailPaneTarget(true, true, 1200)).toEqual({ width: '50%', x: 0, opacity: 1 });
 });
 
 test('closed, the detail pane starts exactly at the browsing list pane right edge', () => {

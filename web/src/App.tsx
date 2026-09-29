@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,9 @@ import { detailPaneTarget, listPaneTarget } from '@/lib/paneLayout';
 import { useAnimatePanes } from '@/lib/useAnimatePanes';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
-import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
-import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
+import { useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
+import { planPopState } from '@/lib/popStatePlan';
+import { historyIndex, popUrlStateIfPrevious, readUrlState, sameUrlState, toUrlState, writeUrlState, type PanelName, type UrlState } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ContactList } from '@/components/ContactList';
@@ -21,8 +22,8 @@ import { ActivityPanel } from '@/components/ActivityPanel';
 import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
+import { BannerReveal } from '@/components/BannerReveal';
 import { ErrorBanner } from '@/components/ErrorBanner';
-import { OpenAccessBanner } from '@/components/OpenAccessBanner';
 import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
@@ -31,7 +32,10 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
-const COLLAPSE_RANGE_PX = 120;
+const COLLAPSE_AFTER_PX = 48;
+const EXPAND_BELOW_PX = 0;
+// How much shorter the KPI block gets when collapsed (see StatTile's COLLAPSE styles).
+const COLLAPSE_HEIGHT_DELTA_PX = 80;
 
 // Material 3's "emphasized decelerate" curve.
 const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0, 1];
@@ -75,8 +79,13 @@ function App() {
   // Driven by the id, not the resolved contact, so a deep-linked load doesn't animate open once contacts arrive.
   const panelOpen = selectedId !== null;
 
+  // A stale deep-link id is corrected in place: making it a back stop would trap the back button on a link that instantly undoes itself.
+  const replaceNextUrlWrite = useRef(false);
   useEffect(() => {
-    if (contactsLoaded && contacts.length > 0 && selectedId !== null && !selectedContact) setSelectedId(null);
+    if (contactsLoaded && contacts.length > 0 && selectedId !== null && !selectedContact) {
+      replaceNextUrlWrite.current = true;
+      setSelectedId(null);
+    }
   }, [contactsLoaded, contacts, selectedId, selectedContact, setSelectedId]);
 
   const detailPanelRef = useRef<ContactDetailPanelHandle>(null);
@@ -85,32 +94,46 @@ function App() {
   const [confirmSaving, setConfirmSaving] = useState(false);
   const [displayedContact, setDisplayedContact] = useState(selectedContact);
 
+  // Set when a back/forward navigation was undone pending the dialog, so confirming lands on the full entry (panel included) and not just its contact.
+  const pendingUrlTarget = useRef<UrlState | null>(null);
+
   function requestSelectContact(nextId: string | null) {
     // Re-selecting the open contact isn't navigation; prompting there would let a reflexive Discard wipe a live edit.
     if (nextId === selectedId) return;
     if (detailPanelRef.current?.hasUnsavedChanges()) {
+      pendingUrlTarget.current = null;
       setPendingSelection(nextId);
       return;
     }
-    setSelectedId(nextId);
+    navigateToContact(nextId);
+  }
+
+  // Closing steps back in history when that is where the user came from, so the in-page arrow and the browser's back button behave the same.
+  function navigateToContact(nextId: string | null) {
+    const closingToPrevious = nextId === null && popUrlStateIfPrevious(toUrlState(null, openPanel, activityContactId));
+    if (!closingToPrevious) setSelectedId(nextId);
+  }
+
+  function continueNavigation(nextId: string | null, urlTarget: UrlState | null) {
+    if (urlTarget) applyUrlState(urlTarget);
+    else navigateToContact(nextId);
+    pendingUrlTarget.current = null;
+    setPendingSelection(undefined);
   }
 
   async function confirmSaveAndContinue() {
     // Captured before the await: the dialog can be dismissed mid-save, which would leave a stale target.
     const target = pendingSelection;
+    const urlTarget = pendingUrlTarget.current;
     setConfirmSaving(true);
     const ok = await detailPanelRef.current?.save();
     setConfirmSaving(false);
-    if (ok) {
-      setSelectedId(target ?? null);
-      setPendingSelection(undefined);
-    }
+    if (ok) continueNavigation(target ?? null, urlTarget);
   }
 
   function confirmDiscardAndContinue() {
     detailPanelRef.current?.discard();
-    setSelectedId(pendingSelection ?? null);
-    setPendingSelection(undefined);
+    continueNavigation(pendingSelection ?? null, pendingUrlTarget.current);
   }
 
   // Browsers ignore a custom message here and show their own prompt.
@@ -135,10 +158,15 @@ function App() {
 
   const listPaneRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away, shrinking over the next COLLAPSE_RANGE_PX.
+  // Mobile only: the pane scrolls as a whole, and the KPI block sticks once the header has scrolled away. `--collapse` flips between 0 and 1 and the tiles' CSS transitions animate it — scrubbing it with the scroll position re-laid-out the list every frame.
   const applyCollapse = useCallback((scroller: HTMLElement) => {
     const headerHeight = headerRef.current?.offsetHeight ?? 0;
-    scroller.style.setProperty('--collapse', String(clamp01((scroller.scrollTop - headerHeight) / COLLAPSE_RANGE_PX)));
+    const pastHeader = scroller.scrollTop - headerHeight;
+    const collapsed = scroller.style.getPropertyValue('--collapse') === '1';
+    // Collapsing shortens the pane; without this guard a short list would clamp scrollTop back under EXPAND_BELOW_PX and flip straight back.
+    const roomToCollapse = scroller.scrollHeight - scroller.clientHeight - COLLAPSE_HEIGHT_DELTA_PX > headerHeight + COLLAPSE_AFTER_PX;
+    if (!collapsed && pastHeader > COLLAPSE_AFTER_PX && roomToCollapse) scroller.style.setProperty('--collapse', '1');
+    else if (collapsed && pastHeader < EXPAND_BELOW_PX) scroller.style.setProperty('--collapse', '0');
   }, []);
   useScrollLinkedStyle(listPaneRef, !isDesktop, applyCollapse);
   useEffect(() => {
@@ -152,14 +180,58 @@ function App() {
     setOpenPanel(panel);
   }
 
-  function closePanel() {
+  function closePanelState() {
     setSkipInitialPanelAnimation(false);
     setOpenPanel(null);
   }
 
+  function closePanel() {
+    if (!popUrlStateIfPrevious(toUrlState(selectedId, null, null))) closePanelState();
+  }
+
+  const currentUrl = toUrlState(selectedId, openPanel, activityContactId);
+
+  function applyUrlState(target: UrlState) {
+    setSelectedId(target.contactId);
+    if (target.openPanel === null) {
+      if (openPanel !== null) closePanelState();
+    } else if (!sameUrlState(target, { ...currentUrl, contactId: target.contactId })) {
+      showPanel(target.openPanel, target.activityContactId);
+    }
+  }
+
+  const urlWriteCount = useRef(0);
+  const lastHistoryIndex = useRef(historyIndex());
   useEffect(() => {
-    writeUrlState({ contactId: selectedId, openPanel, activityContactId: openPanel === 'activity' ? activityContactId : null });
+    const replace = urlWriteCount.current === 0 || replaceNextUrlWrite.current;
+    urlWriteCount.current += 1;
+    replaceNextUrlWrite.current = false;
+    writeUrlState(toUrlState(selectedId, openPanel, activityContactId), replace ? 'replace' : 'push');
+    lastHistoryIndex.current = historyIndex();
   }, [selectedId, openPanel, activityContactId]);
+
+  // The browser's back/forward buttons: re-derive state from the URL the entry carries. An Effect Event, so it always sees the latest state without re-subscribing every render.
+  const handlePopState = useEffectEvent(() => {
+    const target = readUrlState();
+    const index = historyIndex();
+    const previousIndex = lastHistoryIndex.current;
+    lastHistoryIndex.current = index;
+
+    const plan = planPopState({ target, current: currentUrl, hasUnsavedDraft: Boolean(detailPanelRef.current?.hasUnsavedChanges()), previousIndex, index });
+    if (plan.kind === 'ignore') return;
+    if (plan.kind === 'confirm') {
+      if (plan.undoDelta !== 0) window.history.go(plan.undoDelta);
+      pendingUrlTarget.current = target;
+      setPendingSelection(target.contactId);
+      return;
+    }
+    applyUrlState(target);
+  });
+  useEffect(() => {
+    const listener = () => handlePopState();
+    window.addEventListener('popstate', listener);
+    return () => window.removeEventListener('popstate', listener);
+  }, []);
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
@@ -167,7 +239,6 @@ function App() {
   // Banners present with the first data are part of the settled layout; only later ones animate.
   const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
-  const bannerTransition = initialDataSettled ? fadeTransition : INSTANT_TRANSITION;
 
   // Keeps the last contact rendered until the close transition finishes (Framer Motion on desktop, 250ms CSS on mobile).
   useLayoutEffect(() => {
@@ -201,7 +272,7 @@ function App() {
               className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
-                {meta?.user && (
+                {meta && (meta.user || !meta.authRequired) && (
                   <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
                     <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
                   </div>
@@ -226,41 +297,15 @@ function App() {
                 </div>
               </div>
               <AnimatePresence initial={false}>
-                {meta && !meta.authRequired && (
-                  <motion.div
-                    key="open-access-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
-                    <OpenAccessBanner />
-                  </motion.div>
-                )}
                 {shadowMode && (
-                  <motion.div
-                    key="shadow-mode-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
+                  <BannerReveal key="shadow-mode-banner" animate={initialDataSettled}>
                     <ShadowModeBanner onOpenSettings={() => showPanel('settings')} />
-                  </motion.div>
+                  </BannerReveal>
                 )}
                 {error && (
-                  <motion.div
-                    key="error-banner"
-                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
-                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
-                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
-                    transition={bannerTransition}
-                    className="overflow-hidden"
-                  >
+                  <BannerReveal key="error-banner" animate={initialDataSettled}>
                     <ErrorBanner error={error} onDismiss={dismissError} />
-                  </motion.div>
+                  </BannerReveal>
                 )}
               </AnimatePresence>
             </motion.div>
@@ -283,7 +328,7 @@ function App() {
         <motion.section
           initial={false}
           animate={detailPaneTarget(isDesktop, panelOpen, viewportWidth)}
-          transition={{ x: paneTransition, opacity: fadeTransition }}
+          transition={{ x: paneTransition, width: paneTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}
@@ -328,7 +373,9 @@ function App() {
           open={pendingSelection !== undefined}
           onOpenChange={(open) => {
             // Dismissing mid-save can't cancel the request, and the captured target would still navigate, contradicting "Stay".
-            if (!open && !confirmSaving) setPendingSelection(undefined);
+            if (open || confirmSaving) return;
+            pendingUrlTarget.current = null;
+            setPendingSelection(undefined);
           }}
         >
           <AlertDialogContent>

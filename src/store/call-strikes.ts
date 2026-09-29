@@ -25,6 +25,15 @@ export function getCallState(contactId: string): CallState {
 }
 
 /**
+ * Clears a contact's unanswered-call and call-strike counts back to zero. A
+ * no-op when they have no row. Doesn't emit a control event, for the same
+ * reason as strikes.ts's resetStrikes.
+ */
+export function resetCallState(contactId: string): void {
+  getOrm().update(callStrikes).set({ unanswered_count: 0, strike_count: 0, updated_at: Date.now() }).where(eq(callStrikes.contact_id, contactId)).run();
+}
+
+/**
  * Records a call that rang out without being answered (or was manually
  * declined): increments the contact's unanswered-call count by one.
  */

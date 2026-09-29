@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { History, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,7 +22,8 @@ const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
 const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:block';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
-export function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
+// Memoized so a keystroke in the search box, which re-renders ContactList, doesn't re-render every row.
+export const ContactRow = memo(function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
@@ -97,7 +98,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
       </div>
     </li>
   );
-}
+});
 
 export function ContactRowSkeleton() {
   return (

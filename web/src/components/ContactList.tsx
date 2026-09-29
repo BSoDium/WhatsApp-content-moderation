@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { matchesQuery } from '@/lib/contact';
 import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
 import { fadeAndSlide } from '@/lib/listReorderAnimation';
+import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { ContactRow, ContactRowSkeleton } from './ContactRow';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -28,6 +29,7 @@ function sortedFiltered(contacts: Contact[], query: string): Contact[] {
 
 const SKELETON_ROW_COUNT = 8;
 const FADE_RANGE_PX = 32;
+const SEARCH_DEBOUNCE_MS = 150;
 
 export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, isDesktop }: ContactListProps) {
   const [query, setQuery] = useState('');
@@ -35,7 +37,8 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
   const listScrollRef = useRef<HTMLUListElement | null>(null);
   const monitoredIds = useMemo(() => new Set(roster.map((entry) => entry.id)), [roster]);
   const rosterById = useMemo(() => new Map(roster.map((entry) => [entry.id, entry])), [roster]);
-  const filtered = useMemo(() => sortedFiltered(contacts, query.trim().toLowerCase()), [contacts, query]);
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const filtered = useMemo(() => sortedFiltered(contacts, debouncedQuery.trim().toLowerCase()), [contacts, debouncedQuery]);
   const moderated = useMemo(() => filtered.filter((contact) => monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const others = useMemo(() => filtered.filter((contact) => !monitoredIds.has(contact.id)), [filtered, monitoredIds]);
   const [listRef, setAnimationsEnabled] = useAutoAnimate(fadeAndSlide);
@@ -78,7 +81,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
         <div
           aria-hidden="true"
           style={{ opacity: 'var(--fade, 0)' }}
-          className="pointer-events-none absolute inset-x-0 top-full h-8 bg-linear-to-b from-background to-transparent max-lg:[--fade:var(--collapse,0)] lg:mt-4"
+          className="pointer-events-none absolute inset-x-0 top-full h-8 bg-linear-to-b from-background to-transparent max-lg:transition-opacity max-lg:duration-300 max-lg:[--fade:var(--collapse,0)] lg:mt-4"
         />
       </div>
       <div className="relative min-h-0 flex-1 lg:mt-4">
