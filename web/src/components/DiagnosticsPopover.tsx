@@ -26,6 +26,7 @@ const WHATSAPP_LABELS: Record<WhatsAppStatus, WhatsAppLabel> = {
   open: { label: 'Connected', variant: 'default' },
   connecting: { label: 'Connecting', variant: 'secondary' },
   reconnecting: { label: 'Reconnecting', variant: 'secondary' },
+  offline: { label: 'Offline', variant: 'destructive' },
   'logged-out': { label: 'Logged out', variant: 'destructive' },
 };
 

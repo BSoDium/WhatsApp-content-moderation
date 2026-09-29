@@ -50,6 +50,10 @@ test('tailnet is null for a non-ts.net host and tolerates a port', () => {
   assert.equal(readTailscaleIdentity(reqWithHeaders({ 'tailscale-user-login': 'a@b.c', 'x-forwarded-host': 'svc.tail1234.ts.net:443' }))?.tailnet, 'tail1234.ts.net');
 });
 
+test('takes the first value when X-Forwarded-Host arrives comma-joined', () => {
+  assert.equal(readTailscaleIdentity(reqWithHeaders({ 'tailscale-user-login': 'a@b.c', 'x-forwarded-host': 'svc.tail1234.ts.net, other.tail1234.ts.net' }))?.tailnet, 'tail1234.ts.net');
+});
+
 test('returns null without a login header', () => {
   assert.equal(readTailscaleIdentity(reqWithHeaders({})), null);
 });

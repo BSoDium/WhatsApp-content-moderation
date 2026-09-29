@@ -1,4 +1,7 @@
 import type { IncomingMessage } from 'node:http';
+import { createLogger } from '../cli/logger.ts';
+
+const logger = createLogger('tailscale-identity');
 
 export interface TailscaleIdentity {
   login: string;
@@ -10,6 +13,8 @@ export interface TailscaleIdentity {
 const ENCODED_WORD = /=\?utf-8\?([qb])\?([^?]*)\?=/gi;
 const BETWEEN_ENCODED_WORDS = /(\?=)\s+(?==\?utf-8\?[qb]\?)/gi;
 const TAILNET_SUFFIX = '.ts.net';
+// `<tailnet>.ts.net` is three labels, so a host with only that left after the service label has no usable tailnet below it.
+const MIN_TAILNET_LABELS = 3;
 
 // Tailscale Q-encodes non-ASCII values (Go's mime.QEncoding), so "Élodie" arrives as "=?utf-8?q?=C3=89lodie?=".
 function decodeHeaderValue(value: string): string {
@@ -29,17 +34,21 @@ function headerValue(req: IncomingMessage, name: string): string | undefined {
 // The proxied hostname is `<service>.<tailnet>.ts.net`; everything after the first label is the tailnet.
 function tailnetFromForwardedHost(host: string | undefined): string | null {
   if (!host) return null;
-  const hostname = host.split(':')[0].toLowerCase();
+  const hostname = host.split(',')[0].trim().split(':')[0].toLowerCase();
   if (!hostname.endsWith(TAILNET_SUFFIX)) return null;
   const [, ...rest] = hostname.split('.');
-  return rest.length > 2 ? rest.join('.') : null;
+  return rest.length >= MIN_TAILNET_LABELS ? rest.join('.') : null;
 }
 
 function httpsUrlOrNull(value: string | undefined): string | null {
   if (!value) return null;
   try {
-    return new URL(value).protocol === 'https:' ? value : null;
-  } catch {
+    const { protocol } = new URL(value);
+    if (protocol === 'https:') return value;
+    logger.warn({ protocol }, 'ignoring non-https Tailscale-User-Profile-Pic');
+    return null;
+  } catch (err) {
+    logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'ignoring malformed Tailscale-User-Profile-Pic');
     return null;
   }
 }

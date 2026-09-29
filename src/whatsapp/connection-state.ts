@@ -1,4 +1,4 @@
-export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'logged-out';
+export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'offline' | 'logged-out';
 
 export interface ConnectionState {
   status: WhatsAppStatus;

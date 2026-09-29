@@ -12,6 +12,7 @@ interface ConnectionOptions {
   onSocket?: (sock: WASocket) => void;
   onOpen?: (sock: WASocket) => void;
   onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean }) => void;
+  onReconnectFailed?: () => void;
 }
 
 /**
@@ -35,7 +36,7 @@ interface ConnectionOptions {
  * }} [options]
  * @returns {Promise<object>} the Baileys socket
  */
-export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSocket, onOpen, onClose }: ConnectionOptions = {}): Promise<WASocket> {
+export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSocket, onOpen, onClose, onReconnectFailed }: ConnectionOptions = {}): Promise<WASocket> {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
   // Requests the phone's *complete* chat history at link time (not just a
@@ -72,9 +73,10 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       onClose?.({ statusCode, shouldReconnect });
       if (shouldReconnect) {
-        connectWhatsApp({ authDir, qrPngPath, onSocket, onOpen, onClose }).catch((err: unknown) =>
-          console.error('Reconnect failed:', err instanceof Error ? err.message : err),
-        );
+        connectWhatsApp({ authDir, qrPngPath, onSocket, onOpen, onClose, onReconnectFailed }).catch((err: unknown) => {
+          console.error('Reconnect failed:', err instanceof Error ? err.message : err);
+          onReconnectFailed?.();
+        });
       }
     } else if (connection === 'open') {
       onOpen?.(sock);

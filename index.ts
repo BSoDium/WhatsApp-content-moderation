@@ -188,6 +188,7 @@ async function start() {
       // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(currentSocket(), jid) });
     },
+    onReconnectFailed: () => setConnectionState('offline'),
     onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => {
       setConnectionState(shouldReconnect ? 'reconnecting' : 'logged-out', statusCode ?? null);
       logger.warn({ statusCode, shouldReconnect }, 'connection closed');
