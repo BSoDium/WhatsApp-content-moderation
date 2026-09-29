@@ -1,5 +1,5 @@
 import { STAT_TILES, tileValue, type StatKey } from '@/lib/statTiles';
-import { StatTile } from './StatTile';
+import { StatTile, StatTileSkeleton } from './StatTile';
 import { formatCategory } from '@/lib/activity';
 import type { Stats } from '@/lib/types';
 
@@ -12,7 +12,7 @@ export function StatsCards({ stats }: { stats: Stats | null }) {
     return (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-hidden="true">
         {Array.from({ length: SKELETON_CARD_COUNT }, (_, i) => (
-          <div key={i} className="h-32 rounded-xl border border-border bg-muted/50" />
+          <StatTileSkeleton key={i} />
         ))}
       </div>
     );
