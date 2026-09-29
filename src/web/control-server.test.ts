@@ -139,6 +139,7 @@ async function withServer(
     auditLog = makeAuditLog(),
     blocks = makeBlocks(),
     getSelfId = () => null,
+    getConnectionState = () => ({ status: 'open', since: 1, statusCode: null }),
     allowSelf = false,
     // A distinct flag rather than an `allowedLogin` option defaulting to
     // ALLOWED: passing `allowedLogin: undefined` explicitly wouldn't override
@@ -148,7 +149,7 @@ async function withServer(
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, allowSelf });
+  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, getConnectionState, allowSelf });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks });
@@ -235,6 +236,24 @@ test('GET /api/meta surfaces the Tailscale display identity for the signed-in us
       authRequired: true,
       user: { login: ALLOWED, name: 'Alice Architect', pictureUrl: 'https://example.com/alice.png', tailnet: 'tail1234.ts.net' },
     });
+  });
+});
+
+test('GET /api/status reports version, start time and the WhatsApp connection state', async () => {
+  const getConnectionState = () => ({ status: 'logged-out', since: 42, statusCode: 401 });
+  await withServer({ getConnectionState }, async (base) => {
+    const res = await fetch(`${base}/api/status`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(typeof body.version, 'string');
+    assert.equal(typeof body.startedAt, 'number');
+    assert.deepEqual(body.whatsapp, { status: 'logged-out', since: 42, statusCode: 401 });
+  });
+});
+
+test('GET /api/status requires the Tailscale identity', async () => {
+  await withServer({}, async (base) => {
+    assert.equal((await fetch(`${base}/api/status`)).status, 403);
   });
 });
 
