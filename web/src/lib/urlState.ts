@@ -16,9 +16,18 @@ export interface UrlState {
   activityContactId: string | null;
 }
 
+export type HistoryMode = 'push' | 'replace';
+
 const CONTACT_PARAM = 'contact';
 const PANEL_PARAM = 'openPanel';
 const ACTIVITY_CONTACT_PARAM = 'activityContact';
+
+interface HistoryMarker {
+  navIndex: number;
+}
+
+// What each entry of this page load's history stack showed, keyed by its `navIndex`. Lost on reload, which only costs the back-instead-of-push shortcut in `popUrlStateIfPrevious`.
+const snapshots = new Map<number, UrlState>();
 
 /**
  * Reads the selected contact / open global panel out of the current URL's
@@ -39,17 +48,16 @@ export function readUrlState(): UrlState {
   };
 }
 
-/**
- * Mirrors App.tsx's current selection/panel state into the URL via
- * history.replaceState — deliberately not pushState, so opening a contact
- * or a panel doesn't pile up browser-back entries for every click.
- * Rebuilds only the params this app owns (contact/openPanel/
- * activityContact); any other query params and the URL hash are carried
- * over untouched, and an invalid openPanel value left over from a stale
- * link is dropped on the very first sync since it never round-trips
- * through UrlState.
- */
-export function writeUrlState({ contactId, openPanel, activityContactId }: UrlState): void {
+export function historyIndex(): number {
+  const marker = window.history.state as Partial<HistoryMarker> | null;
+  return marker?.navIndex ?? 0;
+}
+
+function sameState(a: UrlState, b: UrlState): boolean {
+  return a.contactId === b.contactId && a.openPanel === b.openPanel && a.activityContactId === b.activityContactId;
+}
+
+function buildUrl({ contactId, openPanel, activityContactId }: UrlState): string {
   const params = new URLSearchParams(window.location.search);
   params.delete(CONTACT_PARAM);
   params.delete(PANEL_PARAM);
@@ -60,6 +68,50 @@ export function writeUrlState({ contactId, openPanel, activityContactId }: UrlSt
     if (openPanel === 'activity' && activityContactId) params.set(ACTIVITY_CONTACT_PARAM, activityContactId);
   }
   const query = params.toString();
-  const url = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
-  window.history.replaceState(null, '', url);
+  return `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+}
+
+/**
+ * Mirrors App.tsx's current selection/panel state into the URL, so the
+ * browser's back button walks back through what was opened. `'push'` adds a
+ * history entry; `'replace'` rewrites the current one, for the first sync
+ * and for corrections (a stale contact id) that shouldn't become a back
+ * stop. A state that already matches the URL — every popstate — writes
+ * nothing. Rebuilds only the params this app owns (contact/openPanel/
+ * activityContact); any other query params and the URL hash are carried
+ * over untouched, and an invalid openPanel value left over from a stale
+ * link is dropped on the first sync since it never round-trips through
+ * UrlState.
+ */
+export function writeUrlState(state: UrlState, mode: HistoryMode = 'push'): void {
+  const url = buildUrl(state);
+  const index = historyIndex();
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (url === current) {
+    snapshots.set(index, state);
+    return;
+  }
+  if (mode === 'replace') {
+    window.history.replaceState({ navIndex: index } satisfies HistoryMarker, '', url);
+    snapshots.set(index, state);
+    return;
+  }
+  for (const key of snapshots.keys()) if (key > index) snapshots.delete(key);
+  window.history.pushState({ navIndex: index + 1 } satisfies HistoryMarker, '', url);
+  snapshots.set(index + 1, state);
+}
+
+/**
+ * Closing something through the UI should land where the user came from
+ * rather than stack a "closed" entry that back would then reopen. Steps back
+ * and returns true only when the previous entry is exactly `target`; returns
+ * false (nothing done) otherwise, e.g. after a reload or a deep link, so the
+ * caller falls back to updating state and pushing.
+ */
+export function popUrlStateIfPrevious(target: UrlState): boolean {
+  const previous = snapshots.get(historyIndex() - 1);
+  if (!previous || !sameState(previous, target)) return false;
+  window.history.back();
+  return true;
 }

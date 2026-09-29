@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { readUrlState, writeUrlState } from './urlState';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { popUrlStateIfPrevious, readUrlState, writeUrlState } from './urlState';
 
 function setLocation(url: string): void {
   window.history.replaceState(null, '', url);
@@ -102,11 +102,57 @@ describe('writeUrlState', () => {
     expect(window.location.hash).toBe('#section');
   });
 
-  it('does not push a new history entry (uses replaceState)', () => {
+  it('pushes a history entry by default', () => {
     const before = window.history.length;
     writeUrlState({ contactId: 'abc@s.whatsapp.net', openPanel: 'activity', activityContactId: null });
     writeUrlState({ contactId: 'def@s.whatsapp.net', openPanel: 'policy', activityContactId: null });
+    expect(window.history.length).toBe(before + 2);
+  });
+
+  it('rewrites the current entry in replace mode', () => {
+    const before = window.history.length;
+    writeUrlState({ contactId: 'abc@s.whatsapp.net', openPanel: null, activityContactId: null }, 'replace');
     expect(window.history.length).toBe(before);
+    expect(new URLSearchParams(window.location.search).get('contact')).toBe('abc@s.whatsapp.net');
+  });
+
+  it('writes nothing when the state already matches the URL', () => {
+    setLocation('http://localhost/?contact=abc%40s.whatsapp.net');
+    const before = window.history.length;
+    writeUrlState({ contactId: 'abc@s.whatsapp.net', openPanel: null, activityContactId: null });
+    expect(window.history.length).toBe(before);
+  });
+
+  describe('popUrlStateIfPrevious', () => {
+    const LIST = { contactId: null, openPanel: null, activityContactId: null } as const;
+    const CONTACT = { contactId: 'abc@s.whatsapp.net', openPanel: null, activityContactId: null } as const;
+
+    it('steps back when the previous entry is the target', () => {
+      const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+      writeUrlState(LIST, 'replace');
+      writeUrlState(CONTACT);
+      expect(popUrlStateIfPrevious(LIST)).toBe(true);
+      expect(back).toHaveBeenCalledOnce();
+      back.mockRestore();
+    });
+
+    it('does nothing when the previous entry is a different state', () => {
+      const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+      writeUrlState(LIST, 'replace');
+      writeUrlState(CONTACT);
+      writeUrlState({ contactId: 'def@s.whatsapp.net', openPanel: null, activityContactId: null });
+      expect(popUrlStateIfPrevious(LIST)).toBe(false);
+      expect(back).not.toHaveBeenCalled();
+      back.mockRestore();
+    });
+
+    it('does nothing when there is no previous entry of this page load', () => {
+      const back = vi.spyOn(window.history, 'back').mockImplementation(() => {});
+      writeUrlState(CONTACT, 'replace');
+      expect(popUrlStateIfPrevious(LIST)).toBe(false);
+      expect(back).not.toHaveBeenCalled();
+      back.mockRestore();
+    });
   });
 
   it('round-trips through readUrlState for a refresh/deep-link scenario', () => {
