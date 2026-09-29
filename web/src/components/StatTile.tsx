@@ -33,15 +33,41 @@ const PATTERN_CELL_PX = 36;
 const PATTERN_ICON_PX = 14;
 const PATTERN_ICON_OFFSET_PX = (PATTERN_CELL_PX / 2 - PATTERN_ICON_PX) / 2;
 const VALUE_STYLE: CSSProperties = { fontSize: `calc(2.25rem - ${COLLAPSE} * 0.75rem)` };
-const ICON_COLOR = 'text-[color-mix(in_oklab,var(--muted-foreground)_40%,var(--card))]';
-const PATTERN_COLOR = 'text-[color-mix(in_oklab,var(--muted-foreground)_16%,var(--card))]';
+interface TileTone {
+  card: string;
+  value: string;
+  icon: string;
+  pattern: string;
+}
+
+const NEUTRAL_TONE: TileTone = {
+  card: '',
+  value: '',
+  icon: 'text-[color-mix(in_oklab,var(--muted-foreground)_40%,var(--card))]',
+  pattern: 'text-[color-mix(in_oklab,var(--muted-foreground)_16%,var(--card))]',
+};
+
+const TONES: Record<NonNullable<StatTileDef['tone']>, TileTone> = {
+  warning: {
+    card: 'border-warning/45 bg-linear-to-br from-warning/15 to-card to-70%',
+    value: 'text-warning',
+    icon: 'text-[color-mix(in_oklab,var(--warning)_55%,var(--card))]',
+    pattern: 'text-[color-mix(in_oklab,var(--warning)_26%,var(--card))]',
+  },
+  destructive: {
+    card: 'border-destructive/45 bg-linear-to-br from-destructive/15 to-card to-70%',
+    value: 'text-destructive',
+    icon: 'text-[color-mix(in_oklab,var(--destructive)_55%,var(--card))]',
+    pattern: 'text-[color-mix(in_oklab,var(--destructive)_26%,var(--card))]',
+  },
+};
 
 // Two icons per cell, the second half a cell over and down, so the repeat reads as a diagonal stagger.
-function IconPattern({ icon: Icon }: { icon: StatTileDef['icon'] }) {
+function IconPattern({ icon: Icon, className }: { icon: StatTileDef['icon']; className: string }) {
   const id = useId();
   const half = PATTERN_CELL_PX / 2;
   return (
-    <svg className={cn('pointer-events-none absolute inset-0 size-full', PATTERN_COLOR)} style={PATTERN_STYLE} aria-hidden="true">
+    <svg className={cn('pointer-events-none absolute inset-0 size-full', className)} style={PATTERN_STYLE} aria-hidden="true">
       <defs>
         <pattern id={id} width={PATTERN_CELL_PX} height={PATTERN_CELL_PX} patternUnits="userSpaceOnUse">
           <Icon x={PATTERN_ICON_OFFSET_PX} y={PATTERN_ICON_OFFSET_PX} width={PATTERN_ICON_PX} height={PATTERN_ICON_PX} strokeWidth={1.5} />
@@ -56,13 +82,13 @@ function IconPattern({ icon: Icon }: { icon: StatTileDef['icon'] }) {
 export function StatTile({ def, value }: StatTileProps) {
   const Icon = def.icon;
   const empty = value === 0;
-  const warn = def.warnWhenNonZero && !empty;
+  const tone = def.tone && !empty ? TONES[def.tone] : NEUTRAL_TONE;
 
   return (
-    <div className={cn(CARD_LAYOUT, 'text-left')} style={CARD_STYLE}>
-      <IconPattern icon={Icon} />
-      <Icon className={cn('absolute top-3 right-3', ICON_COLOR)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
-      <dd className={cn('order-1 leading-none font-bold tracking-tight tabular-nums', empty && 'text-muted-foreground/40', warn && 'text-destructive')} style={VALUE_STYLE}>
+    <div className={cn(CARD_LAYOUT, 'text-left', tone.card)} style={CARD_STYLE}>
+      <IconPattern icon={Icon} className={tone.pattern} />
+      <Icon className={cn('absolute top-3 right-3', tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
+      <dd className={cn('order-1 leading-none font-bold tracking-tight tabular-nums', empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
         {value}
       </dd>
       <dt className="order-2 mt-1 text-sm leading-tight font-medium text-muted-foreground">{def.label}</dt>
