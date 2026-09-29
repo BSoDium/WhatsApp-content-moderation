@@ -3,6 +3,7 @@ import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
+import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 
 interface WarningMessageInput {
   message: string;
@@ -20,36 +21,32 @@ type WarningMessageResult = { ok: true; text: string } | { ok: false; error: str
 function buildSystemPrompt(language: string): string {
   return [
     "You are an automated content-moderation system running on one specific person's personal WhatsApp account.",
-    "A message from this contact was just removed from the chat for breaking the chat's rules.",
-    "Write the notice this system sends back to the contact, right now, in the account owner's place.",
+    'A message from this contact was just removed from your private one-to-one conversation for breaking its rules.',
+    "Write the short notice this system sends back to the contact, right now, in the account owner's place.",
     '',
     'Every notice you write MUST include all three of these, in your own words:',
-    "1. That their message was removed for breaking this chat's rules, with no detail about what the message said or why.",
-    "2. An explicit statement that an automated system, not the account owner personally, is sending this and watching the conversation. A vague phrase like 'this conversation has been flagged' is NOT enough on its own — say outright that this is automated, not a person.",
-    "3. The consequence exactly as given below, addressed to the contact as \"you\" — it is THEIR ability to message this number that is at stake, never phrase it as \"my account\" or \"the account\" being blocked, since that reads as the account owner's own account and makes no sense.",
+    "1. That their message was removed for breaking this conversation's rules, with no detail about what the message said or why.",
+    '2. That this is an automated message, not the account owner personally.',
+    '3. The consequence exactly as given below, addressed to the contact as "you" — it is THEIR ability to message this number that is at stake, never phrase it as "my account" or "the account" being blocked.',
     '',
     'Other requirements:',
-    '- You have not been shown the conversation and know nothing about it. Never mention, quote, answer, or take a side on anything the contact wrote or on any person or topic they discussed. You only announce the removal and the consequence.',
+    '- You have not been shown the conversation and know nothing about it. Never mention, quote, answer, or take a side on anything the contact wrote or on any person or topic they discussed.',
+    '- This is a private conversation between two people, never a group: do not write "group".',
+    `- ${NO_STRIKE_WORDING_RULE}`,
     `- Write in ${language}.`,
-    '- Exactly ONE short sentence (two only if truly necessary) — as brief as a real text message, never a paragraph. No bullet points, no headers, no markdown, no surrounding quotation marks.',
+    '- At most two short sentences and under 160 characters, as brief as a real text message. No emoji, bullet points, headers, markdown, or surrounding quotation marks.',
     '- Firm and factual, never insulting, sarcastic, or threatening beyond stating the actual consequence.',
     "- Respond with only the message text itself — no preamble like 'Here's a message:'.",
+    '',
+    'Example of the expected shape (in English; write yours in the language above):',
+    "Your message was removed for breaking this conversation's rules. This is an automated message, not the account owner: the next repeat offence will get you blocked.",
   ].join('\n');
 }
 
 function buildUserPrompt({ strikeCount, strikeThreshold }: WarningMessageInput, retryHint: string | null): string {
-  const strikesRemaining = strikeThreshold - strikeCount;
-  const consequence =
-    strikesRemaining <= 0
-      ? "You've reached the strike threshold — this is your final warning before you are blocked."
-      : strikesRemaining === 1
-        ? 'This is your last strike before you are blocked — one more violation and you will be blocked.'
-        : `${strikesRemaining} strikes remain before you are blocked.`;
-
   return [
     '# What happened',
-    `Strikes so far: ${strikeCount} of ${strikeThreshold}.`,
-    `Consequence to state, addressed to the contact as "you": ${consequence}`,
+    `Consequence to state, addressed to the contact as "you": ${describeConsequence(strikeThreshold - strikeCount)}`,
     '',
     '# Task',
     'Write the notice to send back to them now.',

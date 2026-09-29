@@ -12,6 +12,8 @@ const { setSetting } = await import('../store/settings.ts');
 
 setSetting('STRIKE_THRESHOLD', '2');
 setSetting('WARNING_MESSAGE', 'TEST_FALLBACK_WARNING');
+// Off so back-to-back bursts each earn their own strike; the cooldown itself has its own tests below.
+setSetting('STRIKE_COOLDOWN_MS', '0');
 // Off by default here so the bulk of this suite exercises real
 // delete/warn/strike/block behavior; shadow mode itself is covered by its
 // own test below, which flips this back on for the duration of that test.
@@ -30,6 +32,11 @@ const noopActions = {
   block: async () => {},
   generateWarning: okWarning,
 };
+
+async function handleTwoViolations(contactId, actions) {
+  await handleBurst(burst(contactId, ['bad one']), actions);
+  return handleBurst(burst(contactId, ['bad two']), actions);
+}
 
 function burst(contactId, texts) {
   return {
@@ -213,8 +220,8 @@ test('crossing STRIKE_THRESHOLD triggers block()', async () => {
   addMonitored(contact); // escalation defaults to enabled once a contact is actually on the roster
   let blockedJid;
 
-  // STRIKE_THRESHOLD=2 (set at the top of this file) — two flagged messages in one burst cross it.
-  await handleBurst(burst(contact, ['bad one', 'bad two']), {
+  // STRIKE_THRESHOLD=2 (set at the top of this file) — two flagged bursts cross it.
+  await handleTwoViolations(contact, {
     deleteForMe: async () => {},
     sendWarning: async () => {},
     block: async (jid) => {
@@ -234,8 +241,8 @@ test('STRIKE_THRESHOLD is captured once per burst, so a mid-burst change does no
   let blockCalled = false;
 
   // Simulates an operator raising STRIKE_THRESHOLD in the Settings panel
-  // while this burst is still being processed — the second flagged message
-  // still crosses the threshold captured at the start of the burst (2),
+  // while this burst is still being processed — the second burst's
+  // flagged message still crosses the threshold captured at the start of the burst (2),
   // even though the setting has since changed to something no longer
   // crossed by strikeCount=2.
   const generateWarning = async (input) => {
@@ -243,15 +250,16 @@ test('STRIKE_THRESHOLD is captured once per burst, so a mid-burst change does no
     return okWarning(input);
   };
 
-  await handleBurst(burst(contact, ['bad one', 'bad two']), {
+  const actions = {
     deleteForMe: async () => {},
     sendWarning: async () => {},
     block: async () => {
       blockCalled = true;
     },
     classify: okFlag,
-    generateWarning,
-  });
+  };
+  await handleBurst(burst(contact, ['bad one']), { ...actions, generateWarning: okWarning });
+  await handleBurst(burst(contact, ['bad two']), { ...actions, generateWarning });
 
   assert.equal(blockCalled, true);
   assert.ok(getActiveBlock(contact));
@@ -264,7 +272,7 @@ test('a contact with an existing active block is not re-blocked', async () => {
   createBlock(contact, Date.now() + 60_000);
   let blockCalled = false;
 
-  await handleBurst(burst(contact, ['bad one', 'bad two']), {
+  await handleTwoViolations(contact, {
     deleteForMe: async () => {},
     sendWarning: async () => {},
     block: async () => {
@@ -283,7 +291,7 @@ test('escalation disabled: strikes/delete/warn/audit-log still happen, but block
   setEscalationEnabled(contact, false);
   let blockCalled = false;
 
-  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+  const { strikeCount } = await handleTwoViolations(contact, {
     deleteForMe: async () => {},
     sendWarning: async () => {},
     block: async () => {
@@ -304,7 +312,7 @@ test('a contact with no roster row at all (e.g. removed mid-burst) fails toward 
   const contact = 'ivan@s.whatsapp.net';
   let blockCalled = false;
 
-  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two']), {
+  const { strikeCount } = await handleTwoViolations(contact, {
     deleteForMe: async () => {},
     sendWarning: async () => {},
     block: async () => {
@@ -352,4 +360,71 @@ test('bursts for the same contact are serialized: a slow classify does not let a
   await Promise.all([first, second]);
 
   assert.deepEqual(order, ['first-start', 'first-end', 'second-start']);
+});
+
+test('several flagged messages in one burst earn one strike and one warning, but are all deleted', async () => {
+  const contact = 'burst-flood@s.whatsapp.net';
+  const deleted = [];
+  const warned = [];
+
+  const { strikeCount } = await handleBurst(burst(contact, ['bad one', 'bad two', 'bad three']), {
+    ...noopActions,
+    deleteForMe: async (jid, key) => deleted.push(key.id),
+    sendWarning: async (jid, text) => warned.push(text),
+    classify: okFlag,
+  });
+
+  assert.equal(strikeCount, 1);
+  assert.equal(deleted.length, 3);
+  assert.equal(warned.length, 1);
+  const actions = getAuditLog(contact).map((row) => row.action);
+  assert.equal(actions.filter((action) => action === 'delete+warn').length, 1);
+  assert.equal(actions.filter((action) => action === 'delete').length, 2);
+});
+
+test('a flagged burst within STRIKE_COOLDOWN_MS of the last warning is deleted without a new strike or warning', async () => {
+  const contact = 'cooldown@s.whatsapp.net';
+  const warned = [];
+  const actions = { ...noopActions, sendWarning: async (jid, text) => warned.push(text), classify: okFlag };
+
+  setSetting('STRIKE_COOLDOWN_MS', '60000');
+  try {
+    await handleBurst(burst(contact, ['first']), actions);
+    const { strikeCount } = await handleBurst(burst(contact, ['second']), actions);
+
+    assert.equal(strikeCount, 1);
+    assert.equal(warned.length, 1);
+    assert.equal(getAuditLog(contact)[0].action, 'delete');
+  } finally {
+    setSetting('STRIKE_COOLDOWN_MS', '0');
+  }
+});
+
+test('a failing deleteForMe on a cooldown-covered message logs delete_failed and still adds no strike', async () => {
+  const contact = 'cooldown-fail@s.whatsapp.net';
+  setSetting('STRIKE_COOLDOWN_MS', '60000');
+  try {
+    await handleBurst(burst(contact, ['first']), { ...noopActions, classify: okFlag });
+    const { strikeCount } = await handleBurst(burst(contact, ['second']), {
+      ...noopActions,
+      deleteForMe: async () => {
+        throw new Error('chatModify failed');
+      },
+      classify: okFlag,
+    });
+
+    assert.equal(strikeCount, 1);
+    assert.equal(getAuditLog(contact)[0].action, 'delete_failed');
+  } finally {
+    setSetting('STRIKE_COOLDOWN_MS', '0');
+  }
+});
+
+test('a clean burst of several messages decays one strike, not one per message', async () => {
+  const contact = 'decay@s.whatsapp.net';
+  await handleTwoViolations(contact, { ...noopActions, classify: okFlag });
+
+  const { strikeCount } = await handleBurst(burst(contact, ['ok', 'fine', 'thanks']), { ...noopActions, classify: okPass });
+
+  assert.equal(strikeCount, 1);
 });

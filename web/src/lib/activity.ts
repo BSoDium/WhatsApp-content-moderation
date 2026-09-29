@@ -12,6 +12,7 @@ interface ActionMeta {
 // Red is reserved for classifier_error/action_failed; a delete is the system working as intended, not a failure needing an alarm color.
 export const ACTION_META: Record<AuditAction, ActionMeta> = {
   'delete+warn': { label: 'Deleted', badgeVariant: 'default' },
+  delete: { label: 'Deleted (grouped)', badgeVariant: 'default', description: 'Deleted without a new strike or warning: same burst, or recently warned' },
   warning_sent: { label: 'Warning sent', badgeVariant: 'secondary' },
   none: { label: 'Passed', badgeVariant: 'outline' },
   classifier_error: { label: 'Classifier error', badgeVariant: 'destructive' },
@@ -29,6 +30,7 @@ export const ACTION_META: Record<AuditAction, ActionMeta> = {
 // Every value the filter's Select offers — the order they're listed in.
 export const ACTION_FILTER_OPTIONS: AuditAction[] = [
   'delete+warn',
+  'delete',
   'warning_sent',
   'none',
   'classifier_error',

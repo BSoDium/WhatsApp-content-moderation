@@ -167,3 +167,30 @@ test('does not retry when the model call itself fails', async () => {
   assert.equal(result.ok, false);
   assert.equal(generations, 1);
 });
+
+test('the prompt states the consequence as repeat offences and never uses the word strike', async () => {
+  const { client, generations } = scriptedClient(['Ok.']);
+
+  await generateWarningMessage({ ...INPUT, strikeCount: 1, strikeThreshold: 3 }, { client });
+
+  const [generation] = generations;
+  const userPrompt = generation.messages[1].content;
+  assert.match(userPrompt, /blocked after 2 more repeat offences/);
+  assert.doesNotMatch(userPrompt, /strike/i);
+});
+
+test('states a single remaining offence as "the next repeat offence"', async () => {
+  const { client, generations } = scriptedClient(['Ok.']);
+
+  await generateWarningMessage({ ...INPUT, strikeCount: 2, strikeThreshold: 3 }, { client });
+
+  assert.match(generations[0].messages[1].content, /next repeat offence will get you blocked/);
+});
+
+test('strips emoji from the generated warning', async () => {
+  const client = fakeClient('🚓 Message removed by an automated system. ⚠️');
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.deepEqual(result, { ok: true, text: 'Message removed by an automated system.' });
+});
