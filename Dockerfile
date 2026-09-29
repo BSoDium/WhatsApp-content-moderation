@@ -24,7 +24,12 @@ COPY --from=web-build /web/dist ./web/dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-ENV NODE_ENV=production
+# Set from the git tag by .github/workflows/container.yml; a plain local
+# `docker build` reports "dev". Declared late so a new value only invalidates
+# the layers below it.
+ARG APP_VERSION=dev
+ENV NODE_ENV=production \
+    APP_VERSION=$APP_VERSION
 
 # auth_info/ (WhatsApp session keys) and data/ (SQLite — audit log, strikes,
 # blocks, settings, and the moderation policy) are gitignored, host-owned

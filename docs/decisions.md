@@ -1727,3 +1727,15 @@ lever for that.
 *Rejected: a bilingual English/French default for unknown languages.* It would
 be grammatical, but tells a Polish or Turkish contact nothing they can read
 where the model's attempt at least tries.
+
+## Signed-in user badge from Tailscale Serve headers
+
+`GET /api/meta` returns a `user` (login, display name, profile picture, tailnet) read from the headers `tailscale serve` sets — `Tailscale-User-Name`, `Tailscale-User-Profile-Pic`, and the tailnet derived from `X-Forwarded-Host` (`<service>.<tailnet>.ts.net`) — and the header shows it as an avatar with name and tailnet. It is `null` when `ALLOWED_TAILSCALE_LOGIN` is unset, so an open instance shows no identity.
+
+It is a visual confirmation, not a second factor: it trusts exactly the headers the login check already trusts, with the same local-forgery caveat as "back to trusting the header" above. Names arrive Q-encoded (RFC 2047) and are decoded server-side; picture URLs are only passed through if `https:`.
+
+**Machine name is deliberately not shown.** Serve sends no device header. It would need a LocalAPI `whois` on the `X-Forwarded-For` tailnet IP, which means mounting `tailscaled.sock` into the container and breaking the "no mounts beyond `auth_info/` and `data/`" deploy invariant. Not verified live; revisit only if the tailnet subtext proves insufficient.
+
+**Diagnostics popover.** Clicking the badge opens a shadcn Popover with the tailnet, WhatsApp connection state, live-update (SSE vs polling) state, last data refresh, uptime and app version. `GET /api/status` backs the server-side rows; the WhatsApp state is a tiny in-memory tracker (`src/whatsapp/connection-state.ts`) written from `connectWhatsApp`'s `onOpen`/`onClose`, since that information previously existed only as a log line. The popover polls `/api/status` only while open.
+
+**App version comes from the git tag, not package.json.** Releases are cut by pushing a `v*.*.*` tag (`release.yml`, `container.yml`), and nothing bumps `package.json`, so it stayed at `0.1.0` and the popover showed a number that matched no release. The container build now passes the tag (via `docker/metadata-action`'s `version` output, so `v0.4.2` becomes `0.4.2`) as the `APP_VERSION` build arg, which the Dockerfile bakes into the image as an environment variable that `src/version.ts` reads. Local runs report `dev`. One source of truth, no version-bump commit per release; `package.json`'s own `version` is now irrelevant to the app.

@@ -1,5 +1,5 @@
 // Sample data for Storybook stories only; nothing under src/ imports this at runtime.
-import type { AuditLogEntry, Contact, RosterEntry, Setting, Stats } from './types';
+import type { AuditLogEntry, Contact, RosterEntry, ServerStatus, SignedInUser, Setting, Stats } from './types';
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -196,3 +196,17 @@ export const FIXTURE_AUDIT_LOG: AuditLogEntry[] = [
     createdAt: Date.now() - 48 * HOUR_MS,
   },
 ];
+
+export const FIXTURE_USER: SignedInUser = {
+  login: 'elliot@example.com',
+  name: 'Elliot Négrel-Jerzy',
+  pictureUrl: null,
+  tailnet: 'tail1234.ts.net',
+};
+
+export const FIXTURE_STATUS: ServerStatus = {
+  version: '0.1.0',
+  serverTime: Date.now(),
+  startedAt: Date.now() - (26 * HOUR_MS + 14 * MINUTE_MS),
+  whatsapp: { status: 'open', since: Date.now() - 3 * HOUR_MS, statusCode: null },
+};

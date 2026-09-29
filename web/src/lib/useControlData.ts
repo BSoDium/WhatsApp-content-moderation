@@ -17,11 +17,14 @@ export function useControlData(initialSelectedId: string | null = null) {
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [error, setError] = useState<ControlError | null>(null);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+  const [streamLive, setStreamLive] = useState(false);
 
   // Named function expressions, not bare arrows, so a retry closure can call the in-progress function by name.
   const refreshContacts = useCallback(async function refreshContacts() {
     try {
       setContacts(await apiFetch<Contact[]>('/api/contacts'));
+      setLastRefreshedAt(Date.now());
     } catch (error: unknown) {
       setError({ title: 'Could not load contacts', description: errorMessage(error), retry: refreshContacts });
     } finally {
@@ -32,6 +35,7 @@ export function useControlData(initialSelectedId: string | null = null) {
   const refreshRoster = useCallback(async function refreshRoster() {
     try {
       setRoster(await apiFetch<RosterEntry[]>('/api/roster'));
+      setLastRefreshedAt(Date.now());
     } catch (error: unknown) {
       setError({ title: "Couldn't reach the server", description: errorMessage(error), retry: refreshRoster });
     }
@@ -42,6 +46,8 @@ export function useControlData(initialSelectedId: string | null = null) {
     Promise.all([refreshContacts(), refreshRoster()]).then(() => setInitialLoadComplete(true));
 
     const events = new EventSource('/api/events');
+    events.onopen = () => setStreamLive(true);
+    events.onerror = () => setStreamLive(false);
     events.onmessage = (event) => {
       if (event.data === 'contacts') refreshContacts();
       else if (event.data === 'roster') refreshRoster();
@@ -167,5 +173,7 @@ export function useControlData(initialSelectedId: string | null = null) {
     setContext,
     setCallNuisanceThreshold,
     initialLoadComplete,
+    lastRefreshedAt,
+    streamLive,
   };
 }

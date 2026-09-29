@@ -1,5 +1,6 @@
 import { createLogger } from './src/cli/logger.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
+import { getConnectionState, setConnectionState } from './src/whatsapp/connection-state.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.ts';
 import { handleCallEvent, pendingCallEvents } from './src/pipeline/call-pipeline.ts';
@@ -139,6 +140,7 @@ async function start() {
     blocks: { countActive: countActiveBlocks },
     allowedLogin: ALLOWED_TAILSCALE_LOGIN,
     getSelfId: selfContactId,
+    getConnectionState,
     allowSelf: ALLOW_SELF,
   });
   await controlServer.listen(CONTROL_PORT);
@@ -176,6 +178,7 @@ async function start() {
       });
     },
     onOpen: () => {
+      setConnectionState('open');
       logger.info({ monitored: listMonitored().length, allowSelf: ALLOW_SELF }, 'connected; moderating monitored contacts');
       printSuccessBanner([
         'Connected — moderation is live for the monitored roster.',
@@ -185,7 +188,11 @@ async function start() {
       // Only start once — its unblock(jid) closure always reads the current outer `sock`, so it survives reconnects on its own.
       unblockScheduler ??= startUnblockScheduler({ unblock: (jid) => unblock(currentSocket(), jid) });
     },
-    onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => logger.warn({ statusCode, shouldReconnect }, 'connection closed'),
+    onReconnectFailed: () => setConnectionState('offline'),
+    onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => {
+      setConnectionState(shouldReconnect ? 'reconnecting' : 'logged-out', statusCode ?? null);
+      logger.warn({ statusCode, shouldReconnect }, 'connection closed');
+    },
   });
 }
 

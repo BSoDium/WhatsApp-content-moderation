@@ -37,8 +37,16 @@ export interface Setting {
 }
 
 // Matches GET /api/meta.
+export interface SignedInUser {
+  login: string;
+  name: string;
+  pictureUrl: string | null;
+  tailnet: string | null;
+}
+
 export interface Meta {
   authRequired: boolean;
+  user: SignedInUser | null;
 }
 
 export interface ControlError {
@@ -94,4 +102,14 @@ export interface AuditLogEntry {
 export interface AuditLogPage {
   entries: AuditLogEntry[];
   nextBefore: number | null;
+}
+
+export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'offline' | 'logged-out';
+
+// Matches GET /api/status.
+export interface ServerStatus {
+  version: string;
+  startedAt: number;
+  serverTime: number;
+  whatsapp: { status: WhatsAppStatus; since: number; statusCode: number | null };
 }

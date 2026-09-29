@@ -8,6 +8,9 @@ import { dirname, extname, resolve } from 'node:path';
 import { createLogger } from '../cli/logger.ts';
 import { printSuccessBanner } from '../cli/terminal-output.ts';
 import { verifyTailscaleIdentity } from './tailscale-auth.ts';
+import { readTailscaleIdentity } from './tailscale-identity.ts';
+import { APP_VERSION } from '../version.ts';
+import type { ConnectionState } from '../whatsapp/connection-state.ts';
 import { onControlEvent } from '../store/events.ts';
 import { NON_INDIVIDUAL_JID_SUFFIXES } from '../whatsapp/contact-directory.ts';
 import type { createManualOverride } from '../override/manual-override.ts';
@@ -52,10 +55,13 @@ interface ControlServerDependencies {
   // unknown until the WhatsApp socket connects, sometime after this server
   // itself starts listening.
   getSelfId: () => string | null;
+  getConnectionState: () => ConnectionState;
   allowSelf: boolean;
 }
 
 const logger = createLogger('control-server');
+
+const STARTED_AT = Date.now();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
@@ -410,7 +416,12 @@ async function handleApi(
   }
 
   if (req.method === 'GET' && segments.length === 1 && segments[0] === 'meta') {
-    sendJson(res, 200, { authRequired: Boolean(deps.allowedLogin) });
+    sendJson(res, 200, { authRequired: Boolean(deps.allowedLogin), user: deps.allowedLogin ? readTailscaleIdentity(req) : null });
+    return true;
+  }
+
+  if (req.method === 'GET' && segments.length === 1 && segments[0] === 'status') {
+    sendJson(res, 200, { version: APP_VERSION, startedAt: STARTED_AT, serverTime: Date.now(), whatsapp: deps.getConnectionState() });
     return true;
   }
 

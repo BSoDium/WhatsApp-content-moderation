@@ -4,6 +4,9 @@ import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
+import { useViewportWidth } from '@/lib/useViewportWidth';
+import { detailPaneTarget, listPaneTarget } from '@/lib/paneLayout';
+import { useAnimatePanes } from '@/lib/useAnimatePanes';
 import { useMeta } from '@/lib/useMeta';
 import { useShadowMode } from '@/lib/useShadowMode';
 import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
@@ -15,6 +18,7 @@ import { ContactDetailPanel, type ContactDetailPanelHandle } from '@/components/
 import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ActivityPanel } from '@/components/ActivityPanel';
+import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -24,18 +28,6 @@ import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
-const LIST_PANE_WIDTH_BROWSING_PCT = 60;
-const LIST_PANE_MARGIN_BROWSING_PCT = 20;
-const LIST_PANE_WIDTH_OPEN_PCT = 50;
-const LIST_PANE_MARGIN_OPEN_PCT = 0;
-const LIST_PANE_WIDTH_BROWSING = `${LIST_PANE_WIDTH_BROWSING_PCT}%`;
-const LIST_PANE_MARGIN_BROWSING = `${LIST_PANE_MARGIN_BROWSING_PCT}%`;
-const LIST_PANE_WIDTH_OPEN = `${LIST_PANE_WIDTH_OPEN_PCT}%`;
-const LIST_PANE_MARGIN_OPEN = `${LIST_PANE_MARGIN_OPEN_PCT}%`;
-// Must match the detail pane's `lg:w-[50%]` class; Tailwind's static scanning can't share the literal.
-const DETAIL_PANE_WIDTH_PCT = 50;
-// Closed `x` (a percentage of the pane's own width) starts the detail pane's left edge at the list pane's right edge, so both edges travel the same distance.
-const DETAIL_PANE_CLOSED_X = `${(((LIST_PANE_MARGIN_BROWSING_PCT + LIST_PANE_WIDTH_BROWSING_PCT) - DETAIL_PANE_WIDTH_PCT) / DETAIL_PANE_WIDTH_PCT) * 100}%`;
 const HEADER_PT_BROWSING = '5rem';
 const HEADER_PT_OPEN = '1.5rem';
 const HEADER_PT_MOBILE = '1rem';
@@ -46,22 +38,6 @@ const EMPHASIZED_DECELERATE_EASE: [number, number, number, number] = [0.19, 0, 0
 const MOVE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const FADE_TRANSITION = { duration: 0.5, ease: EMPHASIZED_DECELERATE_EASE };
 const INSTANT_TRANSITION = { duration: 0 };
-
-function listPaneTarget(isDesktop: boolean, expanded: boolean) {
-  if (!isDesktop) return { width: '100%', marginLeft: '0%' };
-  return {
-    width: expanded ? LIST_PANE_WIDTH_OPEN : LIST_PANE_WIDTH_BROWSING,
-    marginLeft: expanded ? LIST_PANE_MARGIN_OPEN : LIST_PANE_MARGIN_BROWSING,
-  };
-}
-
-function detailPaneTarget(isDesktop: boolean, expanded: boolean) {
-  if (!isDesktop) return { width: '100%', opacity: 1 };
-  return {
-    x: expanded ? '0%' : DETAIL_PANE_CLOSED_X,
-    opacity: expanded ? 1 : 0,
-  };
-}
 
 function headerPaddingTarget(isDesktop: boolean, expanded: boolean) {
   if (!isDesktop) return { paddingTop: HEADER_PT_MOBILE };
@@ -84,6 +60,8 @@ function App() {
     setContext,
     setCallNuisanceThreshold,
     initialLoadComplete,
+    lastRefreshedAt,
+    streamLive,
   } = useControlData(initialUrlState.contactId);
   const { meta, settled: metaSettled } = useMeta();
   const { shadowMode, settled: shadowModeSettled } = useShadowMode();
@@ -145,6 +123,8 @@ function App() {
   }, []);
 
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const viewportWidth = useViewportWidth();
+  const actionVariant = isDesktop ? 'ghost' : 'outline';
   const reduceMotion = useReducedMotion();
   // On desktop the detail pane is only reachable by keyboard/screen reader once its open transition completes.
   const [desktopDetailReady, setDesktopDetailReady] = useState(panelOpen);
@@ -182,6 +162,8 @@ function App() {
   }, [selectedId, openPanel, activityContactId]);
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
+  // Pane geometry also changes on viewport resizes, which must track the window rather than lag behind it; only an open/close is worth animating.
+  const paneTransition = useAnimatePanes(panelOpen, viewportWidth) ? moveTransition : INSTANT_TRANSITION;
   // Banners present with the first data are part of the settled layout; only later ones animate.
   const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
@@ -207,35 +189,39 @@ function App() {
           <motion.section
             ref={listPaneRef}
             initial={false}
-            animate={listPaneTarget(isDesktop, panelOpen)}
-            transition={moveTransition}
+            animate={listPaneTarget(isDesktop, panelOpen, viewportWidth)}
+            transition={paneTransition}
             className="isolate flex h-screen w-full flex-col overflow-y-auto [overflow-anchor:none] lg:min-w-[500px] lg:overflow-visible"
           >
             <motion.div
               ref={headerRef}
               initial={false}
               animate={headerPaddingTarget(isDesktop, panelOpen)}
-              transition={moveTransition}
-              className="flex-none px-4 pb-4 lg:px-8 @container"
+              transition={paneTransition}
+              className="flex-none px-4 pb-4 lg:px-8"
             >
-              <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <h1 className="min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:col-start-1 lg:row-start-1 lg:@max-[40rem]:text-xl">WhatsApp moderation control</h1>
-                <p className="text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-2 lg:row-start-2 lg:truncate">
-                  <span className="lg:@max-[40rem]:hidden">Flip a switch to moderate a contact, or tap their name for detailed controls.</span>
-                  <span className="hidden lg:@max-[40rem]:inline">Flip a switch to moderate, or tap a name for details.</span>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+                {meta?.user && (
+                  <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
+                    <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
+                  </div>
+                )}
+                <h1 className="col-start-1 row-start-1 mb-1 min-w-0 self-start text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2">WhatsApp moderation control</h1>
+                <p className="col-start-1 row-start-2 self-start text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-2 lg:row-start-3">
+                  Flip a switch to moderate a contact, or tap their name for detailed controls.
                 </p>
-                <div className="mt-2 grid shrink-0 grid-cols-3 gap-2 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:flex lg:justify-end lg:self-center">
-                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
+                <div className="col-span-2 row-start-3 mt-4 grid shrink-0 grid-cols-3 gap-2 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:mb-4 lg:flex lg:justify-end lg:gap-0.5">
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('settings')}>
                     <Settings data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Settings</span>
+                    <span>Settings</span>
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('policy')}>
                     <FileText data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Policy</span>
+                    <span>Policy</span>
                   </Button>
-                  <Button variant="outline" size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
+                  <Button variant={actionVariant} size="lg" className="h-11 px-2 lg:h-9 lg:px-3" onClick={() => showPanel('activity')}>
                     <Activity data-icon="inline-start" />
-                    <span className="lg:@max-[40rem]:sr-only">Activity</span>
+                    <span>Activity</span>
                   </Button>
                 </div>
               </div>
@@ -296,8 +282,8 @@ function App() {
 
         <motion.section
           initial={false}
-          animate={detailPaneTarget(isDesktop, panelOpen)}
-          transition={{ x: moveTransition, opacity: fadeTransition }}
+          animate={detailPaneTarget(isDesktop, panelOpen, viewportWidth)}
+          transition={{ x: paneTransition, opacity: fadeTransition }}
           onAnimationComplete={() => {
             if (isDesktop && panelOpen) setDesktopDetailReady(true);
           }}

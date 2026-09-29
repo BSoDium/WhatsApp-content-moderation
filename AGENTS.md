@@ -58,6 +58,20 @@ diff in this repo.
   `.then()/.catch()` pairs where introducing a whole function scope would
   be noisier (e.g. the QR-to-PNG side effect in the prototype script).
 
+## Frontend (`web/`)
+
+- Build UI from shadcn/ui components (`web/src/components/ui/`, style
+  `radix-nova`) wherever one exists — Popover, Badge, Separator, Sheet,
+  Button, and so on — so the app stays visually coherent. Before hand-rolling
+  markup for a dialog, menu, badge, tooltip or similar, check whether shadcn
+  ships it.
+- Add a missing primitive with the CLI (`npx shadcn@latest add <name>` from
+  `web/`) rather than writing it by hand, and decline any overwrite prompt for
+  a component that already exists. Don't restyle the generated files; compose
+  them in feature components under `web/src/components/`.
+- Every new component gets a Storybook story next to it, and any new
+  `/api/*` route it calls gets a mock route in `App.stories.tsx`.
+
 ## Secrets & personal data
 
 - Anything that's a credential or describes a real person never gets
