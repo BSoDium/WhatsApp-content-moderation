@@ -181,6 +181,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
+  const hasStrikes = entry !== undefined && (entry.strikeCount > 0 || entry.callNuisance.strikeCount > 0 || entry.callNuisance.unansweredCount > 0);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
@@ -240,7 +241,18 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
         </section>
 
         <section className="rounded-xl border border-border bg-card px-4">
-          <SettingRow title="Strikes" control={<span className="tabular-nums">{entry?.strikeCount ?? 0}</span>} />
+          <SettingRow
+            title="Strikes"
+            description={hasStrikes ? 'Reset after unblocking. Also clears call strikes.' : undefined}
+            control={
+              <div className="flex items-center gap-3">
+                <span className="tabular-nums">{entry?.strikeCount ?? 0}</span>
+                <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
+                  Reset
+                </Button>
+              </div>
+            }
+          />
           <Separator />
           <SettingRow
             title="Block"

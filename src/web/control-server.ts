@@ -135,7 +135,7 @@ const SSE_HEARTBEAT_MS = 25_000;
 const PHOTO_BROWSER_CACHE_SECONDS = 3600;
 
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
-const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock']);
+const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock', 'reset-strikes']);
 
 function isOverrideCommand(action: string): action is OverrideCommand {
   return COMMAND_ROUTES.has(action as OverrideCommand);

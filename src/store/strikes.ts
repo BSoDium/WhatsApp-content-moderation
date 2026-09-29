@@ -29,6 +29,14 @@ export function recordStrike(contactId: string): number {
 }
 
 /**
+ * Clears a contact's strike count back to zero. A no-op when they have none.
+ */
+export function resetStrikes(contactId: string): void {
+  getOrm().update(strikes).set({ count: 0, updated_at: Date.now() }).where(eq(strikes.contact_id, contactId)).run();
+  emitControlEvent('roster');
+}
+
+/**
  * Records a passed (non-flagged) message: decays the contact's strike count
  * by one, floored at zero — see docs/roadmap.md issue #5.
  */

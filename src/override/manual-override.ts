@@ -1,12 +1,12 @@
 import { createLogger } from '../cli/logger.ts';
-import { getStrikeCount } from '../store/strikes.ts';
+import { getStrikeCount, resetStrikes } from '../store/strikes.ts';
 import { getActiveBlock } from '../store/blocks.ts';
-import { getCallState } from '../store/call-strikes.ts';
+import { getCallState, resetCallState } from '../store/call-strikes.ts';
 import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
 import { resolveUnblock } from '../pipeline/unblock-resolution.ts';
 
-type OverrideCommand = 'pause' | 'resume' | 'unblock';
+type OverrideCommand = 'pause' | 'resume' | 'unblock' | 'reset-strikes';
 
 const logger = createLogger('manual-override');
 
@@ -33,7 +33,7 @@ const logger = createLogger('manual-override');
  * @returns {{
  *   isPaused: (contactId: string) => boolean,
  *   getStatus: (contactId: string) => { paused: boolean, strikeCount: number, block: { unblockAt: number } | null, callNuisance: { unansweredCount: number, strikeCount: number, threshold: number } },
- *   runCommand: (contactId: string, command: 'pause' | 'resume' | 'unblock') => Promise<string | null>,
+ *   runCommand: (contactId: string, command: 'pause' | 'resume' | 'unblock' | 'reset-strikes') => Promise<string | null>,
  * }}
  */
 export function createManualOverride({ unblock }: { unblock: (contactId: string) => Promise<void> }) {
@@ -80,6 +80,12 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
         logger.info({ contactId }, 'moderation resumed via manual override');
         emitControlEvent('roster');
         return 'Moderation resumed.';
+
+      case 'reset-strikes':
+        resetStrikes(contactId);
+        resetCallState(contactId);
+        logger.info({ contactId }, 'strikes reset via manual override');
+        return 'Strikes reset.';
 
       case 'unblock': {
         if (unblockInFlight.has(contactId)) return 'Unblock already in progress.';

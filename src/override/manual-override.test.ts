@@ -154,6 +154,33 @@ test('concurrent unblock calls for different contacts do not block each other', 
   assert.deepEqual(unblockCalls.sort(), [contactA, contactB].sort());
 });
 
+test('reset-strikes clears message strikes and call state, leaving an active block alone', async () => {
+  const contact = 'reset-strikes@s.whatsapp.net';
+  const { recordUnansweredCall, recordCallStrike } = await import('../store/call-strikes.ts');
+  recordStrike(contact);
+  recordStrike(contact);
+  recordStrike(contact);
+  recordUnansweredCall(contact);
+  recordCallStrike(contact);
+  const unblockAt = Date.now() + 60_000;
+  createBlock(contact, unblockAt);
+  const override = createManualOverride({ unblock: async () => {} });
+
+  const reply = await override.runCommand(contact, 'reset-strikes');
+
+  assert.match(reply, /reset/i);
+  const status = override.getStatus(contact);
+  assert.equal(status.strikeCount, 0);
+  assert.deepEqual(status.callNuisance, { unansweredCount: 0, strikeCount: 0, threshold: 2 });
+  assert.deepEqual(status.block, { unblockAt });
+});
+
+test('reset-strikes on a contact with no strikes is a harmless no-op', async () => {
+  const override = createManualOverride({ unblock: async () => {} });
+  await override.runCommand('no-strikes@s.whatsapp.net', 'reset-strikes');
+  assert.equal(override.getStatus('no-strikes@s.whatsapp.net').strikeCount, 0);
+});
+
 test('an unrecognized command returns null', async () => {
   const override = createManualOverride({ unblock: async () => {} });
   assert.equal(await override.runCommand(TARGET, 'nonsense'), null);

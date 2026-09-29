@@ -55,7 +55,7 @@ export interface ControlError {
   retry?: () => void | Promise<void>;
 }
 
-export type OverrideCommand = 'pause' | 'resume' | 'unblock';
+export type OverrideCommand = 'pause' | 'resume' | 'unblock' | 'reset-strikes';
 
 export interface Stats {
   monitoredCount: number;

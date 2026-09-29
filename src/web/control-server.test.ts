@@ -45,6 +45,8 @@ function makeOverride() {
           return 'Moderation resumed.';
         case 'unblock':
           return 'Contact unblocked.';
+        case 'reset-strikes':
+          return 'Strikes reset.';
         default:
           return null;
       }
@@ -592,6 +594,19 @@ test('POST /api/roster/:contactId/pause|resume|unblock route to the right contac
     const body = await res.json();
     assert.equal(body.paused, true);
     assert.deepEqual(manualOverride.calls, [['alice@s.whatsapp.net', 'pause']]);
+  });
+});
+
+test('POST /api/roster/:contactId/reset-strikes routes to the override and returns its message', async () => {
+  const monitoredContacts = makeMonitoredContacts([{ contactId: 'alice@s.whatsapp.net', escalationEnabled: true, addedAt: 1 }]);
+  await withServer({ monitoredContacts }, async (base, { manualOverride }) => {
+    const res = await fetch(`${base}/api/roster/${encodeURIComponent('alice@s.whatsapp.net')}/reset-strikes`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: '{}',
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(manualOverride.calls, [['alice@s.whatsapp.net', 'reset-strikes']]);
   });
 });
 
