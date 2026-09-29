@@ -31,6 +31,15 @@ const PATTERN_STYLE: CSSProperties = {
   maskComposite: 'intersect',
   WebkitMaskComposite: 'source-in',
 };
+const VALUE_LEFT = '1rem';
+const VALUE_CENTER_FROM_BOTTOM = '3.2rem';
+const VALUE_DIGIT_WIDTH = '1.35rem';
+const VALUE_CLEARANCE = '2.75rem';
+const VALUE_CLEARANCE_PER_DIGIT = '1.1rem';
+const VALUE_CLEARANCE_HEIGHT = '2.6rem';
+const ICON_CLEARANCE_STYLE: CSSProperties = {
+  maskImage: `radial-gradient(ellipse calc(var(--digits) * ${VALUE_CLEARANCE_PER_DIGIT} + ${VALUE_CLEARANCE}) ${VALUE_CLEARANCE_HEIGHT} at calc(${VALUE_LEFT} + var(--digits) * ${VALUE_DIGIT_WIDTH} / 2) calc(100% - ${VALUE_CENTER_FROM_BOTTOM}), transparent 55%, black 100%)`,
+};
 const PATTERN_CELL_PX = 36;
 const PATTERN_ICON_PX = 14;
 const PATTERN_ICON_OFFSET_PX = (PATTERN_CELL_PX / 2 - PATTERN_ICON_PX) / 2;
@@ -99,7 +108,9 @@ export function StatTile({ def, value }: StatTileProps) {
   return (
     <div className={cn(CARD_LAYOUT, 'text-left', tone.card)} style={CARD_STYLE}>
       <IconPattern icon={Icon} className={tone.pattern} />
-      <Icon className={cn('absolute top-3 right-3 size-18 transition-[transform,opacity]', COLLAPSE_EASE, tone.icon)} style={ICON_STYLE} strokeWidth={0.5} aria-hidden="true" />
+      <div className="pointer-events-none absolute inset-0" style={{ ...ICON_CLEARANCE_STYLE, '--digits': String(value).length } as CSSProperties} aria-hidden="true">
+        <Icon className={cn('absolute top-3 right-3 size-18 transition-[transform,opacity]', COLLAPSE_EASE, tone.icon)} style={ICON_STYLE} strokeWidth={0.5} />
+      </div>
       <dd className={cn('order-1 text-2xl leading-none font-bold tracking-tight tabular-nums transition-transform', COLLAPSE_EASE, empty && 'text-muted-foreground/40', tone.value)} style={VALUE_STYLE}>
         {value}
       </dd>
