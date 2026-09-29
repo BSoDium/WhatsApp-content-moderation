@@ -35,12 +35,13 @@ const RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
     me_was_rude: { type: 'boolean' },
+    words_addressing_me: { type: 'string' },
     target: { type: 'string', enum: ['me', 'someone_else', 'no_one'] },
     category: { type: 'string' },
     reason: { type: 'string' },
     flagged: { type: 'boolean' },
   },
-  required: ['me_was_rude', 'target', 'category', 'reason', 'flagged'],
+  required: ['me_was_rude', 'words_addressing_me', 'target', 'category', 'reason', 'flagged'],
 };
 
 function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): string {
@@ -50,12 +51,16 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     'Decide only whether that newest message violates the policy below — do not flag anything based on the history alone.',
     '"Me" is the person you protect and "Them" is the contact being moderated. Lines marked as automated warnings were sent by this system, not by Me.',
     'Profanity or insults only count when aimed at Me. Swearing for emphasis and venting about a third party or a situation are not violations.',
+    'An insult only counts when it targets Me directly: "you"/"tu"/"toi", Me\'s name, or a name-calling word addressed to Me. A short remark that judges a situation, an idea or a thing is about that thing, not about Me.',
+    'Friendly greetings and sign-offs are never advances, in any language: "bisous", "bises", "bizou", "xoxo", kiss or heart emojis. Only flag affection when it is clearly sexual or continues after Me asked them to stop.',
     'If Me was already rude, insulting or teasing in the recent conversation, mutual banter is not a violation either. Only flag it then if the newest message is a real threat, sexually explicit, or keeps pressuring Me after a clear refusal.',
     '',
     '# Examples',
     'Recent conversation: "Me: you missed your bus again, what a dummy 😂" / "Them: haha I overslept". Newest message: "Them: screw you, at least I got up" -> me_was_rude true, banter, flagged false.',
     'Recent conversation: "Me: thanks, talk later". Newest message: "Them: you are useless and nobody likes you" -> me_was_rude false, aimed at Me, flagged true.',
     'Recent conversation: (none). Newest message: "Them: this stupid printer is broken again, damn it" -> aimed at no one, flagged false.',
+    'Recent conversation: (none). Newest message: "Them: c\'est nul comme idée" -> about the idea, not about Me, flagged false.',
+    'Recent conversation: (none). Newest message: "Them: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
     '',
     '# Policy',
     policy,
@@ -63,7 +68,9 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     '',
     'Respond with JSON only, matching the given schema. First set "me_was_rude" to true if a line ' +
       'written by Me (not an automated warning) in the recent conversation was rude, insulting or ' +
-      'teasing, else false. Then set "target" to who the newest message is aimed at: "me" ' +
+      'teasing, else false. Then set "words_addressing_me" to the exact words of the newest message ' +
+      'that refer to Me directly ("you", "tu", "toi", Me\'s name), or an empty string if there are none. ' +
+      'Then set "target" to who the newest message is aimed at: "me" ' +
       '(including "you"/"tu"/"toi"), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
       'Then fill in "category" (a short label, e.g. "harassment", "unwanted_contact", or "none" ' +
       'when not flagged) and "reason" (one short sentence), then set "flagged" to agree with the ' +
