@@ -1,0 +1,42 @@
+{
+  "name": "Violations trickled out just over the buffer window apart",
+  "description": "Each message is its own burst, but all within the strike cooldown of the first warning: one strike, one warning.",
+  "policy": "Flag any message that insults the recipient (name-calling, contempt) or demands money aggressively. Do not flag polite messages, questions, or ordinary logistics.",
+  "flagWords": [
+    "idiot",
+    "nul",
+    "imbécile"
+  ],
+  "settings": {
+    "BUFFER_WINDOW_MS": "60",
+    "STRIKE_THRESHOLD": "3",
+    "STRIKE_COOLDOWN_MS": "2000"
+  },
+  "messages": [
+    {
+      "text": "Tu es un idiot"
+    },
+    {
+      "text": "Vraiment nul",
+      "afterMs": 200
+    },
+    {
+      "text": "Imbécile",
+      "afterMs": 200
+    },
+    {
+      "text": "Idiot je te dis",
+      "afterMs": 200
+    },
+    {
+      "text": "Nul nul nul",
+      "afterMs": 200
+    }
+  ],
+  "expect": {
+    "strikes": 1,
+    "warnings": 1,
+    "deletions": 5,
+    "blocks": 0
+  }
+}

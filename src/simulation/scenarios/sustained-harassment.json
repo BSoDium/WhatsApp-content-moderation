@@ -1,0 +1,34 @@
+{
+  "name": "Violations continuing past the cooldown",
+  "description": "Each violation lands after the cooldown has expired, so each earns a strike; the third crosses the threshold and blocks.",
+  "policy": "Flag any message that insults the recipient (name-calling, contempt) or demands money aggressively. Do not flag polite messages, questions, or ordinary logistics.",
+  "flagWords": [
+    "idiot",
+    "nul",
+    "imbécile"
+  ],
+  "settings": {
+    "BUFFER_WINDOW_MS": "60",
+    "STRIKE_THRESHOLD": "3",
+    "STRIKE_COOLDOWN_MS": "300"
+  },
+  "messages": [
+    {
+      "text": "Tu es un idiot"
+    },
+    {
+      "text": "Toujours aussi nul",
+      "afterMs": 500
+    },
+    {
+      "text": "Imbécile",
+      "afterMs": 500
+    }
+  ],
+  "expect": {
+    "strikes": 3,
+    "warnings": 3,
+    "deletions": 3,
+    "blocks": 1
+  }
+}
