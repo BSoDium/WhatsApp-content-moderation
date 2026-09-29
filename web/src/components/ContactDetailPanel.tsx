@@ -318,7 +318,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
           <section className="rounded-xl border border-border bg-card px-4 py-3.5">
             <p className="font-medium leading-6">Moderation context</p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Extra guidance folded into the classifier prompt for this contact only, alongside the global policy — e.g. "this is my landlord, be lenient about payment disputes."
+              Extra guidance folded into the classifier prompt for this contact only, alongside the global policy. Be concrete: name the topics, words or requests to flag, e.g. "flag any mention of my mother (mom, maman) or requests to contact her." Vague rules are easy for a small model to miss."
             </p>
             <Textarea
               id="moderation-context"

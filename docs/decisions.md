@@ -1574,3 +1574,77 @@ message-strike machinery.
   shape and that a rejected call actually stops ringing, the same way
   `test-block-unblock.ts` validates block/unblock — see README
   "Validating nuisance-call handling".
+
+## Warning generation must not see the conversation
+
+The first warnings sent to a real contact went wrong in two ways on
+`llama3.2:3b`. Shown a slur, the model refused ("I can't fulfill this
+request.") and, because any non-empty output counted as success, that refusal
+was sent to the contact as the warning. Shown an argument about a family
+member, it joined in and took a side, which would have escalated the
+conversation the warning was meant to stop.
+
+**Chosen: the warning model never sees the flagged text.** A separate
+`detectLanguage` call (`src/classifier/language.ts`) reads the message and
+returns one name from a fixed list, enforced both by a schema enum and by a
+check on the way out; the warning prompt is then built from that language and
+the strike counts alone, and tells the model it has no knowledge of the
+conversation. The classifier's category and reason are no longer passed on
+either, since a reason like "mentions the mother" is enough to invite
+commentary. Applies to nuisance-call warnings too, which used to show the
+model the contact's recent messages.
+
+*Rejected: rewording the prompt.* Telling the model not to quote the message
+made it echo the insult back; telling it to respond in the message's language
+without repeating it did the same. As long as the text is in the prompt, a 3B
+model refuses or repeats it.
+
+*The language name is an allow-list, not free text.* It is interpolated into
+the warning model's system prompt, and its source is attacker-controlled
+input, so a free-text answer would be a prompt-injection channel. A message
+in a language outside the list is decoded to the closest listed one (a Basque
+message was answered in English), which is a wrong-language warning, not a
+failure; extend `LANGUAGES` if a contact needs one.
+
+**Refusals fail open.** `looksLikeRefusal` matches the common English and
+French refusal openings and turns them into `{ ok: false }`, so the existing
+static-fallback path runs. It is a heuristic on the start of the output, not a
+guarantee, which is why the prompt change is the primary fix.
+
+**Cost: one extra model call per warning.** Each call gets its own
+`WARNING_TIMEOUT_MS`, so the worst case before falling back is twice that.
+Language detection reuses the same model, which is already loaded, so on the
+reference hardware it is the cheaper of the two calls.
+
+## Warnings are sent whole or not at all
+
+`sanitizeWarning` used to hard-truncate a generated warning at
+`WARNING_MAX_LENGTH` (default 180) and append an ellipsis. The three required
+elements of a warning (message removed, sent by an automated system, strikes
+remaining) routinely run 140-250 characters in French, so real contacts
+received sentences cut off mid-word ("…avant que vous soyez b…").
+
+**Chosen: never truncate.** `checkWarning` (`src/classifier/warning-text.ts`)
+now returns `{ ok: false }` for empty, refused and over-long output alike, and
+the existing fail-open path sends the static fallback. A cut-off warning reads
+worse than a generic one. `WARNING_MAX_LENGTH` stays as a ceiling on what may
+reach a real phone, with its default raised to 500: in a sample of nine
+generations one degenerated into a ~3,900-character repetition loop, which the
+ceiling sends to the fallback.
+
+**One retry before falling back.** An over-long, empty or refused attempt is
+retried once (`MAX_ATTEMPTS` in `warning-text.ts`); after an over-long one the
+model is told to answer in one sentence of at most 60% of the ceiling, keeping
+only "automated system" and the consequence. A plain "use fewer words" barely
+moved `llama3.2:3b` (4 of 4 French retries still over a 150-character ceiling);
+naming what to drop got 6 of 6 under it. Transport failures (timeout, Ollama
+down) are not retried, since that would double the wait before the fallback,
+and language detection is not repeated.
+
+*Existing deployments keep their stored value.* Defaults are seeded into the
+settings table once, so an instance that already stored `180` keeps it and
+will fall back to the static message for any warning over 180 characters until
+the value is raised in Settings.
+
+*Rejected: capping generation with `num_predict`.* It would cut the text at a
+token boundary, reintroducing the mid-sentence truncation this removes.

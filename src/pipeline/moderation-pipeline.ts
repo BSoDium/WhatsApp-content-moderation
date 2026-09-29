@@ -155,8 +155,6 @@ async function runBurst(
 
     const warningResult = await generateWarning({
       message: text,
-      category: classification.category,
-      reason: classification.reason,
       strikeCount: strikeCount + 1,
       strikeThreshold,
     });
