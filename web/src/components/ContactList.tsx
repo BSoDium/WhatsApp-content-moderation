@@ -74,7 +74,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
         >
           {!initialLoadComplete && Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => <ContactRowSkeleton key={`skeleton-${i}`} />)}
           {initialLoadComplete && filtered.length === 0 && (
-            <li className="py-6 text-center text-muted-foreground">{contacts.length === 0 ? 'No contacts yet.' : 'No contacts match your search.'}</li>
+            <li className="py-6 text-center text-muted-foreground">{contacts.length === 0 ? 'No contacts to show.' : 'No contacts match your search.'}</li>
           )}
           {moderated.length > 0 && <SectionHeading key="heading-moderated">Moderated</SectionHeading>}
           {moderated.map((contact) => (

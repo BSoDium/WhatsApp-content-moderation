@@ -18,6 +18,8 @@ interface ContactRowProps {
   onViewHistory: (contactId: string) => void;
 }
 
+const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
+const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:block';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
 export function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
@@ -42,7 +44,7 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
 
   return (
     <li
-      className={cn('group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 hover:bg-accent', selected && 'bg-accent')}
+      className={cn(ROW_LAYOUT, 'group cursor-pointer hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
@@ -53,10 +55,10 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
         </p>
         <p className="truncate text-xs text-muted-foreground">{relativeTime(contact.lastMessageAt)}</p>
       </div>
-      <p className="hidden w-20 shrink-0 truncate text-xs text-muted-foreground @lg:block" title={strikeLabel}>
+      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground')} title={strikeLabel}>
         {strikeLabel}
       </p>
-      <p className={cn('hidden w-20 shrink-0 truncate text-xs text-muted-foreground @xl:block', block && 'font-medium text-foreground')} title={blockLabel}>
+      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground', block && 'font-medium text-foreground')} title={blockLabel}>
         {blockLabel}
       </p>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -99,14 +101,14 @@ export function ContactRow({ contact, monitored, entry, selected, onSelect, onTo
 
 export function ContactRowSkeleton() {
   return (
-    <li className="flex items-center gap-3 rounded-xl px-3 py-2" aria-hidden="true">
+    <li className={ROW_LAYOUT} aria-hidden="true">
       <Skeleton className="size-8 shrink-0 rounded-full" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-44 max-w-full" />
       </div>
-      <Skeleton className="hidden h-3 w-20 shrink-0 @lg:block" />
-      <Skeleton className="hidden h-3 w-20 shrink-0 @xl:block" />
+      <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
+      <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
       <Skeleton className="size-10 shrink-0 rounded-lg" />
     </li>
   );

@@ -16,6 +16,19 @@ const SKELETON_ROW_COUNT = 6;
 const WIDE_COLUMNS_SHOWN = '@[44rem]:table-cell';
 const WIDE_COLUMNS_HIDDEN = '@[44rem]:hidden';
 
+function FullWidthCell({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <>
+      <TableCell colSpan={4} className={cn('hidden', WIDE_COLUMNS_SHOWN, className)}>
+        {children}
+      </TableCell>
+      <TableCell colSpan={2} className={cn(WIDE_COLUMNS_HIDDEN, className)}>
+        {children}
+      </TableCell>
+    </>
+  );
+}
+
 interface MessageExplorerProps {
   contacts: Contact[];
   entries: AuditLogEntry[];
@@ -101,20 +114,20 @@ export function MessageExplorer({
             {loading &&
               Array.from({ length: SKELETON_ROW_COUNT }, (_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={4}>
+                  <FullWidthCell>
                     <Skeleton className="h-5 w-full" />
-                  </TableCell>
+                  </FullWidthCell>
                 </TableRow>
               ))}
 
             {!loading && entries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-muted-foreground">
+                <FullWidthCell className="py-10 text-center text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <SearchX className="size-5" aria-hidden="true" />
                     <span>No activity matches these filters.</span>
                   </div>
-                </TableCell>
+                </FullWidthCell>
               </TableRow>
             )}
 
