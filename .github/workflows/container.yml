@@ -61,6 +61,9 @@ jobs:
           # Reference hardware is a plain Intel box (see README "Reference
           # hardware") — no need for multi-arch until that changes.
           platforms: linux/amd64
+          # Buildx's default attestation manifest shows up as a bogus
+          # "unknown/unknown" platform on the GHCR package page.
+          provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           build-args: APP_VERSION=${{ steps.meta.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
