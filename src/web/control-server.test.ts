@@ -621,15 +621,34 @@ test('POST /api/roster/:contactId/pause without JSON content-type is rejected', 
   });
 });
 
-test('POST /api/roster/:contactId/pause|resume|unblock on an unmonitored contact returns 404', async () => {
+test('POST /api/roster/:contactId/pause|resume on an unmonitored contact returns 404', async () => {
   await withServer({}, async (base, { manualOverride }) => {
-    const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/unblock`, {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: '{}',
-    });
-    assert.equal(res.status, 404);
+    for (const action of ['pause', 'resume']) {
+      const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/${action}`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}',
+      });
+      assert.equal(res.status, 404);
+    }
     assert.deepEqual(manualOverride.calls, []);
+  });
+});
+
+test('POST /api/roster/:contactId/unblock|reset-strikes still works for a contact that is no longer monitored', async () => {
+  await withServer({}, async (base, { manualOverride }) => {
+    for (const action of ['unblock', 'reset-strikes']) {
+      const res = await fetch(`${base}/api/roster/${encodeURIComponent('nobody@s.whatsapp.net')}/${action}`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}',
+      });
+      assert.equal(res.status, 200);
+    }
+    assert.deepEqual(manualOverride.calls, [
+      ['nobody@s.whatsapp.net', 'unblock'],
+      ['nobody@s.whatsapp.net', 'reset-strikes'],
+    ]);
   });
 });
 

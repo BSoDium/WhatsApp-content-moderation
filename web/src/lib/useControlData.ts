@@ -50,7 +50,11 @@ export function useControlData(initialSelectedId: string | null = null) {
     events.onerror = () => setStreamLive(false);
     events.onmessage = (event) => {
       if (event.data === 'contacts') refreshContacts();
-      else if (event.data === 'roster') refreshRoster();
+      else if (event.data === 'roster') {
+        // Strikes and blocks of contacts that aren't on the roster only exist in the contacts feed.
+        refreshRoster();
+        refreshContacts();
+      }
     };
 
     const id = setInterval(() => {
@@ -94,14 +98,14 @@ export function useControlData(initialSelectedId: string | null = null) {
           body: '{}',
         });
         setError(null);
-        await refreshRoster();
+        await Promise.all([refreshRoster(), refreshContacts()]);
         return result.message ?? '';
       } catch (error: unknown) {
         setError({ title: 'Command failed', description: errorMessage(error), retry: async () => { await runCommand(contactId, action); } });
         return undefined;
       }
     },
-    [refreshRoster],
+    [refreshRoster, refreshContacts],
   );
 
   const setEscalation = useCallback(

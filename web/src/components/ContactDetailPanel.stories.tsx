@@ -48,6 +48,13 @@ export const Blocked: Story = {
   },
 };
 
+export const UnmoderatedWithLeftoverBlock: Story = {
+  args: {
+    contact: { ...FIXTURE_CONTACTS[0], strikeCount: 4, block: { unblockAt: Date.now() + 3_600_000 } },
+    entry: undefined,
+  },
+};
+
 export const Paused: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],

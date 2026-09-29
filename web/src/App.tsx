@@ -20,6 +20,7 @@ import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ActivityPanel } from '@/components/ActivityPanel';
 import { DiagnosticsPopover } from '@/components/DiagnosticsPopover';
+import { SignedInUserSkeleton } from '@/components/SignedInUser';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { BannerReveal } from '@/components/BannerReveal';
@@ -276,9 +277,9 @@ function App() {
               className="flex-none px-4 pb-4 lg:px-8"
             >
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
-                {meta && (meta.user || !meta.authRequired) && (
+                {(!metaSettled || (meta && (meta.user || !meta.authRequired))) && (
                   <div className="col-start-2 row-span-2 row-start-1 flex min-w-0 self-start lg:col-start-1 lg:row-span-1 lg:mb-4 lg:self-center">
-                    <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} />
+                    {meta ? <DiagnosticsPopover user={meta.user} lastRefreshedAt={lastRefreshedAt} streamLive={streamLive} /> : <SignedInUserSkeleton />}
                   </div>
                 )}
                 <h1 className="col-start-1 row-start-1 mb-1 min-w-0 self-start text-xl leading-tight font-semibold sm:text-2xl lg:row-start-2 lg:col-span-2">WhatsApp moderation control</h1>

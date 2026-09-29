@@ -40,8 +40,9 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
   const rosterById = useMemo(() => new Map(roster.map((entry) => [entry.id, entry])), [roster]);
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
   const filtered = useMemo(() => sortedFiltered(contacts, debouncedQuery.trim().toLowerCase()), [contacts, debouncedQuery]);
-  const moderated = useMemo(() => filtered.filter((contact) => monitoredIds.has(contact.id)), [filtered, monitoredIds]);
-  const others = useMemo(() => filtered.filter((contact) => !monitoredIds.has(contact.id)), [filtered, monitoredIds]);
+  // Contacts land before the roster does; rows drawn on that partial data would sit under the skeleton and then reshuffle.
+  const moderated = useMemo(() => (initialLoadComplete ? filtered.filter((contact) => monitoredIds.has(contact.id)) : []), [filtered, monitoredIds, initialLoadComplete]);
+  const others = useMemo(() => (initialLoadComplete ? filtered.filter((contact) => !monitoredIds.has(contact.id)) : []), [filtered, monitoredIds, initialLoadComplete]);
   const [listRef, setAnimationsEnabled] = useAutoAnimate(fadeAndSlide);
   const setListRef = useCallback(
     (element: HTMLUListElement | null) => {

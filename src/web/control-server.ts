@@ -137,6 +137,8 @@ const PHOTO_BROWSER_CACHE_SECONDS = 3600;
 type OverrideCommand = Parameters<ReturnType<typeof createManualOverride>['runCommand']>[1];
 const COMMAND_ROUTES: ReadonlySet<OverrideCommand> = new Set(['pause', 'resume', 'unblock', 'reset-strikes']);
 
+const STATE_CLEARING_COMMANDS = new Set<OverrideCommand>(['unblock', 'reset-strikes']);
+
 function isOverrideCommand(action: string): action is OverrideCommand {
   return COMMAND_ROUTES.has(action as OverrideCommand);
 }
@@ -521,7 +523,9 @@ async function handleApi(
     if (!contactId || !action) return false;
 
     if (isOverrideCommand(action)) {
-      if (!monitoredContacts.isMonitored(contactId)) {
+      // Strikes and a block outlive the roster row (removeMonitored leaves them), so clearing them must work for a contact no longer moderated.
+      const needsRoster = !STATE_CLEARING_COMMANDS.has(action);
+      if (needsRoster && !monitoredContacts.isMonitored(contactId)) {
         sendJson(res, 404, { error: 'not monitored' });
         return true;
       }

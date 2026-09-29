@@ -182,7 +182,10 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
   const contactId = contact.id;
   const monitored = Boolean(entry);
-  const hasStrikes = entry !== undefined && (entry.strikeCount > 0 || entry.callNuisance.strikeCount > 0);
+  // A contact that was moderated earlier keeps its strikes and block after being switched off, so they come from the contacts feed, like the list row's.
+  const strikeCount = entry?.strikeCount ?? contact.strikeCount ?? 0;
+  const block = entry ? entry.block : (contact.block ?? null);
+  const hasStrikes = strikeCount > 0 || (entry?.callNuisance.strikeCount ?? 0) > 0;
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
@@ -248,7 +251,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
               description={hasStrikes ? 'Reset after unblocking. Also clears call strikes.' : undefined}
               control={
                 <div className="flex items-center gap-3">
-                  <span className="tabular-nums">{entry?.strikeCount ?? 0}</span>
+                  <span className="tabular-nums">{strikeCount}</span>
                   <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
                     Reset
                   </Button>
@@ -258,9 +261,9 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
             <Separator />
             <SettingRow
               title="Block"
-              description={entry?.block ? `Until ${formatTimestamp(entry.block.unblockAt)}` : undefined}
+              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : undefined}
               control={
-                entry?.block ? (
+                block ? (
                   <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
                     Unblock
                   </Button>
