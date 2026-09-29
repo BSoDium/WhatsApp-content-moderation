@@ -1648,3 +1648,11 @@ the value is raised in Settings.
 
 *Rejected: capping generation with `num_predict`.* It would cut the text at a
 token boundary, reintroducing the mid-sentence truncation this removes.
+
+## Signed-in user badge from Tailscale Serve headers
+
+`GET /api/meta` returns a `user` (login, display name, profile picture, tailnet) read from the headers `tailscale serve` sets — `Tailscale-User-Name`, `Tailscale-User-Profile-Pic`, and the tailnet derived from `X-Forwarded-Host` (`<service>.<tailnet>.ts.net`) — and the header shows it as an avatar with name and tailnet. It is `null` when `ALLOWED_TAILSCALE_LOGIN` is unset, so an open instance shows no identity.
+
+It is a visual confirmation, not a second factor: it trusts exactly the headers the login check already trusts, with the same local-forgery caveat as "back to trusting the header" above. Names arrive Q-encoded (RFC 2047) and are decoded server-side; picture URLs are only passed through if `https:`.
+
+**Machine name is deliberately not shown.** Serve sends no device header. It would need a LocalAPI `whois` on the `X-Forwarded-For` tailnet IP, which means mounting `tailscaled.sock` into the container and breaking the "no mounts beyond `auth_info/` and `data/`" deploy invariant. Not verified live; revisit only if the tailnet subtext proves insufficient.

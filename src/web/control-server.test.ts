@@ -218,7 +218,23 @@ test('GET /api/meta reports authRequired: true when allowedLogin is set', async 
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/meta`, { headers: authHeaders() });
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { authRequired: true });
+    assert.deepEqual(await res.json(), { authRequired: true, user: { login: ALLOWED, name: ALLOWED, pictureUrl: null, tailnet: null } });
+  });
+});
+
+test('GET /api/meta surfaces the Tailscale display identity for the signed-in user', async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/meta`, {
+      headers: authHeaders({
+        'Tailscale-User-Name': 'Alice Architect',
+        'Tailscale-User-Profile-Pic': 'https://example.com/alice.png',
+        'X-Forwarded-Host': 'whatsapp-moderation.tail1234.ts.net',
+      }),
+    });
+    assert.deepEqual(await res.json(), {
+      authRequired: true,
+      user: { login: ALLOWED, name: 'Alice Architect', pictureUrl: 'https://example.com/alice.png', tailnet: 'tail1234.ts.net' },
+    });
   });
 });
 
@@ -226,7 +242,7 @@ test('with no allowedLogin, every route is reachable with no Tailscale-User-Logi
   await withServer({ openAccess: true }, async (base) => {
     const meta = await fetch(`${base}/api/meta`);
     assert.equal(meta.status, 200);
-    assert.deepEqual(await meta.json(), { authRequired: false });
+    assert.deepEqual(await meta.json(), { authRequired: false, user: null });
 
     const roster = await fetch(`${base}/api/roster`);
     assert.equal(roster.status, 200);

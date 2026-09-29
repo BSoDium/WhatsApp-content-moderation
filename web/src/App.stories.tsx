@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FIXTURE_AUDIT_LOG, FIXTURE_CONTACTS, FIXTURE_ROSTER, FIXTURE_SETTINGS, FIXTURE_STATS } from '@/lib/fixtures';
+import { FIXTURE_AUDIT_LOG, FIXTURE_CONTACTS, FIXTURE_ROSTER, FIXTURE_SETTINGS, FIXTURE_STATS, FIXTURE_USER } from '@/lib/fixtures';
 import type { RosterEntry } from '@/lib/types';
 import { withMockApi, type MockRoute } from '../.storybook/withMockApi';
 import App from './App';
@@ -49,7 +49,7 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         return { ok: true };
       },
     },
-    { match: '/api/meta', body: { authRequired: true } },
+    { match: '/api/meta', body: { authRequired: true, user: FIXTURE_USER } },
     { match: '/api/stats', body: FIXTURE_STATS },
     { match: '/api/settings', bodyFn: () => settings },
     {
@@ -95,6 +95,6 @@ export const NoContactsModerated: Story = {
 // reachable without Tailscale identity, which is worth calling out.
 export const OpenAccess: Story = {
   decorators: [
-    withMockApi(controlDataRoutes(FIXTURE_ROSTER).map((route) => (route.match === '/api/meta' ? { ...route, body: { authRequired: false } } : route))),
+    withMockApi(controlDataRoutes(FIXTURE_ROSTER).map((route) => (route.match === '/api/meta' ? { ...route, body: { authRequired: false, user: null } } : route))),
   ],
 };

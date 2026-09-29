@@ -14,6 +14,7 @@ import { ContactDetailPanel, type ContactDetailPanelHandle } from '@/components/
 import { OverviewStats } from '@/components/OverviewStats';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { ActivityPanel } from '@/components/ActivityPanel';
+import { SignedInUser } from '@/components/SignedInUser';
 import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
@@ -202,9 +203,16 @@ function App() {
               transition={moveTransition}
               className="flex-none px-4 pb-4 lg:px-8 @container"
             >
-              <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <h1 className="min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:col-start-1 lg:row-start-1 lg:@max-[40rem]:text-xl">WhatsApp moderation control</h1>
-                <p className="text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-2 lg:row-start-2 lg:truncate">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <div className="flex items-center justify-between gap-3 lg:contents">
+                  <h1 className="min-w-0 text-xl leading-tight font-semibold sm:text-2xl lg:col-start-1 lg:row-start-1 lg:@max-[40rem]:text-xl">WhatsApp moderation control</h1>
+                  {meta?.user && (
+                    <div className="shrink-0 lg:col-start-3 lg:row-start-1 lg:self-center">
+                      <SignedInUser user={meta.user} />
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm leading-relaxed text-muted-foreground sm:text-base lg:col-span-3 lg:row-start-2 lg:truncate">
                   <span className="lg:@max-[40rem]:hidden">Flip a switch to moderate a contact, or tap their name for detailed controls.</span>
                   <span className="hidden lg:@max-[40rem]:inline">Flip a switch to moderate, or tap a name for details.</span>
                 </p>

@@ -37,8 +37,16 @@ export interface Setting {
 }
 
 // Matches GET /api/meta.
+export interface SignedInUser {
+  login: string;
+  name: string;
+  pictureUrl: string | null;
+  tailnet: string | null;
+}
+
 export interface Meta {
   authRequired: boolean;
+  user: SignedInUser | null;
 }
 
 export interface ControlError {
