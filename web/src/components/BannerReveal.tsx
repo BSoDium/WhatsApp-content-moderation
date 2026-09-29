@@ -4,8 +4,8 @@ import { motion, useReducedMotion } from 'motion/react';
 // Material 3's "emphasized decelerate" curve.
 const EASE: [number, number, number, number] = [0.19, 0, 0, 1];
 const SPACE_MS = 0.5;
-// The emphasized curve has opened most of the height by this point, so content fading in never sits under the clip.
-const ENTER_FADE_DELAY_S = 0.2;
+// The emphasized curve has opened nearly all of the height by this point (~96% at 350ms), so content fading in never sits under the clip.
+const ENTER_FADE_DELAY_S = 0.35;
 const ENTER_FADE_S = 0.4;
 const EXIT_FADE_S = 0.2;
 const EXIT_COLLAPSE_DELAY_S = 0.1;
