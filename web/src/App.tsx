@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useMeta } from '@/lib/useMeta';
+import { useShadowMode } from '@/lib/useShadowMode';
 import { readUrlState, writeUrlState, type PanelName } from '@/lib/urlState';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { PolicyEditor } from '@/components/PolicyEditor';
 import { SettingsPanel } from '@/components/SettingsPanel';
 import { ErrorBanner } from '@/components/ErrorBanner';
 import { OpenAccessBanner } from '@/components/OpenAccessBanner';
+import { ShadowModeBanner } from '@/components/ShadowModeBanner';
 
 // Matches Tailwind's `lg:` breakpoint, where list/detail split side by side.
 const DESKTOP_QUERY = '(min-width: 1024px)';
@@ -82,6 +84,7 @@ function App() {
     initialLoadComplete,
   } = useControlData(initialUrlState.contactId);
   const { meta, settled: metaSettled } = useMeta();
+  const shadowMode = useShadowMode();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [skipInitialPanelAnimation, setSkipInitialPanelAnimation] = useState(initialUrlState.openPanel !== null);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
@@ -166,7 +169,7 @@ function App() {
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Banners present with the first data are part of the settled layout; only later ones animate.
-  const initialDataSettled = contactsLoaded && metaSettled;
+  const initialDataSettled = contactsLoaded && metaSettled && shadowMode !== null;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
   const bannerTransition = initialDataSettled ? fadeTransition : INSTANT_TRANSITION;
 
@@ -231,6 +234,18 @@ function App() {
                     className="overflow-hidden"
                   >
                     <OpenAccessBanner />
+                  </motion.div>
+                )}
+                {shadowMode && (
+                  <motion.div
+                    key="shadow-mode-banner"
+                    initial={{ height: 0, marginTop: 0, opacity: 0 }}
+                    animate={{ height: 'auto', marginTop: '1rem', opacity: 1 }}
+                    exit={{ height: 0, marginTop: 0, opacity: 0 }}
+                    transition={bannerTransition}
+                    className="overflow-hidden"
+                  >
+                    <ShadowModeBanner onOpenSettings={() => showPanel('settings')} />
                   </motion.div>
                 )}
                 {error && (
