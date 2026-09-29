@@ -5,7 +5,7 @@ export function SelfModerationNotice() {
   return (
     <Empty>
       <EmptyHeader>
-        <EmptyMedia>
+        <EmptyMedia className="mb-6">
           <ShieldQuestionMark
             className="size-28 text-[color-mix(in_oklab,var(--muted-foreground)_60%,var(--background))]"
             strokeWidth={0.75}
