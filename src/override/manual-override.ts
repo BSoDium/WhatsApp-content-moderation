@@ -11,7 +11,7 @@ type OverrideCommand = 'pause' | 'resume' | 'unblock' | 'reset-strikes';
 const logger = createLogger('manual-override');
 
 /**
- * Creates the pause/status/unblock routines behind issue #9 (manual
+ * Creates the pause/status/unblock/reset-strikes routines behind issue #9 (manual
  * override — see docs/decisions.md "Manual override channel (issue #9)").
  * This module is the control primitives only: it doesn't listen for or
  * parse anything itself. The issue originally called for driving these via
@@ -85,6 +85,7 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
         resetStrikes(contactId);
         resetCallState(contactId);
         logger.info({ contactId }, 'strikes reset via manual override');
+        emitControlEvent('roster');
         return 'Strikes reset.';
 
       case 'unblock': {
