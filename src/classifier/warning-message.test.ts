@@ -116,3 +116,11 @@ test('fails open when the model refuses instead of writing a warning', async () 
   assert.equal(result.ok, false);
   assert.match(result.error, /refused/);
 });
+
+test('also treats a refusal written with a typographic apostrophe as a refusal', async () => {
+  const client = fakeClient('I can’t write a message that uses insulting language.');
+
+  const result = await generateWarningMessage(INPUT, { client });
+
+  assert.equal(result.ok, false);
+});

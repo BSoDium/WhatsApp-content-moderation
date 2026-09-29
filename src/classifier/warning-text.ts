@@ -14,7 +14,7 @@ export function sanitizeWarning(raw: string, maxLength: number): string {
   return `${unquoted.slice(0, Math.max(maxLength - 1, 0)).trimEnd()}…`;
 }
 
-const REFUSAL_PATTERN = /^(i can(?:no|')t|i cannot|i(?:'m| am) (?:sorry|unable|not able)|i won'?t|sorry\b|je ne peux pas|je suis désolé|désolé)/i;
+const REFUSAL_PATTERN = /^(i can(?:no|['’])t|i cannot|i(?:['’]m| am) (?:sorry|unable|not able|not going)|i won['’]?t|sorry\b|je ne peux pas|je ne vais pas|je suis désolé|désolé)/i;
 
 // A model that balks at the flagged text answers with a refusal, which is non-empty and would otherwise be sent to the contact as the warning.
 export function looksLikeRefusal(text: string): boolean {

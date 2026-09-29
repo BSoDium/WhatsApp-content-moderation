@@ -1574,3 +1574,44 @@ message-strike machinery.
   shape and that a rejected call actually stops ringing, the same way
   `test-block-unblock.ts` validates block/unblock — see README
   "Validating nuisance-call handling".
+
+## Warning generation must not see the conversation
+
+The first warnings sent to a real contact went wrong in two ways on
+`llama3.2:3b`. Shown a slur, the model refused ("I can't fulfill this
+request.") and, because any non-empty output counted as success, that refusal
+was sent to the contact as the warning. Shown an argument about a family
+member, it joined in and took a side, which would have escalated the
+conversation the warning was meant to stop.
+
+**Chosen: the warning model never sees the flagged text.** A separate
+`detectLanguage` call (`src/classifier/language.ts`) reads the message and
+returns one name from a fixed list, enforced both by a schema enum and by a
+check on the way out; the warning prompt is then built from that language and
+the strike counts alone, and tells the model it has no knowledge of the
+conversation. The classifier's category and reason are no longer passed on
+either, since a reason like "mentions the mother" is enough to invite
+commentary. Applies to nuisance-call warnings too, which used to show the
+model the contact's recent messages.
+
+*Rejected: rewording the prompt.* Telling the model not to quote the message
+made it echo the insult back; telling it to respond in the message's language
+without repeating it did the same. As long as the text is in the prompt, a 3B
+model refuses or repeats it.
+
+*The language name is an allow-list, not free text.* It is interpolated into
+the warning model's system prompt, and its source is attacker-controlled
+input, so a free-text answer would be a prompt-injection channel. A message
+in a language outside the list is decoded to the closest listed one (a Basque
+message was answered in English), which is a wrong-language warning, not a
+failure; extend `LANGUAGES` if a contact needs one.
+
+**Refusals fail open.** `looksLikeRefusal` matches the common English and
+French refusal openings and turns them into `{ ok: false }`, so the existing
+static-fallback path runs. It is a heuristic on the start of the output, not a
+guarantee, which is why the prompt change is the primary fix.
+
+**Cost: one extra model call per warning.** Each call gets its own
+`WARNING_TIMEOUT_MS`, so the worst case before falling back is twice that.
+Language detection reuses the same model, which is already loaded, so on the
+reference hardware it is the cheaper of the two calls.

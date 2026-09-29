@@ -114,7 +114,7 @@ A larger model follows abstract rules better; change it in Settings, but measure
 
 ### Warning messages
 
-The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it names the actual category/reason the message was flagged for and tells the contact plainly that an automated moderation system is watching the chat and will block them if it continues. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if generation fails.
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is generated per violation, not a fixed string: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and how many strikes remain before a block. The warning model never sees the flagged message or the classifier's reason — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
 
 ### Moderation pipeline and block/unblock scheduler
 

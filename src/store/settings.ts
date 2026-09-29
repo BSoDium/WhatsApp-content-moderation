@@ -83,7 +83,7 @@ export const SETTINGS: readonly SettingDef[] = [
     key: 'WARNING_TIMEOUT_MS',
     section: 'warning',
     label: 'Warning timeout (ms)',
-    description: 'How long to wait for a generated warning before falling back to the static message below.',
+    description: 'How long to wait for each model call while generating a warning (language detection, then the warning itself) before falling back to the static message below.',
     type: 'int',
     default: '90000',
     min: 1,

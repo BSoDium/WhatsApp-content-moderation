@@ -84,7 +84,7 @@ function App() {
     initialLoadComplete,
   } = useControlData(initialUrlState.contactId);
   const { meta, settled: metaSettled } = useMeta();
-  const shadowMode = useShadowMode();
+  const { shadowMode, settled: shadowModeSettled } = useShadowMode();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [skipInitialPanelAnimation, setSkipInitialPanelAnimation] = useState(initialUrlState.openPanel !== null);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
@@ -169,7 +169,7 @@ function App() {
 
   const moveTransition = reduceMotion ? INSTANT_TRANSITION : MOVE_TRANSITION;
   // Banners present with the first data are part of the settled layout; only later ones animate.
-  const initialDataSettled = contactsLoaded && metaSettled && shadowMode !== null;
+  const initialDataSettled = contactsLoaded && metaSettled && shadowModeSettled;
   const fadeTransition = reduceMotion ? INSTANT_TRANSITION : FADE_TRANSITION;
   const bannerTransition = initialDataSettled ? fadeTransition : INSTANT_TRANSITION;
 

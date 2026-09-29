@@ -4,9 +4,10 @@ import type { Setting } from './types';
 
 const SHADOW_MODE_KEY = 'SHADOW_MODE';
 
-// null until the first response, so the banner never flashes on for a deployment that has it off.
-export function useShadowMode(): boolean | null {
-  const [shadowMode, setShadowMode] = useState<boolean | null>(null);
+// `shadowMode` is false until the first response, so the banner never flashes on for a deployment that has it off.
+export function useShadowMode(): { shadowMode: boolean; settled: boolean } {
+  const [shadowMode, setShadowMode] = useState(false);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -17,7 +18,10 @@ export function useShadowMode(): boolean | null {
           const setting = settings.find((s) => s.key === SHADOW_MODE_KEY);
           if (!cancelled && setting) setShadowMode(setting.value === '1');
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setSettled(true);
+        });
     }
 
     refresh();
@@ -31,5 +35,5 @@ export function useShadowMode(): boolean | null {
     };
   }, []);
 
-  return shadowMode;
+  return { shadowMode, settled };
 }
