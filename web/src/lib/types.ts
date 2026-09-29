@@ -73,6 +73,7 @@ export type AuditAction =
   | 'delete+warn'
   | 'delete'
   | 'warning_sent'
+  | 'outgoing'
   | 'classifier_error'
   | 'action_failed'
   | 'shadow'

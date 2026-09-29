@@ -1,5 +1,6 @@
 import { createLogger } from '../cli/logger.ts';
 import { classifyMessage } from '../classifier/classifier.ts';
+import type { ConversationMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike, decayStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog, getLastActionAt } from '../store/audit-log.ts';
@@ -7,7 +8,7 @@ import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { maybeBlockContact } from './escalation.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
-import type { IncomingMessage } from '../types.ts';
+import type { Classification, IncomingMessage } from '../types.ts';
 
 interface Burst {
   contactId: string;
@@ -28,8 +29,6 @@ interface BurstActions {
   isPaused?: (contactId: string) => boolean;
 }
 
-type ConversationMessage = { from: 'me' | 'them'; text: string };
-
 const logger = createLogger('pipeline');
 
 const WARNING_SENT_ACTION = 'warning_sent';
@@ -37,7 +36,11 @@ const WARNING_SENT_ACTION = 'warning_sent';
 function loadHistory(contactId: string): ConversationMessage[] {
   return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
     .reverse()
-    .map((row) => ({ from: row.direction === 'me' ? 'me' : 'them', text: row.message }));
+    .map((row) => ({
+      from: row.direction === 'me' ? 'me' : 'them',
+      text: row.message,
+      automated: row.action === WARNING_SENT_ACTION,
+    }));
 }
 
 // Per-contact promise chain so two bursts for the same contact never run handleBurst concurrently (see handleBurst's own JSDoc below).
@@ -145,23 +148,27 @@ async function runBurst(
       continue;
     }
 
+    // Stamped with the message's own time, not the time classification finished, so a slow classifier can't file it after a reply the user sent in the meantime.
+    const logIncoming = (classification: Classification, action: string) =>
+      logMessage({ contactId, direction: 'them', message: text, classification, action, createdAt: timestamp });
+
     const classification = await classify({ message: text, history, contactContext });
     history.push({ from: 'them', text });
 
     if (!classification.ok) {
       logger.warn({ contactId, error: classification.error }, 'classification failed; fail-open, no action taken');
-      logMessage({ contactId, direction: 'them', message: text, classification, action: 'classifier_error' });
+      logIncoming(classification, 'classifier_error');
       continue;
     }
 
     if (getBoolSetting('SHADOW_MODE')) {
-      logMessage({ contactId, direction: 'them', message: text, classification, action: 'shadow' });
+      logIncoming(classification, 'shadow');
       continue;
     }
 
     if (!classification.flagged) {
       sawPassed = true;
-      logMessage({ contactId, direction: 'them', message: text, classification, action: 'none' });
+      logIncoming(classification, 'none');
       continue;
     }
 
@@ -172,10 +179,10 @@ async function runBurst(
         await deleteForMe(contactId, key, timestamp);
       } catch (err) {
         logger.error({ contactId, deleteError: String(err) }, 'deleteForMe failed');
-        logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete_failed' });
+        logIncoming(classification, 'delete_failed');
         continue;
       }
-      logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete' });
+      logIncoming(classification, 'delete');
       continue;
     }
 
@@ -209,19 +216,13 @@ async function runBurst(
         },
         'deleteForMe/sendWarning failed',
       );
-      logMessage({
-        contactId,
-        direction: 'them',
-        message: text,
-        classification,
-        action: deleteOutcome.status === 'rejected' ? 'delete_failed' : 'warn_failed',
-      });
+      logIncoming(classification, deleteOutcome.status === 'rejected' ? 'delete_failed' : 'warn_failed');
       continue;
     }
 
     strikeCount = recordStrike(contactId);
     incidentOpen = true;
-    logMessage({ contactId, direction: 'them', message: text, classification, action: 'delete+warn' });
+    logIncoming(classification, 'delete+warn');
     logMessage({
       contactId,
       direction: 'me',
@@ -229,7 +230,7 @@ async function runBurst(
       classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
       action: WARNING_SENT_ACTION,
     });
-    history.push({ from: 'me', text: warningText });
+    history.push({ from: 'me', text: warningText, automated: true });
 
     if (!isBlocked) {
       isBlocked = await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);

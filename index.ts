@@ -6,6 +6,7 @@ import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.t
 import { handleCallEvent, pendingCallEvents } from './src/pipeline/call-pipeline.ts';
 import { startUnblockScheduler } from './src/pipeline/unblock-scheduler.ts';
 import { extractIncomingMessage } from './src/pipeline/incoming-message.ts';
+import { extractOutgoingMessage, recordOutgoingMessage } from './src/pipeline/outgoing-message.ts';
 import { createManualOverride } from './src/override/manual-override.ts';
 import { createContactDirectory, canonicalContactId, canonicalMessageContactId } from './src/whatsapp/contact-directory.ts';
 import { attachBlocklistSync } from './src/whatsapp/blocklist-sync.ts';
@@ -165,7 +166,13 @@ async function start() {
           if (!contactId || !isMonitored(contactId) || manualOverride.isPaused(contactId)) continue;
 
           const incoming = extractIncomingMessage(msg, ALLOW_SELF, type);
-          if (incoming) buffer.push(contactId, incoming);
+          if (incoming) {
+            buffer.push(contactId, incoming);
+            continue;
+          }
+
+          const outgoing = extractOutgoingMessage(msg, type);
+          if (outgoing) recordOutgoingMessage(contactId, outgoing);
         }
       });
       s.ev.on('call', (calls) => {

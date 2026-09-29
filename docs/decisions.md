@@ -103,6 +103,29 @@ explicitly if/when multimodal classification is worth the added complexity
 and (for a CPU-only host) the added inference cost; don't silently expand
 scope to cover media without deciding this again first.
 
+## The user's own messages are stored as classifier context
+
+The classifier used to see only the contact's side of a chat, so banter
+("you clown" answered by "lol shut up") looked one-sided and got flagged.
+Text messages the user sends to a monitored contact from their own phone are
+now logged to the audit log (`direction: 'me'`, action `outgoing`, never
+classified or acted on) so history reads as a real two-sided conversation.
+
+- **Only live `notify` deliveries are recorded.** Baileys tags this
+  socket's own sends — the bot's warning replies — as `append`, so the same
+  `type` guard that keeps `extractIncomingMessage` from re-classifying our
+  warnings also keeps them from being recorded as the user's words. Messages
+  replayed while the app was offline arrive as `append` and are skipped.
+- **Warnings are labeled apart in the prompt** (`Me (automated warning, not
+  written by me)`), since they share `direction: 'me'` with the user's own
+  messages.
+- **Rows carry the message's own timestamp**, not the time they were logged,
+  so a slow CPU-only classification finishing after the user's reply can't
+  reorder the history.
+- **Privacy cost:** the user's side of every monitored chat now sits in
+  `*.sqlite*` (already gitignored) alongside the contact's. Rows are only
+  written for contacts on the roster, and only text.
+
 ## Manual override channel (issue #9)
 
 The pause/status/unblock routines exist (`src/override/manual-override.ts`),
