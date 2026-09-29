@@ -5,16 +5,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ActionBadge } from './ActionBadge';
-import { ACTION_FILTER_OPTIONS, actionMeta, formatCategory, formatTimestamp } from '@/lib/activity';
+import { ActivityRow, WIDE_COLUMNS_HIDDEN, WIDE_COLUMNS_SHOWN } from './ActivityRow';
+import { ACTION_FILTER_OPTIONS, actionMeta } from '@/lib/activity';
 import type { AuditLogEntry, Contact } from '@/lib/types';
 
 const ALL_CONTACTS = 'all';
 const ALL_ACTIONS = 'all';
 const SKELETON_ROW_COUNT = 6;
-// Keyed to the table's own width, not the viewport: the sheet is resizable, so a wide screen can still host a narrow table.
-const WIDE_COLUMNS_SHOWN = '@[44rem]:table-cell';
-const WIDE_COLUMNS_HIDDEN = '@[44rem]:hidden';
 
 function FullWidthCell({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
@@ -131,33 +128,7 @@ export function MessageExplorer({
               </TableRow>
             )}
 
-            {!loading &&
-              entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className={cn('hidden truncate px-4 text-xs text-muted-foreground', WIDE_COLUMNS_SHOWN)} title={formatTimestamp(entry.createdAt)}>
-                    {formatTimestamp(entry.createdAt)}
-                  </TableCell>
-                  <TableCell className={cn('hidden truncate px-4', WIDE_COLUMNS_SHOWN)} title={entry.contactName}>
-                    {entry.contactName}
-                  </TableCell>
-                  <TableCell className="overflow-hidden px-4">
-                    <ActionBadge action={entry.action} />
-                  </TableCell>
-                  <TableCell className="min-w-0 overflow-hidden px-4 whitespace-normal">
-                    <p className={cn('truncate text-xs text-muted-foreground', WIDE_COLUMNS_HIDDEN)}>
-                      {entry.contactName} · {formatTimestamp(entry.createdAt)}
-                    </p>
-                    <p className="line-clamp-2 break-words">{entry.message}</p>
-                    {entry.reason && (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground" title={entry.reason}>
-                        {entry.category && entry.category !== 'none' ? `${formatCategory(entry.category)} — ` : ''}
-                        {entry.reason}
-                      </p>
-                    )}
-                    {entry.error && <p className="mt-0.5 truncate text-xs text-destructive">{entry.error}</p>}
-                  </TableCell>
-                </TableRow>
-              ))}
+            {!loading && entries.map((entry) => <ActivityRow key={entry.id} entry={entry} />)}
           </TableBody>
         </Table>
       </div>
