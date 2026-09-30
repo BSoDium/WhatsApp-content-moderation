@@ -1708,7 +1708,7 @@ nothing. The same applies to a burst arriving within `STRIKE_COOLDOWN_MS`
 contact drip-feeding messages further apart than the buffer window. A cooldown
 that expires lets the next violation strike again, so sustained harassment
 still escalates to a block, roughly one strike per cooldown. A burst with no
-flagged message decays one strike in total.
+flagged message decayed one strike in total (superseded, see "Strikes decay with time, not with clean messages").
 
 *The cooldown is derived from the audit log, not stored.* `warning_sent` is
 written exactly when a strike is recorded, so `getLastActionAt` gives the
@@ -1788,3 +1788,13 @@ A block stays "active" in the `blocks` table until this app resolves it, so a co
 **Fails open.** An unconfirmed unblock is never recorded: a contact whose identity can't be matched against the list (no known `@lid`), a failed fetch, and a block younger than a minute (WhatsApp may not list it yet) are all left as they are. Both the directory's `@lid` and WhatsApp's own lid mapping count as the contact's identities, so a stale directory entry can't close a block that is still in force.
 
 Strikes are untouched: unblocking from the phone doesn't reset them, same as the manual Unblock button, so the next flag can re-block straight away.
+
+## Strikes decay with time, not with clean messages
+
+A clean message used to decay one strike, and an answered call did the same for call strikes. In production a deleted message earned strike 1, and the next clean message seconds later, a separate burst, took it back to 0: a contact who mixes ordinary chat with violations could never reach the threshold, and the contact page showed zero strikes right after a warning had gone out.
+
+**Chosen: one strike is forgiven per `STRIKE_DECAY_MS` (default 24h) since the contact last earned one**, for message and call strikes alike; 0 disables decay. It is computed on read in `src/store/strike-decay.ts` from the row's `updated_at`, so nothing runs in the background and there is no schema change. A new strike restarts the timer, so sustained harassment never decays. Clean messages and answered calls no longer touch strikes; an answered call still resets the unanswered-call count. For call strikes, `updated_at` is therefore only written by a call strike or a reset, never by an unanswered call.
+
+Deploying it starts decay for existing rows from their `updated_at`, so a strike left untouched for more than a window disappears on the first read.
+
+*Rejected: skipping decay only during the strike cooldown.* After five minutes any clean message would still wipe a strike, so escalation stays out of reach.

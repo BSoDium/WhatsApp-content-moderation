@@ -1,7 +1,7 @@
 // Manual smoke test for the SQLite store — see README "Testing each layer in isolation" (npm run store:test).
 
 import { rmSync } from 'node:fs';
-import { getStrikeCount, recordStrike, decayStrike } from './strikes.ts';
+import { getStrikeCount, recordStrike } from './strikes.ts';
 import { createBlock, getActiveBlock, getExpiredBlocks, markUnblocked } from './blocks.ts';
 import { logMessage, getAuditLog } from './audit-log.ts';
 
@@ -12,8 +12,6 @@ console.log('strikes:', getStrikeCount(CONTACT));
 recordStrike(CONTACT);
 recordStrike(CONTACT);
 console.log('after 2 strikes:', getStrikeCount(CONTACT));
-decayStrike(CONTACT);
-console.log('after 1 decay:', getStrikeCount(CONTACT));
 
 createBlock(CONTACT, Date.now() - 1000);
 const active = getActiveBlock(CONTACT);

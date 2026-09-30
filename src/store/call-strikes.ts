@@ -3,6 +3,8 @@ import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { excluded } from './excluded.ts';
 import { callStrikes } from './schema.ts';
+import { getNumberSetting } from './settings.ts';
+import { settleStrikes } from './strike-decay.ts';
 
 export interface CallState {
   unansweredCount: number;
@@ -13,15 +15,19 @@ const EMPTY_STATE: CallState = { unansweredCount: 0, strikeCount: 0 };
 
 /**
  * Returns a contact's current nuisance-call state (zeroes if they have no
- * row yet).
+ * row yet). The strike count is net of time-based decay, computed on read
+ * from `updated_at` — the time of the last call strike, which nothing else
+ * in this file moves.
  */
 export function getCallState(contactId: string): CallState {
   const row = getOrm()
-    .select({ unanswered_count: callStrikes.unanswered_count, strike_count: callStrikes.strike_count })
+    .select({ unanswered_count: callStrikes.unanswered_count, strike_count: callStrikes.strike_count, updated_at: callStrikes.updated_at })
     .from(callStrikes)
     .where(eq(callStrikes.contact_id, contactId))
     .get();
-  return row ? { unansweredCount: row.unanswered_count, strikeCount: row.strike_count } : EMPTY_STATE;
+  if (!row) return EMPTY_STATE;
+  const { count } = settleStrikes({ count: row.strike_count, updatedAt: row.updated_at }, Date.now(), getNumberSetting('STRIKE_DECAY_MS'));
+  return { unansweredCount: row.unanswered_count, strikeCount: count };
 }
 
 /**
@@ -43,7 +49,7 @@ export function recordUnansweredCall(contactId: string): number {
     .values({ contact_id: contactId, unanswered_count: 1, strike_count: 0, updated_at: Date.now() })
     .onConflictDoUpdate({
       target: callStrikes.contact_id,
-      set: { unanswered_count: sql`${callStrikes.unanswered_count} + 1`, updated_at: excluded(callStrikes.updated_at) },
+      set: { unanswered_count: sql`${callStrikes.unanswered_count} + 1` },
     })
     .returning({ unanswered_count: callStrikes.unanswered_count })
     .get();
@@ -53,41 +59,30 @@ export function recordUnansweredCall(contactId: string): number {
 
 /**
  * Records a nuisance call that was rejected and/or warned: increments the
- * contact's call-strike count by one, toward NUISANCE_CALL_STRIKE_THRESHOLD.
+ * contact's decayed call-strike count by one, toward
+ * NUISANCE_CALL_STRIKE_THRESHOLD, and restarts the decay timer.
  */
 export function recordCallStrike(contactId: string): number {
-  const row = getOrm()
+  const strikeCount = getCallState(contactId).strikeCount + 1;
+  getOrm()
     .insert(callStrikes)
-    .values({ contact_id: contactId, unanswered_count: 0, strike_count: 1, updated_at: Date.now() })
-    .onConflictDoUpdate({
-      target: callStrikes.contact_id,
-      set: { strike_count: sql`${callStrikes.strike_count} + 1`, updated_at: excluded(callStrikes.updated_at) },
-    })
-    .returning({ strike_count: callStrikes.strike_count })
-    .get();
+    .values({ contact_id: contactId, unanswered_count: 0, strike_count: strikeCount, updated_at: Date.now() })
+    .onConflictDoUpdate({ target: callStrikes.contact_id, set: { strike_count: strikeCount, updated_at: excluded(callStrikes.updated_at) } })
+    .run();
   emitControlEvent('roster');
-  return row.strike_count;
+  return strikeCount;
 }
 
 /**
  * Records an answered call: resets the unanswered-call count to zero (the
- * contact got through this time) and decays the call-strike count by one,
- * floored at zero — mirrors src/store/strikes.ts's decayStrike.
+ * contact got through this time). Strikes are untouched — they only decay
+ * with time, see strike-decay.ts.
  */
-export function recordAnsweredCall(contactId: string): CallState {
-  const row = getOrm()
+export function recordAnsweredCall(contactId: string): void {
+  getOrm()
     .insert(callStrikes)
     .values({ contact_id: contactId, unanswered_count: 0, strike_count: 0, updated_at: Date.now() })
-    .onConflictDoUpdate({
-      target: callStrikes.contact_id,
-      set: {
-        unanswered_count: 0,
-        strike_count: sql`MAX(${callStrikes.strike_count} - 1, 0)`,
-        updated_at: excluded(callStrikes.updated_at),
-      },
-    })
-    .returning({ unanswered_count: callStrikes.unanswered_count, strike_count: callStrikes.strike_count })
-    .get();
+    .onConflictDoUpdate({ target: callStrikes.contact_id, set: { unanswered_count: 0 } })
+    .run();
   emitControlEvent('roster');
-  return { unansweredCount: row.unanswered_count, strikeCount: row.strike_count };
 }
