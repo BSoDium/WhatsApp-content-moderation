@@ -28,14 +28,14 @@ got `HANDOFF.md` retired in the first place.
 6b. [#29](https://github.com/BSoDium/WhatsApp-content-moderation/issues/29) —
    the actual control surface: a Tailscale-authenticated web app
    (`src/web/`) driving #9's routines — see `docs/decisions.md` "Web
-   control app: Tailscale identity headers". **Built, not yet validated
-   against a live `tailscale serve`** — see README "Web control app".
+   control app: Tailscale identity headers". **Done**, and verified live
+   against a Tailscale Service — see README "Web control app".
 7. [#10](https://github.com/BSoDium/WhatsApp-content-moderation/issues/10) —
    Docker packaging for the reference-hardware deployment.
 
 ## Before trusting this with a real contact
 
-- Replace the placeholder `config/policy.md` with the real policy.
+- Replace the placeholder policy with a real one in the control app's Policy panel (it lives in SQLite now, not `config/policy.md`).
 - Re-run `npm run classifier:test` against known cases on the actual
   self-host machine, not just a dev machine — see README "Reference
   hardware" for why this matters and isn't just a formality.

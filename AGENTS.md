@@ -71,7 +71,7 @@ diff in this repo.
   them in feature components under `web/src/components/`.
 - `web/src/demo/` is the fake backend behind the Vercel live demo
   (`web/demo.html`). Nothing in `main.tsx` or the real components may import
-  from it, so it never reaches `web/dist/`; keep `src/demo/settings.ts` in
+  from it, so it never reaches `web/dist/`; keep `web/src/demo/settings.ts` in
   step with `src/store/settings.ts`, and keep every name, message and number
   in it fictional.
 - Every new component gets a Storybook story next to it, and any new
