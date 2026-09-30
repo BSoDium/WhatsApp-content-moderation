@@ -1,6 +1,7 @@
 import { fn } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FIXTURE_CONTACTS, FIXTURE_ROSTER } from '@/lib/fixtures';
+import { DEFAULT_STRIKE_LIMITS } from '@/lib/strikeLimits';
 import { ContactDetailPanel } from './ContactDetailPanel';
 
 const meta = {
@@ -14,6 +15,7 @@ const meta = {
     ),
   ],
   args: {
+    strikeLimits: DEFAULT_STRIKE_LIMITS,
     onClose: fn(),
     onToggleMonitor: fn(async () => {}),
     onRunCommand: fn(async () => undefined),

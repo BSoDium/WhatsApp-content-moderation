@@ -123,7 +123,7 @@ test('a contact with no roster context passes contactContext: undefined to class
   assert.equal(seenInputs[0].contactContext, undefined);
 });
 
-test('a passed message decays the strike count and logs action: none', async () => {
+test('a passed message logs action: none and leaves the strike count alone', async () => {
   const contact = 'bob@s.whatsapp.net';
 
   const { strikeCount } = await handleBurst(burst(contact, ['hey there']), { ...noopActions, classify: okPass });
@@ -420,11 +420,11 @@ test('a failing deleteForMe on a cooldown-covered message logs delete_failed and
   }
 });
 
-test('a clean burst of several messages decays one strike, not one per message', async () => {
+test('a clean burst after a violation does not erase its strike', async () => {
   const contact = 'decay@s.whatsapp.net';
   await handleTwoViolations(contact, { ...noopActions, classify: okFlag });
 
   const { strikeCount } = await handleBurst(burst(contact, ['ok', 'fine', 'thanks']), { ...noopActions, classify: okPass });
 
-  assert.equal(strikeCount, 1);
+  assert.equal(strikeCount, 2);
 });

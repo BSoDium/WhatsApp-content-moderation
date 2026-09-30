@@ -157,7 +157,7 @@ const ALICE_CONTEXT = 'Alice is my sister; banter is fine.';
 const ALICE_PHOTO = 'https://pps.whatsapp.net/v/alice.jpg';
 
 const CORE_ROWS = [
-  `INSERT INTO strikes (contact_id, count, updated_at) VALUES ('${ALICE}', 2, 1700000000000), ('${BOB}', 0, 1700000000500)`,
+  `INSERT INTO strikes (contact_id, count, updated_at) VALUES ('${ALICE}', 2, ${Date.now()}), ('${BOB}', 0, 1700000000500)`,
   `INSERT INTO blocks (contact_id, blocked_at, unblock_at, unblocked_at) VALUES
     ('${ALICE}', 1700000001000, 1700086401000, NULL),
     ('carol@s.whatsapp.net', 1690000000000, 1690086400000, 1690086500000)`,

@@ -10,11 +10,14 @@ import { SelfModerationNotice } from './SelfModerationNotice';
 import { SettingRow } from './SettingRow';
 import { moderationState, relativeTime } from '@/lib/contact';
 import { formatTimestamp } from '@/lib/activity';
+import { formatDuration } from '@/lib/duration';
+import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, OverrideCommand, RosterEntry } from '@/lib/types';
 
 interface ContactDetailPanelProps {
   contact: Contact | null;
   entry: RosterEntry | undefined;
+  strikeLimits: StrikeLimits;
   onClose: () => void;
   onToggleMonitor: (contactId: string, monitored: boolean) => Promise<void>;
   onRunCommand: (contactId: string, action: OverrideCommand) => Promise<string | undefined>;
@@ -89,12 +92,12 @@ function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThr
 
   const description =
     thresholdOverride === null
-      ? `Unanswered calls tolerated before further calls are flagged. Empty uses the global default (currently ${effectiveThreshold}).`
-      : 'Unanswered calls tolerated before further calls are flagged. Empty uses the global default.';
+      ? `Unanswered calls tolerated before further calls count as nuisance. Empty uses the global default (currently ${effectiveThreshold}).`
+      : 'Unanswered calls tolerated before further calls count as nuisance. Empty uses the global default.';
 
   return (
     <SettingRow
-      title="Nuisance call threshold"
+      title="Unanswered call threshold"
       description={description}
       control={
         <div className="flex items-center gap-2">
@@ -123,7 +126,7 @@ function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThr
 
 // Mounted with `key={contact.id}` so `message` resets on a new selection.
 export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
-  { contact, entry, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onViewHistory },
+  { contact, entry, strikeLimits, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onViewHistory },
   ref,
 ) {
   const [message, setMessage] = useState('');
@@ -183,7 +186,10 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
   const contactId = contact.id;
   const monitored = Boolean(entry);
   const { strikeCount, block } = moderationState(contact, entry);
-  const hasStrikes = strikeCount > 0 || (entry?.callNuisance.strikeCount ?? 0) > 0;
+  const callStrikeCount = entry?.callNuisance.strikeCount ?? 0;
+  const unansweredCount = entry?.callNuisance.unansweredCount ?? 0;
+  const hasStrikes = strikeCount > 0 || callStrikeCount > 0 || unansweredCount > 0;
+  const decayDescription = strikeLimits.decayMs > 0 ? `Each counter drops by one after ${formatDuration(strikeLimits.decayMs)} without a new strike.` : 'Strikes never expire.';
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
 
@@ -245,21 +251,30 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
           <section className="rounded-xl border border-border bg-card px-4">
             <SettingRow
-              title="Strikes"
-              description={hasStrikes ? 'Reset after unblocking. Also clears call strikes.' : undefined}
+              title="Message strikes"
+              description={`One per flagged message or burst of messages. ${decayDescription}`}
+              control={<span className="tabular-nums">{strikeCount} of {strikeLimits.messageThreshold}</span>}
+            />
+            <Separator />
+            <SettingRow
+              title="Call strikes"
+              description="One per nuisance call, counted separately from message strikes."
+              control={<span className="tabular-nums">{callStrikeCount} of {strikeLimits.callThreshold}</span>}
+            />
+            <Separator />
+            <SettingRow
+              title="Reset counters"
+              description="Sets message strikes, call strikes and unanswered calls back to zero."
               control={
-                <div className="flex items-center gap-3">
-                  <span className="tabular-nums">{strikeCount}</span>
-                  <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
-                    Reset
-                  </Button>
-                </div>
+                <Button variant="outline" size="sm" disabled={!hasStrikes || pending.has('reset-strikes')} onClick={() => withPending('reset-strikes', () => runAndReport('reset-strikes'))}>
+                  Reset
+                </Button>
               }
             />
             <Separator />
             <SettingRow
               title="Block"
-              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : undefined}
+              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : entry?.escalationEnabled === false ? 'Escalation is off, so strikes never block this contact.' : 'Blocked when either strike counter reaches its limit.'}
               control={
                 block ? (
                   <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
@@ -285,13 +300,9 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
 
           <section className="rounded-xl border border-border bg-card px-4">
             <SettingRow
-              title="Nuisance calls"
-              description="Call strikes toward auto-block, and unanswered calls since the last one that got through."
-              control={
-                <span className="tabular-nums">
-                  {entry?.callNuisance.strikeCount ?? 0} strikes · {entry?.callNuisance.unansweredCount ?? 0} unanswered
-                </span>
-              }
+              title="Unanswered calls"
+              description="Calls that rang out since the last one you answered. Past the threshold below, further calls are rejected and earn a call strike."
+              control={<span className="tabular-nums">{unansweredCount}</span>}
             />
             <Separator />
             <CallNuisanceThresholdField
@@ -318,7 +329,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
             <Separator />
             <SettingRow
               title="Escalation"
-              description="Automatically block this contact after too many strikes."
+              description="Automatically block this contact when message strikes or call strikes reach their limit."
               control={
                 <Switch
                   checked={entry?.escalationEnabled ?? true}

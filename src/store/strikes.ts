@@ -1,31 +1,40 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { excluded } from './excluded.ts';
 import { strikes } from './schema.ts';
+import { getNumberSetting } from './settings.ts';
+import { settleStrikes } from './strike-decay.ts';
+import type { DecayableStrikes } from './strike-decay.ts';
 
-/**
- * Returns a contact's current strike count (0 if they have no row yet).
- */
-export function getStrikeCount(contactId: string): number {
-  const row = getOrm().select({ count: strikes.count }).from(strikes).where(eq(strikes.contact_id, contactId)).get();
-  return row?.count ?? 0;
+function readSettled(contactId: string): DecayableStrikes {
+  const row = getOrm().select({ count: strikes.count, updated_at: strikes.updated_at }).from(strikes).where(eq(strikes.contact_id, contactId)).get();
+  if (!row) return { count: 0, updatedAt: 0 };
+  return settleStrikes({ count: row.count, updatedAt: row.updated_at }, Date.now(), getNumberSetting('STRIKE_DECAY_MS'));
 }
 
 /**
- * Records a flagged message: increments the contact's strike count by one.
+ * Returns a contact's current strike count, net of time-based decay (0 if
+ * they have no row yet). Decay is computed on read from `updated_at`, the
+ * time of the last strike, so nothing has to run in the background.
+ */
+export function getStrikeCount(contactId: string): number {
+  return readSettled(contactId).count;
+}
+
+/**
+ * Records a flagged message: increments the contact's decayed strike count by
+ * one and restarts the decay timer.
  */
 export function recordStrike(contactId: string): number {
+  const count = readSettled(contactId).count + 1;
   getOrm()
     .insert(strikes)
-    .values({ contact_id: contactId, count: 1, updated_at: Date.now() })
-    .onConflictDoUpdate({
-      target: strikes.contact_id,
-      set: { count: sql`${strikes.count} + 1`, updated_at: excluded(strikes.updated_at) },
-    })
+    .values({ contact_id: contactId, count, updated_at: Date.now() })
+    .onConflictDoUpdate({ target: strikes.contact_id, set: { count, updated_at: excluded(strikes.updated_at) } })
     .run();
   emitControlEvent('roster');
-  return getStrikeCount(contactId);
+  return count;
 }
 
 /**
@@ -35,21 +44,4 @@ export function recordStrike(contactId: string): number {
  */
 export function resetStrikes(contactId: string): void {
   getOrm().update(strikes).set({ count: 0, updated_at: Date.now() }).where(eq(strikes.contact_id, contactId)).run();
-}
-
-/**
- * Records a passed (non-flagged) message: decays the contact's strike count
- * by one, floored at zero — see docs/roadmap.md issue #5.
- */
-export function decayStrike(contactId: string): number {
-  getOrm()
-    .insert(strikes)
-    .values({ contact_id: contactId, count: 0, updated_at: Date.now() })
-    .onConflictDoUpdate({
-      target: strikes.contact_id,
-      set: { count: sql`MAX(${strikes.count} - 1, 0)`, updated_at: excluded(strikes.updated_at) },
-    })
-    .run();
-  emitControlEvent('roster');
-  return getStrikeCount(contactId);
 }

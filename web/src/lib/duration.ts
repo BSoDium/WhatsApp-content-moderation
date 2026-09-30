@@ -18,3 +18,16 @@ export function formatElapsed(ms: number): string {
   }
   return parts.length > 0 ? parts.join(' ') : '0s';
 }
+
+const LONG_UNITS: Array<[string, number]> = [
+  ['day', 24 * 60 * 60 * SECOND_MS],
+  ['hour', 60 * 60 * SECOND_MS],
+  ['minute', 60 * SECOND_MS],
+];
+
+// The largest unit that divides the value evenly ("24 hours", "5 minutes"), falling back to whole minutes, for prose rather than table cells.
+export function formatDuration(ms: number): string {
+  const [unit, size] = LONG_UNITS.find(([, unitMs]) => ms >= unitMs && ms % unitMs === 0) ?? ['minute', LONG_UNITS[2][1]];
+  const count = Math.max(1, Math.round(ms / size));
+  return `${count} ${unit}${count === 1 ? '' : 's'}`;
+}

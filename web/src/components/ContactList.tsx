@@ -6,11 +6,13 @@ import { clamp01, useScrollLinkedStyle } from '@/lib/useScrollLinkedStyle';
 import { fadeAndSlide } from '@/lib/listReorderAnimation';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { ContactRow, ContactRowSkeleton } from './ContactRow';
+import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, RosterEntry } from '@/lib/types';
 
 interface ContactListProps {
   contacts: Contact[];
   roster: RosterEntry[];
+  strikeLimits: StrikeLimits;
   selectedId: string | null;
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
@@ -32,7 +34,7 @@ const SKELETON_ROW_COUNT = 8;
 const FADE_RANGE_PX = 32;
 const SEARCH_DEBOUNCE_MS = 150;
 
-export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, stickyRef, isDesktop }: ContactListProps) {
+export function ContactList({ contacts, roster, strikeLimits, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, stickyRef, isDesktop }: ContactListProps) {
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLUListElement | null>(null);
@@ -106,6 +108,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
               selected={contact.id === selectedId}
               onSelect={onSelect}
               entry={rosterById.get(contact.id)}
+              strikeLimits={strikeLimits}
               onToggle={onToggle}
               onViewHistory={onViewHistory}
             />
@@ -120,6 +123,7 @@ export function ContactList({ contacts, roster, selectedId, onSelect, onToggle, 
               selected={contact.id === selectedId}
               onSelect={onSelect}
               entry={rosterById.get(contact.id)}
+              strikeLimits={strikeLimits}
               onToggle={onToggle}
               onViewHistory={onViewHistory}
             />
