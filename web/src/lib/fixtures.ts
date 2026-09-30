@@ -22,7 +22,7 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
     paused: false,
     strikeCount: 2,
     block: null,
-    callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+    callNuisance: { unansweredCount: 1, strikeCount: 1, threshold: 2, thresholdOverride: null },
   },
   {
     id: 'carol',
@@ -58,7 +58,7 @@ export const FIXTURE_SETTINGS: Setting[] = [
     value: '1',
     default: '1',
   },
-  { key: 'strikes.limit', section: 'strikes', label: 'Strike limit', description: 'Strikes before a contact is auto-blocked.', type: 'int', value: '3', default: '3', min: 1 },
+  { key: 'STRIKE_THRESHOLD', section: 'strikes', label: 'Strike threshold', description: 'Strikes before a block is triggered.', type: 'int', value: '3', default: '3', min: 1 },
   {
     key: 'strikes.blockHours',
     section: 'strikes',

@@ -1,17 +1,20 @@
 import { memo, useState } from 'react';
-import { History, ShieldCheck, ShieldOff } from 'lucide-react';
+import { History, MessageSquare, Phone, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { moderationState, relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
+import { StrikeCounter } from './StrikeCounter';
+import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, RosterEntry } from '@/lib/types';
 
 interface ContactRowProps {
   contact: Contact;
   monitored: boolean;
   entry: RosterEntry | undefined;
+  strikeLimits: StrikeLimits;
   selected: boolean;
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
@@ -20,16 +23,18 @@ interface ContactRowProps {
 
 const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
 const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:block';
+const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-3 text-xs text-muted-foreground @lg:flex';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
 // Memoized so a keystroke in the search box, which re-renders ContactList, doesn't re-render every row.
-export const ContactRow = memo(function ContactRow({ contact, monitored, entry, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
+export const ContactRow = memo(function ContactRow({ contact, monitored, entry, strikeLimits, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
   const label = selfBlocked ? "You can't moderate your own account" : monitored ? 'Stop moderating this contact' : 'Moderate this contact';
   const { strikeCount, block } = moderationState(contact, entry);
-  const strikeLabel = `${strikeCount} ${strikeCount === 1 ? 'strike' : 'strikes'}`;
+  const callStrikeCount = entry?.callNuisance.strikeCount ?? 0;
+  const strikeLabel = `Message strikes: ${strikeCount} of ${strikeLimits.messageThreshold}. Call strikes: ${callStrikeCount} of ${strikeLimits.callThreshold}.`;
   const blockLabel = block ? 'Blocked' : 'Not blocked';
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
@@ -55,9 +60,10 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
         </p>
         <p className="truncate text-xs text-muted-foreground">{relativeTime(contact.lastMessageAt)}</p>
       </div>
-      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground')} title={strikeLabel}>
-        {strikeLabel}
-      </p>
+      <div className={STRIKE_COLUMN} title={strikeLabel}>
+        <StrikeCounter icon={MessageSquare} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
+        <StrikeCounter icon={Phone} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
+      </div>
       <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground', block && 'font-medium text-foreground')} title={blockLabel}>
         {blockLabel}
       </p>
@@ -107,7 +113,7 @@ export function ContactRowSkeleton() {
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-44 max-w-full" />
       </div>
-      <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
+      <Skeleton className={cn(STRIKE_COLUMN, 'h-3')} />
       <Skeleton className={cn(STAT_COLUMN, 'h-3')} />
       <Skeleton className="size-10 shrink-0 rounded-lg" />
     </li>
