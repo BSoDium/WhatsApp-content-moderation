@@ -69,6 +69,11 @@ diff in this repo.
   `web/`) rather than writing it by hand, and decline any overwrite prompt for
   a component that already exists. Don't restyle the generated files; compose
   them in feature components under `web/src/components/`.
+- `web/src/demo/` is the fake backend behind the Vercel live demo
+  (`web/demo.html`). Nothing in `main.tsx` or the real components may import
+  from it, so it never reaches `web/dist/`; keep `src/demo/settings.ts` in
+  step with `src/store/settings.ts`, and keep every name, message and number
+  in it fictional.
 - Every new component gets a Storybook story next to it, and any new
   `/api/*` route it calls gets a mock route in `App.stories.tsx`.
 

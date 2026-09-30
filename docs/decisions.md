@@ -1810,3 +1810,20 @@ A clean message used to decay one strike, and an answered call did the same for 
 Deploying it starts decay for existing rows from their `updated_at`, so a strike left untouched for more than a window disappears on the first read.
 
 *Rejected: skipping decay only during the strike cooldown.* After five minutes any clean message would still wipe a strike, so escalation stays out of reach.
+
+
+## A live demo as a second Vite entry, not a mode of the real app
+
+A public demo and a source of screenshots need the control app running with believable data, but no WhatsApp session, Ollama or SQLite, and no personal data in the repo.
+
+**Chosen: a separate entry (`web/demo.html` → `web/src/demo.tsx`) that seeds an in-memory backend, patches `fetch`/`EventSource` and renders the unchanged `<App />`.** `web/vite.demo.config.ts` builds it into `web/dist-demo/`, so `web/dist/` and the container image are byte-for-byte what they were, and Vercel only needs `npm run build:demo`. The backend mirrors the real pipeline's rules (shadow mode, strike cooldown and decay, block expiry, nuisance calls) in `src/demo/engine.ts`, so toggling settings in the demo behaves like the product instead of replaying a canned script. History is generated from a fixed seed anchored to page-load time, so screenshots are reproducible apart from relative timestamps.
+
+The setting manifest in `src/demo/settings.ts` is a copy of `src/store/settings.ts`, because the frontend cannot import the backend's drizzle-bound module; a change to one needs the same change in the other.
+
+*Rejected: a `VITE_DEMO` flag in `main.tsx`.* It keeps one entry point but puts the mock behind a runtime branch in the bundle the container ships, and a forgotten flag would serve fake data from a real deployment.
+
+*Rejected: reusing Storybook's `controlDataRoutes`.* It is a handful of static fixtures; the demo needs state that evolves (strikes, blocks, new messages), which is a different shape.
+
+*Rejected: generated SVG avatars.* They looked like cartoons next to a real contact list, which defeats the point of the screenshots.
+
+*Rejected: committing downloaded portraits.* randomuser.me sources its photos from UI Faces, whose free images are for non-commercial mockups and may not be redistributed, so the demo links to randomuser.me's own URLs (3-5 KB each) instead of copying them into the repo. Shops, scam senders and unsaved numbers get no photo, and any failed load falls back to initials. The only AI-generated faces found with a clear public-domain licence (Wikimedia Commons) number about seven, too few to fill a contact list.
