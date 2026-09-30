@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:demo": "vite build --config vite.demo.config.ts",
+    "dev:demo": "vite --config vite.demo.config.ts --open /demo.html",
     "watch": "vite build --watch",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
