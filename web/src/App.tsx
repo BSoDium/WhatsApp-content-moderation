@@ -369,15 +369,15 @@ function App() {
         </motion.section>
 
         <ActivityPanel
-          key={panelSeq.activity}
+          key={`activity-${panelSeq.activity}`}
           open={openPanel === 'activity'}
           onOpenChange={(next) => (next ? showPanel('activity', activityContactId) : closePanel())}
           initialContactId={activityContactId}
           contacts={contacts}
           skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'activity'}
         />
-        <PolicyEditor key={panelSeq.policy} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'policy'} />
-        <SettingsPanel key={panelSeq.settings} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'settings'} />
+        <PolicyEditor key={`policy-${panelSeq.policy}`} open={openPanel === 'policy'} onOpenChange={(next) => (next ? showPanel('policy') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'policy'} />
+        <SettingsPanel key={`settings-${panelSeq.settings}`} open={openPanel === 'settings'} onOpenChange={(next) => (next ? showPanel('settings') : closePanel())} skipInitialAnimation={skipInitialPanelAnimation && initialUrlState.openPanel === 'settings'} />
 
         <AlertDialog
           open={pendingSelection !== undefined}
