@@ -1816,9 +1816,9 @@ Deploying it starts decay for existing rows from their `updated_at`, so a strike
 
 A public demo and a source of screenshots need the control app running with believable data, but no WhatsApp session, Ollama or SQLite, and no personal data in the repo.
 
-**Chosen: a separate entry (`web/demo.html` → `web/src/demo.tsx`) that seeds an in-memory backend, patches `fetch`/`EventSource` and renders the unchanged `<App />`.** `web/vite.demo.config.ts` builds it into `web/dist-demo/`, so `web/dist/` and the container image are byte-for-byte what they were, and Vercel only needs `npm run build:demo`. The backend mirrors the real pipeline's rules (shadow mode, strike cooldown and decay, block expiry, nuisance calls) in `src/demo/engine.ts`, so toggling settings in the demo behaves like the product instead of replaying a canned script. History is generated from a fixed seed anchored to page-load time, so screenshots are reproducible apart from relative timestamps.
+**Chosen: a separate entry (`web/demo.html` → `web/src/demo.tsx`) that seeds an in-memory backend, patches `fetch`/`EventSource` and renders the unchanged `<App />`.** `web/vite.demo.config.ts` builds it into `web/dist-demo/`, so `web/dist/` and the container image are byte-for-byte what they were, and Vercel only needs `npm run build:demo`. The backend mirrors the real pipeline's rules (shadow mode, strike cooldown and decay, block expiry, nuisance calls) in `web/src/demo/engine.ts`, so toggling settings in the demo behaves like the product instead of replaying a canned script. History is generated from a fixed seed anchored to page-load time, so screenshots are reproducible apart from relative timestamps.
 
-The setting manifest in `src/demo/settings.ts` is a copy of `src/store/settings.ts`, because the frontend cannot import the backend's drizzle-bound module; a change to one needs the same change in the other.
+The setting manifest in `web/src/demo/settings.ts` is a copy of `src/store/settings.ts`, because the frontend cannot import the backend's drizzle-bound module; a change to one needs the same change in the other.
 
 *Rejected: a `VITE_DEMO` flag in `main.tsx`.* It keeps one entry point but puts the mock behind a runtime branch in the bundle the container ships, and a forgotten flag would serve fake data from a real deployment.
 

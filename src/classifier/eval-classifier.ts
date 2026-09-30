@@ -1,4 +1,4 @@
-// Runs EVAL_CASES against a real Ollama model — see README "Testing each layer in isolation" (npm run classifier:eval).
+// Runs EVAL_CASES against a real Ollama model — see README "Development" (npm run classifier:eval).
 
 import { readFileSync } from 'node:fs';
 import { classifyMessage } from './classifier.ts';
