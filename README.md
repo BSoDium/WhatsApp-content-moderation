@@ -2,6 +2,28 @@
 
 A localised, background-hosted "digital curtain" for a personal WhatsApp account. It links to the account as a headless companion device (via [Baileys](https://github.com/WhiskeySockets/Baileys)), runs incoming messages from an operator-chosen set of monitored contacts through an LLM classifier, deletes flagged messages locally ("delete for me"), sends a warning, and temporarily blocks a contact after repeated strikes (unless that contact has escalation turned off). Repeated unanswered calls from a monitored contact are handled the same way, independently of messages: past a configurable threshold, further calls are rejected and warned, escalating to a block.
 
+## Screenshots
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.webp">
+    <img alt="The control app: moderated contacts with strike counters on the left, a contact's detailed controls on the right" src="docs/screenshots/overview-light.webp" width="900">
+  </picture>
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Activity panel with stats, most flagged categories and the searchable audit log" src="docs/screenshots/activity-dark.webp"><br><sub><b>Activity</b> — stats, flagged categories and the full audit log</sub></td>
+    <td width="50%"><img alt="Settings panel with every tunable, saved automatically" src="docs/screenshots/settings-light.webp"><br><sub><b>Settings</b> — every tunable, editable live</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Policy editor holding the plain-language moderation rules" src="docs/screenshots/policy-dark.webp"><br><sub><b>Policy</b> — the rules, in plain language</sub></td>
+    <td width="50%" align="center"><img alt="The control app on a phone" src="docs/screenshots/mobile-dark.webp" width="240"><br><sub><b>Mobile</b> — the same app, on a phone</sub></td>
+  </tr>
+</table>
+
+Every name, message and number in these is invented: they come from the [live demo](#live-demo), and `npm run --prefix web screenshots` regenerates them.
+
 ## Status
 
 **Pre-release.** The moderation pipeline, block/unblock scheduler, manual override routines, and the multi-contact web control app are all built and have been validated against real WhatsApp accounts — see [`docs/decisions.md`](docs/decisions.md) for how, and for the full design history. This has **not** been run against a real contact for real moderation yet: the moderation policy is still the placeholder default. Leave shadow mode on (the default) and review its logs before pointing this at anyone — see [`docs/roadmap.md`](docs/roadmap.md) for the remaining checklist. Nuisance-call detection is newer and, unlike the rest, hasn't yet been confirmed against a real WhatsApp call — see [Validating nuisance-call handling](#validating-nuisance-call-handling) before relying on it.
@@ -161,6 +183,10 @@ The first run needs a WhatsApp QR code scanned interactively; `index.ts` stores 
 ### Frontend
 
 A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request, so a frontend change just needs a browser reload. `npm run build:web` does a one-off production build; `npm test` runs it automatically first.
+
+#### Live demo
+
+`web/src/demo/` is a self-contained fake backend (contacts, audit log, strikes, blocks, settings, a fake Tailscale identity and tailnet, and a simulator that keeps new activity arriving) that the same `<App />` runs against, with no server or database. `npm run --prefix web dev:demo` serves it locally; `npm run --prefix web build:demo` writes a static site to `web/dist-demo/`, and `npm run --prefix web screenshots` rebuilds it and recaptures the README images into `docs/screenshots/` (it drives a local Chrome; set `CHROME_PATH` if yours is not the macOS default). To host it on Vercel, import the repo with **Root Directory** `web/` — [`web/vercel.json`](web/vercel.json) sets the rest. It is a separate Vite entry (`web/demo.html`), so none of it reaches `web/dist/` or the container image. Every name, message and number is invented; phone numbers sit in the range ARCEP reserves for fiction. Profile photos are linked from [randomuser.me](https://randomuser.me/photos) rather than bundled: its portraits come from UI Faces, whose free images are licensed for non-commercial mockups and may not be redistributed, so keep the demo non-commercial and don't commit copies of them.
 
 ### Building the container from source
 
