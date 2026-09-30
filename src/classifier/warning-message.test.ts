@@ -187,6 +187,28 @@ test('states a single remaining offence as "the next repeat offence"', async () 
   assert.match(generations[0].messages[1].content, /next repeat offence will get you blocked/);
 });
 
+test('the final warning says the block is happening only when the outlook is blocking', async () => {
+  const { client, generations } = scriptedClient(['Ok.', 'Ok.']);
+
+  await generateWarningMessage({ ...INPUT, strikeCount: 3, strikeThreshold: 3, blockOutlook: 'blocking' }, { client });
+  await generateWarningMessage({ ...INPUT, strikeCount: 3, strikeThreshold: 3 }, { client });
+
+  assert.match(generations[0].messages[1].content, /you are now blocked/);
+  assert.match(generations[1].messages[1].content, /blocked at any time/);
+});
+
+test('when no block will ever come, the prompt forbids mentioning any consequence', async () => {
+  const { client, generations } = scriptedClient(['Ok.']);
+
+  await generateWarningMessage({ ...INPUT, strikeCount: 1, strikeThreshold: 3, blockOutlook: 'never' }, { client });
+
+  const [{ messages }] = generations;
+  assert.match(messages[1].content, /No consequence applies/);
+  assert.doesNotMatch(messages[1].content, /blocked after/);
+  assert.match(messages[0].content, /both of these/);
+  assert.doesNotMatch(messages[0].content, /3\. The consequence/);
+});
+
 test('strips emoji from the generated warning', async () => {
   const client = fakeClient('🚓 Message removed by an automated system. ⚠️');
 

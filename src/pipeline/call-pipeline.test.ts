@@ -380,3 +380,21 @@ test('a contact with no chat history gets the static warning without calling the
   assert.equal(called, false);
   assert.deepEqual(sent, ['TEST_WARNING strike=1 threshold=2']);
 });
+
+test('the nuisance warning that comes with the blocking strike is told a block follows', async () => {
+  const contact = 'rita@s.whatsapp.net';
+  addMonitored(contact);
+  logMessage({ contactId: contact, direction: 'them', message: 'hello', classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
+  const flags = [];
+  const generateWarning = async (input) => {
+    flags.push(input.blockOutlook);
+    return { ok: true, text: 'stop calling' };
+  };
+
+  await nuisanceOffer(contact, generateWarning);
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+  await handleCallEvent(call(contact, 'offer'), { ...noopActions, generateWarning });
+
+  assert.deepEqual(flags, ['countdown', 'blocking']);
+});

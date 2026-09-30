@@ -429,6 +429,24 @@ test('a clean burst after a violation does not erase its strike', async () => {
   assert.equal(strikeCount, 2);
 });
 
+test('the warning that comes with the blocking strike is told what it may say about blocking', async () => {
+  const seen = [];
+  const generateWarning = async (input) => {
+    seen.push(input.blockOutlook);
+    return { ok: true, text: 'warned' };
+  };
+  const contacts = ['blockflag-on@s.whatsapp.net', 'blockflag-off@s.whatsapp.net'];
+  addMonitored(contacts[0]);
+  addMonitored(contacts[1]);
+  setEscalationEnabled(contacts[1], false);
+
+  for (const contact of contacts) {
+    await handleTwoViolations(contact, { ...noopActions, classify: okFlag, generateWarning });
+  }
+
+  assert.deepEqual(seen, ['countdown', 'blocking', 'never', 'never']);
+});
+
 test('a removed message is passed to the next classification as removed, in the same burst and the next one', async () => {
   const contact = 'followup@s.whatsapp.net';
   const seenHistories = [];

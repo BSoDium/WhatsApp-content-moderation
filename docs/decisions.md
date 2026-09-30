@@ -1740,8 +1740,8 @@ slower on a fast laptop and its speed on the 2-core reference box is
 unmeasured.
 
 **Chosen: fixed, hand-checked text where it exists, the model elsewhere.**
-`src/classifier/warning-templates.ts` holds five strings per language
-(message removed, stop calling, and three consequences: N more, next, final)
+`src/classifier/warning-templates.ts` holds six strings per language
+(message removed, stop calling, and four consequences: N more, next, final, blocked)
 for English, French, Spanish and Polish. `generateWarningMessage` and
 `generateCallWarningMessage` still call `detectLanguage`; if the language has a
 template they return it with no generation call, otherwise they generate as
@@ -1755,7 +1755,19 @@ sera appliqué"): the notice goes to someone the operator may be in conflict
 with, whose gender and preferred form of address are unknown. The first draft
 mixed registers (*tu* in Spanish, *vous* in French), which read as incoherent.
 
-*Adding a language* is five strings and a test row; nothing else changes.
+*Warnings only claim what will actually happen.* The warning sent with the
+threshold-reaching strike used to read "you can now be blocked at any time",
+but the block is applied right after it, so contacts were told they had time
+they did not have. And for a contact with escalation disabled, every
+consequence line ("blocked after N more", "the next one will get you blocked")
+was false, since no block ever comes. The pipelines now pass a `blockOutlook`
+(`escalation.ts`): `never` when escalation is off for that contact, `blocking`
+when this warning comes with the block, `countdown` otherwise. `never` sends
+only the notice, with no consequence sentence (and the model prompt for other
+languages forbids mentioning one); `blocking` uses the sixth template string,
+`consequenceBlocked`.
+
+*Adding a language* is six strings and a test row; nothing else changes.
 The Spanish and Polish wording was drafted by an assistant and needs a fluent
 reader's review before being relied on.
 
