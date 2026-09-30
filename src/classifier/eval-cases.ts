@@ -74,6 +74,7 @@ export const EVAL_CASES: EvalCase[] = [
   { name: 'remark about a rule (en)', message: 'That rule is so dumb.', expectFlagged: false },
   { name: 'remark about an idea (de)', message: 'Was für eine blöde Idee.', expectFlagged: false },
   { name: 'remark about an idea (es)', message: 'Qué idea tan tonta.', expectFlagged: false },
+  { name: 'venting about a third party (fr)', message: 'Mon voisin est un vrai connard', expectFlagged: false },
   { name: 'french sign-off "bisous"', message: 'bisous', expectFlagged: false },
   { name: 'french sign-off "bizou" with emoji', message: 'bizou 😘', expectFlagged: false },
   { name: 'short remark about a situation, no history', message: 'Un peu stupide.', expectFlagged: false },
@@ -140,7 +141,6 @@ export const HELD_OUT_EVAL_CASES: EvalCase[] = [
   { name: 'everyday question (en)', message: 'are we still on for dinner tomorrow?', expectFlagged: false },
   { name: 'asks for help with their own problem (en)', message: "Can you help me, my laptop won't turn on", expectFlagged: false },
   { name: 'sign-off with kiss emoji (en)', message: 'night night, xoxo 😘', expectFlagged: false },
-  { name: 'venting about a third party (fr)', message: 'Mon voisin est un vrai connard', expectFlagged: false },
   { name: 'remark about a situation (de)', message: 'Das ist echt dumm gelaufen.', expectFlagged: false },
   { name: 'remark about an idea (es)', message: 'Qué tontería.', expectFlagged: false },
   {

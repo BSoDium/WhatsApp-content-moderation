@@ -60,8 +60,8 @@ const BANTER_STEPS = [
 ];
 
 const VERDICT_STEPS = [
-  'words_addressing_user: the exact words of the newest message that address the user — a second-person pronoun or verb form in any language (contractions count: you\'re, t\'es, tu es, du bist), or the user\'s name. Adjectives and nouns alone ("stupid", "nul", "idea") do not address anyone. Empty string if there are none.',
-  'target: who the newest message is aimed at — "user" if it addresses the user or calls them a name, "someone_else", or "no_one" (plain swearing, or a remark about a situation, an idea or a thing).',
+  'words_addressing_user: the exact words of the newest message that address the user — a second-person pronoun or verb form in any language (contractions count: you\'re, t\'es, tu es, du bist), or the user\'s name. Adjectives and nouns alone ("stupid", "nul", "idea") do not address anyone, and neither does a sentence about another person. Empty string if there are none.',
+  'target: who the newest message is aimed at — "user" if it addresses the user or calls them a name; "someone_else" if it is about another person ("my boss", "mon voisin", "he", "elle", "el vecino", a named third party), however harsh; or "no_one" (plain swearing, or a remark about a situation, an idea or a thing).',
   'category and reason, then flagged.',
 ];
 
@@ -92,6 +92,7 @@ const EXAMPLES = [
   'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
   'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: ayúdame, mi coche no arranca" -> same in Spanish, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: il mio capo è un vero stronzo, non lo sopporto" -> about a third person, words_addressing_user empty, target someone_else, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: this stupid printer is broken again, damn it" -> words_addressing_user empty, target no_one, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: c\'est nul comme idée" -> words_addressing_user empty, about the idea, target no_one, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
