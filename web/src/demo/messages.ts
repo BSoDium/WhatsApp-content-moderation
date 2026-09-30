@@ -97,13 +97,18 @@ export const FLAGGED_INCOMING = {
   ],
 } satisfies Record<string, FlaggedTemplate[]>;
 
-export const GENERATED_WARNINGS = [
-  "Ce message a été supprimé : merci de ne plus m'envoyer de contenu de ce type.",
-  "That message was removed for violating this chat's policy. Further messages like this will lead to a block.",
-  "Message supprimé. Merci de respecter les règles de cette conversation, sinon vous serez bloqué.",
-  'Please stop sending unsolicited offers. This was automatically removed and you may be blocked if it continues.',
-  'Ce type de message n’est pas accepté ici. Un nouvel écart entraînera un blocage.',
-];
+export const GENERATED_WARNINGS = {
+  fr: [
+    "Ce message a été supprimé : merci de ne plus m'envoyer de contenu de ce type.",
+    'Message supprimé. Merci de respecter les règles de cette conversation, sinon vous serez bloqué.',
+    'Ce type de message n’est pas accepté ici. Un nouvel écart entraînera un blocage.',
+  ],
+  en: [
+    "That message was removed for violating this chat's policy. Further messages like this will lead to a block.",
+    'Please stop sending unsolicited offers. This was automatically removed and you may be blocked if it continues.',
+    'Messages like this are not accepted here. Another one will get you blocked.',
+  ],
+};
 
 export const CLASSIFIER_ERRORS = ['Ollama request timed out', 'Ollama returned invalid JSON', 'connect ECONNREFUSED 127.0.0.1:11434'];
 

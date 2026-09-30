@@ -5,6 +5,7 @@ import type { Random } from './random';
 
 export const WARNING_DELAY_MS = 2000;
 export const CALL_OUTCOME_DELAY_MS = 18_000;
+const ENGLISH_HINT = /\b(the|you|your|dear|hello|hi|is|are|last chance|answer)\b/i;
 
 interface EntryFields {
   direction?: AuditLogEntry['direction'];
@@ -114,7 +115,7 @@ export function ingestFlagged(backend: DemoBackend, contactId: string, template:
       state.lastStrikeAt = at;
       state.lastWarnAt = at;
       log(backend, contactId, at, { ...verdict, action: 'delete+warn' });
-      log(backend, contactId, at + WARNING_DELAY_MS, { direction: 'me', message: random.pick(GENERATED_WARNINGS), action: 'warning_sent' });
+      log(backend, contactId, at + WARNING_DELAY_MS, { direction: 'me', message: random.pick(ENGLISH_HINT.test(template.message) ? GENERATED_WARNINGS.en : GENERATED_WARNINGS.fr), action: 'warning_sent' });
       if (state.strikeCount >= backend.settingNumber('STRIKE_THRESHOLD')) startBlock(backend, state, at, random);
     }
   }
