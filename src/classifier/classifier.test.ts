@@ -109,7 +109,7 @@ test('history labels the user\'s own messages "User", the contact "Contact" and 
   assert.match(userPrompt, /^User \(automated warning, not written by the user\): Please stop\.$/m);
 });
 
-test('the request asks for "target" before "flagged" and the prompt limits profanity to user-directed content', async () => {
+test('the request asks for "target" before "flagged" and the prompt says a message not aimed at the user is not flagged', async () => {
   let request;
   const client = {
     chat: async (req) => {
@@ -122,7 +122,7 @@ test('the request asks for "target" before "flagged" and the prompt limits profa
 
   const properties = Object.keys(request.format.properties);
   assert.ok(properties.indexOf('target') < properties.indexOf('flagged'));
-  assert.match(request.messages.find((m) => m.role === 'system').content, /only count when aimed at the user/);
+  assert.match(request.messages.find((m) => m.role === 'system').content, /flagged must be false when target is not "user"/);
 });
 
 test('the protected person is "the user", never a capitalised "Me" that a model could read as a name', async () => {
@@ -178,4 +178,28 @@ test('labels removed contact messages and keeps speakers distinct in the prompt'
   const userContent = sent.messages[1].content;
   assert.match(userContent, /User: stop/);
   assert.match(userContent, /Contact \(removed by moderation: unwanted_contact\): tu comprendrais mon amour/);
+});
+
+test('the banter question is asked only when the user has written a line of their own', async () => {
+  const requests = [];
+  const client = {
+    chat: async (req) => {
+      requests.push(req);
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+  const systemOf = (req) => req.messages.find((m) => m.role === 'system').content;
+
+  await classifyMessage({ message: 'hey' }, { client, policy: POLICY });
+  await classifyMessage({ message: 'hey', history: [{ from: 'me', text: 'ok', automated: true }] }, { client, policy: POLICY });
+  await classifyMessage({ message: 'hey', history: [{ from: 'me', text: 'lol you clown' }] }, { client, policy: POLICY });
+
+  const [none, automatedOnly, spoke] = requests;
+  for (const req of [none, automatedOnly]) {
+    assert.equal('is_mutual_banter' in req.format.properties, false);
+    assert.doesNotMatch(systemOf(req), /is_mutual_banter/);
+  }
+  const properties = Object.keys(spoke.format.properties);
+  assert.ok(properties.indexOf('is_mutual_banter') < properties.indexOf('flagged'));
+  assert.match(systemOf(spoke), /is_mutual_banter/);
 });

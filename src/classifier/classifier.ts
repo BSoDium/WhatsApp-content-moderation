@@ -27,63 +27,104 @@ interface ClassifierDependencies {
 }
 
 // Property order matters here: schema-constrained decoding fills fields in
-// this order, so target/category/reason are written before flagged — the
-// model commits to its reasoning first and then has to make flagged agree
-// with it, instead of guessing flagged cold. user_was_rude and target are never
-// read back; they force a small model to answer two narrow questions — did
-// the user set a rude tone, who is this aimed at — instead of skipping the history.
-const RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    user_was_rude: { type: 'boolean' },
-    words_addressing_user: { type: 'string' },
-    target: { type: 'string', enum: ['user', 'someone_else', 'no_one'] },
-    category: { type: 'string' },
-    reason: { type: 'string' },
-    flagged: { type: 'boolean' },
-  },
-  required: ['user_was_rude', 'words_addressing_user', 'target', 'category', 'reason', 'flagged'],
+// this order, so each step of the decision procedure in buildSystemPrompt is
+// answered before flagged, and the model has to make flagged agree with its
+// own earlier answers instead of guessing it cold. Only flagged, category and
+// reason are read back; the others exist to force narrow questions a small
+// model answers reliably (was the user rude, is this a reply in kind, who is
+// it aimed at) instead of skipping the history.
+const BANTER_PROPERTIES = {
+  is_mutual_banter: { type: 'boolean' },
 };
 
-function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): string {
+const VERDICT_PROPERTIES = {
+  words_addressing_user: { type: 'string' },
+  target: { type: 'string', enum: ['user', 'someone_else', 'no_one'] },
+  category: { type: 'string' },
+  reason: { type: 'string' },
+  flagged: { type: 'boolean' },
+};
+
+// Without a line from the user there is nothing to answer back to, so the banter questions are dropped rather than asked: a small model otherwise invents a rude user line and lets the invention excuse the contact.
+function responseSchema(userHasSpoken: boolean) {
+  const properties = userHasSpoken ? { ...BANTER_PROPERTIES, ...VERDICT_PROPERTIES } : VERDICT_PROPERTIES;
+  return { type: 'object', properties, required: Object.keys(properties) };
+}
+
+function userHasSpoken(history: ConversationMessage[]): boolean {
+  return history.some((m) => m.from === 'me' && !m.automated);
+}
+
+const BANTER_STEPS = [
+  'is_mutual_banter: true only if BOTH hold: an earlier "User" line (not an automated warning) insulted, teased or swore at Contact, AND the newest message is just an insult, tease or swear thrown back in the same spirit. A friendly, neutral or polite User line — including asking Contact to stop or leave them alone — does not count as teasing.',
+];
+
+const VERDICT_STEPS = [
+  'words_addressing_user: the exact words of the newest message that address the user — a second-person pronoun or verb form in any language (contractions count: you\'re, t\'es, tu es, du bist), or the user\'s name. Adjectives and nouns alone ("stupid", "nul", "idea") do not address anyone. Empty string if there are none.',
+  'target: who the newest message is aimed at — "user" if it addresses the user or calls them a name, "someone_else", or "no_one" (plain swearing, or a remark about a situation, an idea or a thing).',
+  'category and reason, then flagged.',
+];
+
+function decisionSteps(userSpoke: boolean): string[] {
+  const steps = userSpoke ? [...BANTER_STEPS, ...VERDICT_STEPS] : VERDICT_STEPS;
+  return steps.map((step, i) => `${i + 1}. ${step}`);
+}
+
+const COMMON_FLAG_RULES =
+  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
+
+function flaggedRule(userSpoke: boolean): string {
+  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal, and any continuation of a line removed by moderation';
+  return userSpoke
+    ? `flagged must be false when target is not "user" and when is_mutual_banter is true, with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`
+    : `flagged must be false when target is not "user", with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`;
+}
+
+const BANTER_EXAMPLES = [
+  'Recent conversation: "User: you missed your bus again, what a dummy 😂" / "Contact: haha I overslept". Newest message: "Contact: screw you, at least I got up" -> is_mutual_banter true, flagged false.',
+  'Recent conversation: "User: thanks, talk later". Newest message: "Contact: you are useless and nobody likes you" -> is_mutual_banter false, target user, flagged true.',
+  'Recent conversation: "User: not now, please leave me alone". Newest message: "Contact: reply to me, you coward" -> the user was polite, not teasing: is_mutual_banter false, target user, flagged true.',
+  'Recent conversation: "User: lol nice haircut 😂". Newest message: "Contact: I will hurt you if you come near me" -> is_mutual_banter false (a real threat), flagged true.',
+];
+
+const EXAMPLES = [
+  'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: ma sensibilité." -> finishes the removed sentence, same violation, flagged true.',
+  'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
+  'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: ayúdame, mi coche no arranca" -> same in Spanish, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: this stupid printer is broken again, damn it" -> words_addressing_user empty, target no_one, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: c\'est nul comme idée" -> words_addressing_user empty, about the idea, target no_one, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: hasta mañana, un besazo" -> friendly sign-off in Spanish, flagged false.',
+  'Recent conversation: (none). Newest message: "Contact: du bist so ein Idiot" -> words_addressing_user "du", target user, flagged true.',
+  'Recent conversation: (none). Newest message: "Contact: t\'es qu\'une merde" -> words_addressing_user "t\'es", target user, flagged true.',
+];
+
+function buildSystemPrompt(policy = loadPolicy(), contactContext?: string, userSpoke = true): string {
   return [
-    "You are a content moderation filter for one specific person's personal WhatsApp chat.",
-    "You will be shown recent conversation history for context, then the newest incoming message.",
-    'Decide only whether that newest message violates the policy below — do not flag anything based on the history alone.',
-    'The person you protect is "the user" and "Contact" is the person being moderated. The policy and the contact-specific context below are written by the user in the first person: "me", "my" and "I" in them mean the user. Lines marked as automated warnings were sent by this system, not by the user.',
-    'Every line is labelled with who wrote it. "User" lines are written by the protected person, never by Contact. Apply this in whatever language the messages are written in: in a "Contact" line, first-person words (I, me, my, je, moi, ma, yo, mi, ich, mein…) always refer to Contact, and only second-person words (you, your, tu, toi, ton, vous, tú, ti, du, dein…) or the user\'s name refer to the user. A Contact line asking for help, or talking about "my" feelings, is Contact talking about themself, not the user.',
-    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. A newest message that continues, completes or rephrases such a line — the same sentence split across messages, or the same pressure repeated — is part of the same violation and gets flagged with the same category, even if it looks harmless on its own.',
-    'Profanity or insults only count when aimed at the user. Swearing for emphasis and venting about a third party or a situation are not violations.',
-    'An insult only counts when it targets the user directly: a second-person word in any language, the user\'s name, or a name-calling word addressed to the user. A short remark that judges a situation, an idea or a thing is about that thing, not about the user.',
-    'Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis. Only flag affection when it is clearly sexual or continues after the user asked them to stop.',
-    'If the user was already rude, insulting or teasing in the recent conversation, mutual banter is not a violation either. Only flag it then if the newest message is a real threat, sexually explicit, or keeps pressuring the user after a clear refusal.',
+    "You are a content moderation filter for one specific person's personal WhatsApp chat. Messages may be in any language.",
+    '',
+    '# Who is who',
+    'Two people talk in this chat. "User" is the person you protect. "Contact" is the person being moderated. Every line is labelled with who wrote it, and the newest message is always written by Contact.',
+    'Lines marked as automated warnings were sent by this system, not by the user.',
+    'The policy and the contact-specific context below are written by the user in the first person: "me", "my" and "I" in them mean the user.',
+    'In a Contact line, first-person words (I, me, my, je, moi, ma, yo, mi, ich, mein…) refer to Contact. Only second-person words (you, your, tu, toi, ton, vous, tú, ti, du, dein…) or the user\'s name refer to the user. A Contact line asking for help or talking about "my" feelings is Contact talking about themself.',
+    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. A newest message that continues, completes or rephrases such a line, or repeats the same pressure, is part of the same violation and gets flagged with the same category, even if it looks harmless on its own.',
+    '',
+    '# How to decide, in this order',
+    ...decisionSteps(userSpoke),
+    '',
+    flaggedRule(userSpoke),
     '',
     '# Examples',
-    'Recent conversation: "User: you missed your bus again, what a dummy 😂" / "Contact: haha I overslept". Newest message: "Contact: screw you, at least I got up" -> user_was_rude true, banter, flagged false.',
-    'Recent conversation: "User: thanks, talk later". Newest message: "Contact: you are useless and nobody likes you" -> user_was_rude false, aimed at the user, flagged true.',
-    'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: ma sensibilité." -> finishes the removed sentence, same violation, flagged true.',
-    'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
-    'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: ayúdame, mi coche no arranca" -> same in Spanish, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: this stupid printer is broken again, damn it" -> aimed at no one, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: c\'est nul comme idée" -> about the idea, not about the user, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: hasta mañana, un besazo" -> friendly sign-off in Spanish, flagged false.',
-    'Recent conversation: (none). Newest message: "Contact: du bist so ein Idiot" -> "du" is the user, aimed at the user, flagged true.',
+    ...EXAMPLES,
+    ...(userSpoke ? BANTER_EXAMPLES : []),
     '',
     '# Policy',
     policy,
     ...(contactContext ? ['', '# Contact-specific context', contactContext] : []),
     '',
-    'Respond with JSON only, matching the given schema. First set "user_was_rude" to true if a line ' +
-      'written by the user (not an automated warning) in the recent conversation was rude, insulting or ' +
-      'teasing, else false. Then set "words_addressing_user" to the exact words of the newest message ' +
-      'that refer to the user directly (a second-person word in any language, or the user\'s name), or an empty string if there are none. ' +
-      'Then set "target" to who the newest message is aimed at: "user" ' +
-      '(including any second-person address), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
-      'Then fill in "category" (a short label, e.g. "harassment", "unwanted_contact", or "none" ' +
-      'when not flagged) and "reason" (one short sentence saying what the contact did, e.g. "the contact threatens the user", "the contact talks about the weather"; "the user" is only ever the protected person), then set "flagged" to agree with the ' +
-      'reason you just wrote.',
+    'Respond with JSON only, matching the given schema, filling the fields in the order above. "category" is a short label (e.g. "harassment", "unwanted_contact", or "none" when not flagged). "reason" is one short sentence starting with "the contact" and saying what they did; "the user" is only ever the protected person. Set "flagged" last, to agree with everything you wrote before it.',
   ].join('\n');
 }
 
@@ -125,17 +166,19 @@ export async function classifyMessage(
 ): Promise<Classification> {
   const ollama = client ?? createOllamaClient(getNumberSetting('CLASSIFIER_TIMEOUT_MS'));
 
+  const userSpoke = userHasSpoken(history);
+
   try {
     const response = await ollama.chat({
       model,
       messages: [
-        { role: 'system', content: buildSystemPrompt(policy, contactContext) },
+        { role: 'system', content: buildSystemPrompt(policy, contactContext, userSpoke) },
         {
           role: 'user',
           content: `# Recent conversation\n${formatHistory(history)}\n\n# Newest message to classify\nContact: ${message}${followUpNote(history)}`,
         },
       ],
-      format: RESPONSE_SCHEMA,
+      format: responseSchema(userSpoke),
       options: { temperature: 0 },
     });
 
