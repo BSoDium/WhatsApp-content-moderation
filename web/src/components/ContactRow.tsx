@@ -22,8 +22,8 @@ interface ContactRowProps {
 }
 
 const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
-const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:block';
-const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-3 text-xs text-muted-foreground @lg:flex';
+const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:ml-3 @lg:block';
+const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-4 text-xs text-muted-foreground @lg:ml-3 @lg:flex';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
 // Memoized so a keystroke in the search box, which re-renders ContactList, doesn't re-render every row.

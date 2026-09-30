@@ -274,7 +274,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
             <Separator />
             <SettingRow
               title="Block"
-              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : 'Blocked when either strike counter reaches its limit.'}
+              description={block ? `Until ${formatTimestamp(block.unblockAt)}` : entry?.escalationEnabled === false ? 'Escalation is off, so strikes never block this contact.' : 'Blocked when either strike counter reaches its limit.'}
               control={
                 block ? (
                   <Button variant="outline" size="sm" disabled={pending.has('unblock')} onClick={() => withPending('unblock', () => runAndReport('unblock'))}>
