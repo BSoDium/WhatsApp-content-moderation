@@ -6,7 +6,7 @@ import { getStrikeCount, recordStrike } from '../store/strikes.ts';
 import { logMessage, getAuditLog, getLastActionAt } from '../store/audit-log.ts';
 import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
-import { maybeBlockContact } from './escalation.ts';
+import { maybeBlockContact, willBlock } from './escalation.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { Classification, IncomingMessage } from '../types.ts';
 
@@ -184,6 +184,7 @@ async function runBurst(
       message: text,
       strikeCount: strikeCount + 1,
       strikeThreshold,
+      blockFollows: willBlock(contactId, strikeCount + 1, strikeThreshold),
     });
     if (!warningResult.ok) {
       logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');

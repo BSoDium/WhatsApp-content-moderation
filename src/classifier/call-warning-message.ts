@@ -10,6 +10,7 @@ interface CallWarningInput {
   recentMessages: string[];
   strikeCount: number;
   strikeThreshold: number;
+  blockFollows?: boolean;
   model?: string;
 }
 
@@ -40,10 +41,10 @@ function buildSystemPrompt(language: string): string {
   ].join('\n');
 }
 
-function buildUserPrompt({ strikeCount, strikeThreshold }: CallWarningInput, retryHint: string | null): string {
+function buildUserPrompt({ strikeCount, strikeThreshold, blockFollows }: CallWarningInput, retryHint: string | null): string {
   return [
     '# What happened',
-    `Consequence to state, addressed to the contact as "you": ${describeConsequence(strikeThreshold - strikeCount)}`,
+    `Consequence to state, addressed to the contact as "you": ${describeConsequence(strikeThreshold - strikeCount, blockFollows)}`,
     '',
     '# Task',
     'Write the reply to send back to them now.',
@@ -71,7 +72,7 @@ export async function generateCallWarningMessage(
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
 
-    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount);
+    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount, input.blockFollows);
     if (fixedText) return { ok: true, text: fixedText };
 
     return await generateChecked(async (retryHint) => {

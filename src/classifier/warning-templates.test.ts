@@ -45,3 +45,17 @@ test('French and Spanish stay in the formal register and out of gendered forms',
 test('an unknown language has no template', () => {
   assert.equal(templateWarning('Swahili', 'message', 2), null);
 });
+
+test('the final warning says the block is happening only when one follows', () => {
+  for (const language of TEMPLATED) {
+    for (const kind of ['message', 'call'] as const) {
+      const blocked = templateWarning(language, kind, 0, true)!;
+      const open = templateWarning(language, kind, 0, false)!;
+      assert.notEqual(blocked, open, `${language}/${kind}`);
+      assert.doesNotMatch(blocked, /\d|strike|frappe|group/i);
+      assert.equal(templateWarning(language, kind, 1, true), templateWarning(language, kind, 1, false));
+    }
+  }
+  assert.match(templateWarning('French', 'message', 0, true)!, /désormais appliqué/);
+  assert.doesNotMatch(templateWarning('French', 'message', 0, true)!, /bloqué|à tout moment/);
+});

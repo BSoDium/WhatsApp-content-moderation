@@ -1740,8 +1740,8 @@ slower on a fast laptop and its speed on the 2-core reference box is
 unmeasured.
 
 **Chosen: fixed, hand-checked text where it exists, the model elsewhere.**
-`src/classifier/warning-templates.ts` holds five strings per language
-(message removed, stop calling, and three consequences: N more, next, final)
+`src/classifier/warning-templates.ts` holds six strings per language
+(message removed, stop calling, and four consequences: N more, next, final, blocked)
 for English, French, Spanish and Polish. `generateWarningMessage` and
 `generateCallWarningMessage` still call `detectLanguage`; if the language has a
 template they return it with no generation call, otherwise they generate as
@@ -1755,7 +1755,16 @@ sera appliqué"): the notice goes to someone the operator may be in conflict
 with, whose gender and preferred form of address are unknown. The first draft
 mixed registers (*tu* in Spanish, *vous* in French), which read as incoherent.
 
-*Adding a language* is five strings and a test row; nothing else changes.
+*The last warning says the block is happening, not that it may.* The warning
+sent with the threshold-reaching strike used to read "you can now be blocked at
+any time", but the block is applied right after it, so contacts were told they
+had time they did not have. The pipelines now pass `blockFollows` (threshold
+reached, no active block, escalation enabled for that contact) and the template
+gains a sixth string, `consequenceBlocked`. When no block follows (escalation
+off for that contact) the older "final warning" wording is kept, because
+saying "you are blocked" then would be false.
+
+*Adding a language* is six strings and a test row; nothing else changes.
 The Spanish and Polish wording was drafted by an assistant and needs a fluent
 reader's review before being relied on.
 

@@ -4,7 +4,7 @@ import { getAuditLog, logMessage } from '../store/audit-log.ts';
 import { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall } from '../store/call-strikes.ts';
 import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
-import { maybeBlockContact } from './escalation.ts';
+import { maybeBlockContact, willBlock } from './escalation.ts';
 import type { WACallEvent } from '@whiskeysockets/baileys';
 
 interface CallEvent {
@@ -102,7 +102,7 @@ async function resolveWarningText(contactId: string, strikeCount: number, strike
   if (recentMessages.length === 0) return fallback;
 
   const generate = actions.generateWarning ?? generateCallWarningMessage;
-  const result = await generate({ recentMessages, strikeCount, strikeThreshold });
+  const result = await generate({ recentMessages, strikeCount, strikeThreshold, blockFollows: willBlock(contactId, strikeCount, strikeThreshold) });
   if (result.ok) return result.text;
 
   logger.warn({ contactId, error: result.error }, 'call warning generation failed; using the static fallback');

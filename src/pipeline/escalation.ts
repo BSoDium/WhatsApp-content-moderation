@@ -28,6 +28,14 @@ function withContactLock<T>(contactId: string, run: () => Promise<T>): Promise<T
 }
 
 /**
+ * Whether maybeBlockContact would block contactId at this strike count, for
+ * a warning that has to say so before the block is actually applied.
+ */
+export function willBlock(contactId: string, strikeCount: number, strikeThreshold: number): boolean {
+  return strikeCount >= strikeThreshold && !getActiveBlock(contactId) && isEscalationEnabled(contactId);
+}
+
+/**
  * Blocks contactId once strikeCount crosses strikeThreshold, unless they
  * already have an active block. Shared by moderation-pipeline.ts (message
  * strikes) and call-pipeline.ts (nuisance-call strikes) — each has its own
