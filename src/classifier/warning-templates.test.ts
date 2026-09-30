@@ -49,13 +49,25 @@ test('an unknown language has no template', () => {
 test('the final warning says the block is happening only when one follows', () => {
   for (const language of TEMPLATED) {
     for (const kind of ['message', 'call'] as const) {
-      const blocked = templateWarning(language, kind, 0, true)!;
-      const open = templateWarning(language, kind, 0, false)!;
+      const blocked = templateWarning(language, kind, 0, 'blocking')!;
+      const open = templateWarning(language, kind, 0, 'countdown')!;
       assert.notEqual(blocked, open, `${language}/${kind}`);
       assert.doesNotMatch(blocked, /\d|strike|frappe|group/i);
-      assert.equal(templateWarning(language, kind, 1, true), templateWarning(language, kind, 1, false));
+      assert.equal(templateWarning(language, kind, 1, 'blocking'), templateWarning(language, kind, 1, 'countdown'));
     }
   }
-  assert.match(templateWarning('French', 'message', 0, true)!, /désormais appliqué/);
-  assert.doesNotMatch(templateWarning('French', 'message', 0, true)!, /bloqué|à tout moment/);
+  assert.match(templateWarning('French', 'message', 0, 'blocking')!, /désormais appliqué/);
+  assert.doesNotMatch(templateWarning('French', 'message', 0, 'blocking')!, /bloqué|à tout moment/);
+});
+
+test('with no block ever coming, the warning is just the notice with no consequence', () => {
+  for (const language of TEMPLATED) {
+    for (const kind of ['message', 'call'] as const) {
+      for (const remaining of [3, 1, 0]) {
+        const text = templateWarning(language, kind, remaining, 'never')!;
+        assert.ok(templateWarning(language, kind, remaining, 'countdown')!.startsWith(text), `${language}/${kind}/${remaining}`);
+        assert.doesNotMatch(text, /\d|block|bloqu|blokad/i);
+      }
+    }
+  }
 });

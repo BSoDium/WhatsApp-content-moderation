@@ -429,10 +429,10 @@ test('a clean burst after a violation does not erase its strike', async () => {
   assert.equal(strikeCount, 2);
 });
 
-test('the warning that comes with the blocking strike is told a block follows, unless escalation is off', async () => {
+test('the warning that comes with the blocking strike is told what it may say about blocking', async () => {
   const seen = [];
   const generateWarning = async (input) => {
-    seen.push(input.blockFollows);
+    seen.push(input.blockOutlook);
     return { ok: true, text: 'warned' };
   };
   const contacts = ['blockflag-on@s.whatsapp.net', 'blockflag-off@s.whatsapp.net'];
@@ -444,5 +444,5 @@ test('the warning that comes with the blocking strike is told a block follows, u
     await handleTwoViolations(contact, { ...noopActions, classify: okFlag, generateWarning });
   }
 
-  assert.deepEqual(seen, [false, true, false, false]);
+  assert.deepEqual(seen, ['countdown', 'blocking', 'never', 'never']);
 });

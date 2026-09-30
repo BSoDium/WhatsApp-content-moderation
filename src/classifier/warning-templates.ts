@@ -1,3 +1,5 @@
+import type { BlockOutlook } from './warning-consequence.ts';
+
 export type WarningKind = 'message' | 'call';
 
 interface WarningTemplate {
@@ -50,13 +52,14 @@ const TEMPLATES: Record<string, WarningTemplate> = {
  * The fixed warning for `language`, or null when no one has written one and
  * the caller should fall back to generating it. `strikesRemaining` is how
  * many more violations the contact may commit before being blocked, and
- * `blockFollows` says this very warning comes with the block.
+ * `outlook` says what the warning may claim about blocking; with 'never' it states no consequence.
  */
-export function templateWarning(language: string, kind: WarningKind, strikesRemaining: number, blockFollows = false): string | null {
+export function templateWarning(language: string, kind: WarningKind, strikesRemaining: number, outlook: BlockOutlook = 'countdown'): string | null {
   const template = TEMPLATES[language];
   if (!template) return null;
 
-  return `${kind === 'call' ? template.stopCalling : template.removedMessage} ${pickConsequence(template, strikesRemaining, blockFollows)}`;
+  const notice = kind === 'call' ? template.stopCalling : template.removedMessage;
+  return outlook === 'never' ? notice : `${notice} ${pickConsequence(template, strikesRemaining, outlook === 'blocking')}`;
 }
 
 function pickConsequence(template: WarningTemplate, strikesRemaining: number, blockFollows: boolean): string {

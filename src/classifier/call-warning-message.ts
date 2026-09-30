@@ -3,6 +3,7 @@ import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
+import type { BlockOutlook } from './warning-consequence.ts';
 import { templateWarning } from './warning-templates.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
 
@@ -10,7 +11,7 @@ interface CallWarningInput {
   recentMessages: string[];
   strikeCount: number;
   strikeThreshold: number;
-  blockFollows?: boolean;
+  blockOutlook?: BlockOutlook;
   model?: string;
 }
 
@@ -20,7 +21,7 @@ interface CallWarningDependencies {
 
 type CallWarningResult = { ok: true; text: string } | { ok: false; error: string };
 
-function buildSystemPrompt(language: string): string {
+function buildSystemPrompt(language: string, hasConsequence: boolean): string {
   return [
     "You are an automated moderation system running on one specific person's personal WhatsApp account.",
     'A contact keeps calling that account repeatedly without the calls being answered, and this system has just rejected their latest call.',
@@ -29,7 +30,9 @@ function buildSystemPrompt(language: string): string {
     'The message MUST, in your own words:',
     '1. Ask them to stop calling repeatedly without a reply.',
     '2. Say plainly that an automated system, not the account owner personally, is sending this.',
-    '3. State the consequence exactly as given below, addressed to the contact as "you".',
+    ...(hasConsequence
+      ? ['3. State the consequence exactly as given below, addressed to the contact as "you".']
+      : ['Do not mention blocking, bans or any other penalty: none applies to this contact.']),
     '',
     'Other requirements:',
     `- ${NO_STRIKE_WORDING_RULE}`,
@@ -41,10 +44,13 @@ function buildSystemPrompt(language: string): string {
   ].join('\n');
 }
 
-function buildUserPrompt({ strikeCount, strikeThreshold, blockFollows }: CallWarningInput, retryHint: string | null): string {
+function buildUserPrompt({ strikeCount, strikeThreshold, blockOutlook }: CallWarningInput, retryHint: string | null): string {
+  const consequence = describeConsequence(strikeThreshold - strikeCount, blockOutlook);
   return [
     '# What happened',
-    `Consequence to state, addressed to the contact as "you": ${describeConsequence(strikeThreshold - strikeCount, blockFollows)}`,
+    consequence
+      ? `Consequence to state, addressed to the contact as "you": ${consequence}`
+      : 'No consequence applies: do not mention blocking or any penalty.',
     '',
     '# Task',
     'Write the reply to send back to them now.',
@@ -72,14 +78,14 @@ export async function generateCallWarningMessage(
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
 
-    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount, input.blockFollows);
+    const fixedText = templateWarning(detected.language, 'call', input.strikeThreshold - input.strikeCount, input.blockOutlook);
     if (fixedText) return { ok: true, text: fixedText };
 
     return await generateChecked(async (retryHint) => {
       const response = await ollama.chat({
         model,
         messages: [
-          { role: 'system', content: buildSystemPrompt(detected.language) },
+          { role: 'system', content: buildSystemPrompt(detected.language, describeConsequence(input.strikeThreshold - input.strikeCount, input.blockOutlook) !== null) },
           { role: 'user', content: buildUserPrompt(input, retryHint) },
         ],
         options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },

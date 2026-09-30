@@ -387,7 +387,7 @@ test('the nuisance warning that comes with the blocking strike is told a block f
   logMessage({ contactId: contact, direction: 'them', message: 'hello', classification: { ok: true, flagged: false, category: 'none', reason: '' }, action: 'none' });
   const flags = [];
   const generateWarning = async (input) => {
-    flags.push(input.blockFollows);
+    flags.push(input.blockOutlook);
     return { ok: true, text: 'stop calling' };
   };
 
@@ -396,5 +396,5 @@ test('the nuisance warning that comes with the blocking strike is told a block f
   await handleCallEvent(call(contact, 'timeout'), noopActions);
   await handleCallEvent(call(contact, 'offer'), { ...noopActions, generateWarning });
 
-  assert.deepEqual(flags, [false, true]);
+  assert.deepEqual(flags, ['countdown', 'blocking']);
 });

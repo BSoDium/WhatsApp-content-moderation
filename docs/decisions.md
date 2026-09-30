@@ -1755,14 +1755,17 @@ sera appliqué"): the notice goes to someone the operator may be in conflict
 with, whose gender and preferred form of address are unknown. The first draft
 mixed registers (*tu* in Spanish, *vous* in French), which read as incoherent.
 
-*The last warning says the block is happening, not that it may.* The warning
-sent with the threshold-reaching strike used to read "you can now be blocked at
-any time", but the block is applied right after it, so contacts were told they
-had time they did not have. The pipelines now pass `blockFollows` (threshold
-reached, no active block, escalation enabled for that contact) and the template
-gains a sixth string, `consequenceBlocked`. When no block follows (escalation
-off for that contact) the older "final warning" wording is kept, because
-saying "you are blocked" then would be false.
+*Warnings only claim what will actually happen.* The warning sent with the
+threshold-reaching strike used to read "you can now be blocked at any time",
+but the block is applied right after it, so contacts were told they had time
+they did not have. And for a contact with escalation disabled, every
+consequence line ("blocked after N more", "the next one will get you blocked")
+was false, since no block ever comes. The pipelines now pass a `blockOutlook`
+(`escalation.ts`): `never` when escalation is off for that contact, `blocking`
+when this warning comes with the block, `countdown` otherwise. `never` sends
+only the notice, with no consequence sentence (and the model prompt for other
+languages forbids mentioning one); `blocking` uses the sixth template string,
+`consequenceBlocked`.
 
 *Adding a language* is six strings and a test row; nothing else changes.
 The Spanish and Polish wording was drafted by an assistant and needs a fluent

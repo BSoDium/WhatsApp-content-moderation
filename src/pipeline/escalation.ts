@@ -1,5 +1,6 @@
 import { createLogger } from '../cli/logger.ts';
 import { createBlock, getActiveBlock } from '../store/blocks.ts';
+import type { BlockOutlook } from '../classifier/warning-consequence.ts';
 import { isEscalationEnabled } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
 import { getNumberSetting } from '../store/settings.ts';
@@ -28,11 +29,12 @@ function withContactLock<T>(contactId: string, run: () => Promise<T>): Promise<T
 }
 
 /**
- * Whether maybeBlockContact would block contactId at this strike count, for
- * a warning that has to say so before the block is actually applied.
+ * What a warning sent at this strike count may truthfully say about
+ * blocking, mirroring maybeBlockContact's decision before it is applied.
  */
-export function willBlock(contactId: string, strikeCount: number, strikeThreshold: number): boolean {
-  return strikeCount >= strikeThreshold && !getActiveBlock(contactId) && isEscalationEnabled(contactId);
+export function blockOutlook(contactId: string, strikeCount: number, strikeThreshold: number): BlockOutlook {
+  if (!isEscalationEnabled(contactId)) return 'never';
+  return strikeCount >= strikeThreshold && !getActiveBlock(contactId) ? 'blocking' : 'countdown';
 }
 
 /**
