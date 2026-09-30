@@ -4,9 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 const REPOSITORY_URL = 'https://github.com/BSoDium/WhatsApp-content-moderation';
+const HIDE_PARAM = 'hideBanner';
 
 export function DemoBanner() {
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => new URLSearchParams(window.location.search).has(HIDE_PARAM));
   if (dismissed) return null;
 
   return (
