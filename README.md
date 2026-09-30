@@ -162,6 +162,10 @@ The first run needs a WhatsApp QR code scanned interactively; `index.ts` stores 
 
 A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request, so a frontend change just needs a browser reload. `npm run build:web` does a one-off production build; `npm test` runs it automatically first.
 
+#### Live demo
+
+`web/src/demo/` is a self-contained fake backend (contacts, audit log, strikes, blocks, settings, a fake Tailscale identity and tailnet, and a simulator that keeps new activity arriving) that the same `<App />` runs against, with no server or database. `npm run --prefix web dev:demo` serves it locally; `npm run --prefix web build:demo` writes a static site to `web/dist-demo/`. To host it on Vercel, import the repo with **Root Directory** `web/` — [`web/vercel.json`](web/vercel.json) sets the rest. It is a separate Vite entry (`web/demo.html`), so none of it reaches `web/dist/` or the container image. Every name, message and number is invented; phone numbers sit in the range ARCEP reserves for fiction.
+
 ### Building the container from source
 
 ```sh
