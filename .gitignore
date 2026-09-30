@@ -4,6 +4,7 @@ node_modules
 # Built frontend bundle (content-hashed filenames; control-server.js reads
 # this directory at startup, rebuilt via `npm run build:web`/`watch:web`).
 web/dist/
+web/dist-demo/
 
 # Claude Code local state — settings.json is shared/committed (see below), everything else stays local
 .claude/*

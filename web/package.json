@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:demo": "vite build --config vite.demo.config.ts",
+    "dev:demo": "vite --config vite.demo.config.ts --open /demo.html",
+    "screenshots": "npm run build:demo && node scripts/demo-screenshots.mjs",
     "watch": "vite build --watch",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
