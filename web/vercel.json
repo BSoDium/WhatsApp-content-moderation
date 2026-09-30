@@ -3,6 +3,5 @@
   "framework": "vite",
   "installCommand": "npm ci",
   "buildCommand": "npm run build:demo",
-  "outputDirectory": "dist-demo",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ."
+  "outputDirectory": "dist-demo"
 }
