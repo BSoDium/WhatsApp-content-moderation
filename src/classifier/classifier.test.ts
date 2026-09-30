@@ -83,7 +83,7 @@ test('contactContext, when given, is folded into the system prompt', async () =>
   assert.match(systemPrompt, /landlord/);
 });
 
-test('history labels the user\'s own messages "Me" and the bot\'s warnings as automated', async () => {
+test('history labels the user\'s own messages "User", the contact "Contact" and the bot\'s warnings as automated', async () => {
   let userPrompt;
   const client = {
     chat: async ({ messages }) => {
@@ -104,12 +104,12 @@ test('history labels the user\'s own messages "Me" and the bot\'s warnings as au
     { client, policy: POLICY },
   );
 
-  assert.match(userPrompt, /^Me: you absolute clown$/m);
-  assert.match(userPrompt, /^Them: haha shut up$/m);
-  assert.match(userPrompt, /^Me \(automated warning, not written by me\): Please stop\.$/m);
+  assert.match(userPrompt, /^User: you absolute clown$/m);
+  assert.match(userPrompt, /^Contact: haha shut up$/m);
+  assert.match(userPrompt, /^User \(automated warning, not written by the user\): Please stop\.$/m);
 });
 
-test('the request asks for "target" before "flagged" and the prompt limits profanity to Me-directed content', async () => {
+test('the request asks for "target" before "flagged" and the prompt limits profanity to user-directed content', async () => {
   let request;
   const client = {
     chat: async (req) => {
@@ -122,7 +122,23 @@ test('the request asks for "target" before "flagged" and the prompt limits profa
 
   const properties = Object.keys(request.format.properties);
   assert.ok(properties.indexOf('target') < properties.indexOf('flagged'));
-  assert.match(request.messages.find((m) => m.role === 'system').content, /only count when aimed at Me/);
+  assert.match(request.messages.find((m) => m.role === 'system').content, /only count when aimed at the user/);
+});
+
+test('the protected person is "the user", never a capitalised "Me" that a model could read as a name', async () => {
+  let request;
+  const client = {
+    chat: async (req) => {
+      request = req;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage({ message: 'hey', contactContext: 'Flag any request to contact my mother.' }, { client, policy: POLICY });
+
+  const system = request.messages.find((m) => m.role === 'system').content;
+  assert.doesNotMatch(system, /\bMe\b/);
+  assert.doesNotMatch(JSON.stringify(request.format), /\bme\b|_me\b/);
 });
 
 test('omitting contactContext leaves the system prompt without that section', async () => {
