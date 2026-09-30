@@ -50,6 +50,22 @@ export const EVAL_CASES: EvalCase[] = [
     ],
     expectFlagged: false,
   },
+  {
+    name: 'fragment finishing a removed sentence',
+    message: 'ma sensibilité.',
+    history: [{ from: 'them', text: 'Sinon tu comprendrais mon amour', removedAs: 'unwanted_contact' }],
+    expectFlagged: true,
+  },
+  {
+    name: 'pressure right after a removed message',
+    message: 'Aide moi',
+    history: [
+      { from: 'them', text: 'Sinon tu comprendrais mon amour', removedAs: 'unwanted_contact' },
+      { from: 'them', text: 'ma sensibilité.', removedAs: 'unwanted_contact' },
+    ],
+    expectFlagged: true,
+  },
+  { name: 'contact asking for help for themself', message: 'Aide moi, ma voiture ne démarre pas', expectFlagged: false },
   { name: 'name-calling with implied address (fr)', message: 'espèce de connard', expectFlagged: true },
   { name: 'direct "you are stupid" (fr)', message: "t'es vraiment stupide toi", expectFlagged: true },
   { name: 'direct "you are stupid" (en)', message: 'you are so stupid', expectFlagged: true },

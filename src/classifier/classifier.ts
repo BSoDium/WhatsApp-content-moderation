@@ -8,6 +8,7 @@ export interface ConversationMessage {
   from: 'me' | 'them';
   text: string;
   automated?: boolean;
+  removedAs?: string;
 }
 
 interface ClassifierInput {
@@ -50,6 +51,8 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     "You will be shown recent conversation history for context, then the newest incoming message.",
     'Decide only whether that newest message violates the policy below — do not flag anything based on the history alone.',
     'The person you protect is "the user" and "Contact" is the person being moderated. The policy and the contact-specific context below are written by the user in the first person: "me", "my" and "I" in them mean the user. Lines marked as automated warnings were sent by this system, not by the user.',
+    'Every line is labelled with who wrote it. "User" lines are written by the protected person, never by Contact. In a "Contact" line, "I"/"me"/"my"/"je"/"moi"/"mon"/"ma"/"mes" refer to Contact, and only "you"/"tu"/"toi"/"ton"/"ta"/"tes"/"vous" or the user\'s name refer to the user. A Contact line asking for help, or talking about "my" feelings, is Contact talking about themself, not the user.',
+    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. A newest message that continues, completes or rephrases such a line — the same sentence split across messages, or the same pressure repeated — is part of the same violation and gets flagged with the same category, even if it looks harmless on its own.',
     'Profanity or insults only count when aimed at the user. Swearing for emphasis and venting about a third party or a situation are not violations.',
     'An insult only counts when it targets the user directly: "you"/"tu"/"toi", the user\'s name, or a name-calling word addressed to the user. A short remark that judges a situation, an idea or a thing is about that thing, not about the user.',
     'Friendly greetings and sign-offs are never advances, in any language: "bisous", "bises", "bizou", "xoxo", kiss or heart emojis. Only flag affection when it is clearly sexual or continues after the user asked them to stop.',
@@ -58,6 +61,9 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     '# Examples',
     'Recent conversation: "User: you missed your bus again, what a dummy 😂" / "Contact: haha I overslept". Newest message: "Contact: screw you, at least I got up" -> user_was_rude true, banter, flagged false.',
     'Recent conversation: "User: thanks, talk later". Newest message: "Contact: you are useless and nobody likes you" -> user_was_rude false, aimed at the user, flagged true.',
+    'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: ma sensibilité." -> finishes the removed sentence, same violation, flagged true.',
+    'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
+    'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
     'Recent conversation: (none). Newest message: "Contact: this stupid printer is broken again, damn it" -> aimed at no one, flagged false.',
     'Recent conversation: (none). Newest message: "Contact: c\'est nul comme idée" -> about the idea, not about the user, flagged false.',
     'Recent conversation: (none). Newest message: "Contact: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
@@ -78,8 +84,8 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
   ].join('\n');
 }
 
-function speakerLabel({ from, automated }: ConversationMessage): string {
-  if (from === 'them') return 'Contact';
+function speakerLabel({ from, automated, removedAs }: ConversationMessage): string {
+  if (from === 'them') return removedAs ? `Contact (removed by moderation: ${removedAs})` : 'Contact';
   return automated ? 'User (automated warning, not written by the user)' : 'User';
 }
 
