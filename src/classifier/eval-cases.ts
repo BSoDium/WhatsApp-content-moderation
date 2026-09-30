@@ -66,6 +66,8 @@ export const EVAL_CASES: EvalCase[] = [
     expectFlagged: true,
   },
   { name: 'contact asking for help for themself', message: 'Aide moi, ma voiture ne démarre pas', expectFlagged: false },
+  { name: 'contact asking for help for themself (es)', message: 'Ayúdame, mi coche no arranca', expectFlagged: false },
+  { name: 'contact asking for help for themself (de)', message: 'Hilf mir bitte, mein Auto springt nicht an', expectFlagged: false },
   { name: 'name-calling with implied address (fr)', message: 'espèce de connard', expectFlagged: true },
   { name: 'direct "you are stupid" (fr)', message: "t'es vraiment stupide toi", expectFlagged: true },
   { name: 'direct "you are stupid" (en)', message: 'you are so stupid', expectFlagged: true },
