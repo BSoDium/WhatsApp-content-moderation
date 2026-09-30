@@ -82,7 +82,7 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
       'Then set "target" to who the newest message is aimed at: "user" ' +
       '(including any second-person address), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
       'Then fill in "category" (a short label, e.g. "harassment", "unwanted_contact", or "none" ' +
-      'when not flagged) and "reason" (one short sentence that refers to the protected person as "the user"), then set "flagged" to agree with the ' +
+      'when not flagged) and "reason" (one short sentence saying what the contact did, e.g. "the contact threatens the user", "the contact talks about the weather"; "the user" is only ever the protected person), then set "flagged" to agree with the ' +
       'reason you just wrote.',
   ].join('\n');
 }
@@ -90,6 +90,13 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
 function speakerLabel({ from, automated, removedAs }: ConversationMessage): string {
   if (from === 'them') return removedAs ? `Contact (removed by moderation: ${removedAs})` : 'Contact';
   return automated ? 'User (automated warning, not written by the user)' : 'User';
+}
+
+function followUpNote(history: ConversationMessage[]): string {
+  const lastContactLine = history.findLast((m) => m.from === 'them');
+  return lastContactLine?.removedAs
+    ? `\n(The contact's previous message was removed by moderation as ${lastContactLine.removedAs}. Judge whether this message continues it.)`
+    : '';
 }
 
 function formatHistory(history: ConversationMessage[]): string {
@@ -125,7 +132,7 @@ export async function classifyMessage(
         { role: 'system', content: buildSystemPrompt(policy, contactContext) },
         {
           role: 'user',
-          content: `# Recent conversation\n${formatHistory(history)}\n\n# Newest message to classify\nContact: ${message}`,
+          content: `# Recent conversation\n${formatHistory(history)}\n\n# Newest message to classify\nContact: ${message}${followUpNote(history)}`,
         },
       ],
       format: RESPONSE_SCHEMA,
