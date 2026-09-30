@@ -1,6 +1,6 @@
 {
   "name": "A violation followed by a run of harmless messages",
-  "description": "The clean burst of three messages decays one strike in total, not three.",
+  "description": "The clean burst that follows leaves both strikes in place; strikes only decay with time.",
   "policy": "Flag any message that insults the recipient (name-calling, contempt) or demands money aggressively. Do not flag polite messages, questions, or ordinary logistics.",
   "flagWords": [
     "idiot",
@@ -34,7 +34,7 @@
     }
   ],
   "expect": {
-    "strikes": 1,
+    "strikes": 2,
     "warnings": 2,
     "deletions": 2,
     "blocks": 0

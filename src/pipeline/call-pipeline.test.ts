@@ -164,7 +164,7 @@ test('sendWarning failing (rejectCall succeeding) does not record a strike, logg
   assert.equal(entry.action, 'call_warn_failed');
 });
 
-test('an answered call resets the unanswered count and decays the strike count', async () => {
+test('an answered call resets the unanswered count but keeps the strike count', async () => {
   const contact = 'heidi@s.whatsapp.net';
   await handleCallEvent(call(contact, 'timeout'), noopActions);
   await handleCallEvent(call(contact, 'timeout'), noopActions);
@@ -172,7 +172,7 @@ test('an answered call resets the unanswered count and decays the strike count',
 
   await handleCallEvent(call(contact, 'accept'), noopActions);
 
-  assert.deepEqual(getCallState(contact), { unansweredCount: 0, strikeCount: 0 });
+  assert.deepEqual(getCallState(contact), { unansweredCount: 0, strikeCount: 1 });
   const [entry] = getAuditLog(contact);
   assert.equal(entry.action, 'call_answered');
 });
