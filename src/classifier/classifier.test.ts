@@ -154,3 +154,28 @@ test('omitting contactContext leaves the system prompt without that section', as
 
   assert.doesNotMatch(systemPrompt, /# Contact-specific context/);
 });
+
+test('labels removed contact messages and keeps speakers distinct in the prompt', async () => {
+  let sent;
+  const client = {
+    chat: async (req) => {
+      sent = req;
+      return { message: { content: JSON.stringify({ category: 'none', reason: '', flagged: false }) } };
+    },
+  };
+
+  await classifyMessage(
+    {
+      message: 'ma sensibilité.',
+      history: [
+        { from: 'me', text: 'stop' },
+        { from: 'them', text: 'tu comprendrais mon amour', removedAs: 'unwanted_contact' },
+      ],
+    },
+    { client, policy: POLICY },
+  );
+
+  const userContent = sent.messages[1].content;
+  assert.match(userContent, /User: stop/);
+  assert.match(userContent, /Contact \(removed by moderation: unwanted_contact\): tu comprendrais mon amour/);
+});

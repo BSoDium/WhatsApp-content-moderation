@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { History, MessageSquare, Phone, ShieldCheck, ShieldOff } from 'lucide-react';
+import { History, MessageSquareWarning, PhoneMissed, ShieldCheck, ShieldOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -61,8 +61,8 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
         <p className="truncate text-xs text-muted-foreground">{relativeTime(contact.lastMessageAt)}</p>
       </div>
       <div className={STRIKE_COLUMN} title={strikeLabel}>
-        <StrikeCounter icon={MessageSquare} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
-        <StrikeCounter icon={Phone} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
+        <StrikeCounter icon={MessageSquareWarning} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
+        <StrikeCounter icon={PhoneMissed} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
       </div>
       <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground', block && 'font-medium text-foreground')} title={blockLabel}>
         {blockLabel}

@@ -446,3 +446,19 @@ test('the warning that comes with the blocking strike is told what it may say ab
 
   assert.deepEqual(seen, ['countdown', 'blocking', 'never', 'never']);
 });
+
+test('a removed message is passed to the next classification as removed, in the same burst and the next one', async () => {
+  const contact = 'followup@s.whatsapp.net';
+  const seenHistories = [];
+  const classify = async ({ message, history }) => {
+    seenHistories.push(history.map((m) => ({ text: m.text, removedAs: m.removedAs })));
+    return message === 'first' ? okFlag() : okPass();
+  };
+
+  await handleBurst(burst(contact, ['first', 'second']), { ...noopActions, classify });
+  await handleBurst(burst(contact, ['third']), { ...noopActions, classify });
+
+  assert.equal(seenHistories[1].find((m) => m.text === 'first')?.removedAs, 'harassment');
+  assert.ok(seenHistories[2].some((m) => m.text === 'first' && m.removedAs === 'harassment'));
+  assert.equal(seenHistories[2].find((m) => m.text === 'second')?.removedAs, undefined);
+});

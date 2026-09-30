@@ -32,6 +32,7 @@ interface BurstActions {
 const logger = createLogger('pipeline');
 
 const WARNING_SENT_ACTION = 'warning_sent';
+const REMOVED_ACTIONS = ['delete+warn', 'delete'];
 
 function loadHistory(contactId: string): ConversationMessage[] {
   return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
@@ -40,6 +41,7 @@ function loadHistory(contactId: string): ConversationMessage[] {
       from: row.direction === 'me' ? 'me' : 'them',
       text: row.message,
       automated: row.action === WARNING_SENT_ACTION,
+      removedAs: REMOVED_ACTIONS.includes(row.action) ? (row.category ?? 'violation') : undefined,
     }));
 }
 
@@ -150,7 +152,7 @@ async function runBurst(
       logMessage({ contactId, direction: 'them', message: text, classification, action, createdAt: timestamp });
 
     const classification = await classify({ message: text, history, contactContext });
-    history.push({ from: 'them', text });
+    history.push({ from: 'them', text, removedAs: classification.ok && classification.flagged && !getBoolSetting('SHADOW_MODE') ? classification.category : undefined });
 
     if (!classification.ok) {
       logger.warn({ contactId, error: classification.error }, 'classification failed; fail-open, no action taken');
