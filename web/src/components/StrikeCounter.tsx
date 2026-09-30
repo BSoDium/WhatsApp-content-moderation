@@ -14,10 +14,12 @@ export function StrikeCounter({ icon: Icon, label, count, limit }: StrikeCounter
     <span
       role="img"
       aria-label={`${label}: ${count} of ${limit}`}
-      className={cn('inline-flex items-center gap-2 tabular-nums', count > 0 && 'font-medium text-foreground', atLimit && 'text-destructive')}
+      className="inline-flex items-center gap-2 tabular-nums"
     >
       <Icon className="size-3.5" aria-hidden="true" />
-      {count}/{limit}
+      <span>
+        <span className={cn(count > 0 && 'font-medium text-foreground', atLimit && 'text-destructive')}>{count}</span>/{limit}
+      </span>
     </span>
   );
 }
