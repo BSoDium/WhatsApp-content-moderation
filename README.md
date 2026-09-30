@@ -33,15 +33,15 @@ To update later: `docker compose pull && docker compose up -d`.
 
 ## Web control app
 
-A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — strikes, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a **Reset** button that clears the contact's strikes (message and call — worth pressing after an unblock, or the very next flag re-blocks them instantly), a "Message history" link into the activity panel, a **nuisance calls** block (call strikes, unanswered-call count, and an optional per-contact override of the nuisance call threshold), and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy, written as concrete criteria — see [Writing rules the classifier can follow](#writing-rules-the-classifier-can-follow). The page follows the OS/browser's light/dark preference automatically.
+A small web app hosted by the same process (`src/web/`) — this is where contacts actually get moderated, and the only way to add one to the roster. A scrollable list shows every contact Baileys has learned about so far (a contact who's never messaged and isn't in your phone's synced address book will only show up as a bare number), searchable by name or number, each with a switch that directly turns moderation on/off. Clicking a contact (not the switch) opens a detail panel — message and call strikes, each shown against its threshold, block status, a pause switch, an escalation switch (turn off auto-blocking for a contact you can't afford to actually block — the rest of moderation still runs), an unblock button, a **Reset** button that zeroes message strikes, call strikes and the unanswered-call count (worth pressing after an unblock, or the very next flag re-blocks them instantly), a "Message history" link into the activity panel, an optional per-contact override of the nuisance call threshold, and (once monitored) a **moderation context** field: free text folded into the classifier prompt for that contact only, alongside the global policy, written as concrete criteria — see [Writing rules the classifier can follow](#writing-rules-the-classifier-can-follow). The page follows the OS/browser's light/dark preference automatically, and a banner stays visible while shadow mode is on. The header's status popover shows the WhatsApp connection state, the app version, and who you're signed in as.
 
 - **Activity panel** — roster-wide stats (monitored count, active blocks, messages flagged/deleted, warnings sent, classifier errors, most-flagged categories) and a filterable, paginated explorer over every logged message, including anything already deleted, since the audit log is the only remaining record of it.
-- **Policy** — the global moderation policy the classifier judges every message against. Starts as a placeholder ("flag nothing until this is replaced") — write a real one here before trusting this with a real contact.
+- **Policy** — the global moderation policy the classifier judges every message against. Starts as a placeholder that tells the classifier to flag nothing — write a real one here before trusting this with a real contact.
 - **Settings** — every classifier/warning/strike/buffer/nuisance-call tuning knob, including shadow mode itself, grouped by area, saved on blur/toggle. Applies immediately.
 
 ### Auth model
 
-Authenticated via Tailscale identity, not a password or shared secret — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for the full reasoning. If `ALLOWED_TAILSCALE_LOGIN` isn't set, there's no auth at all: the app binds every network interface, and anyone who can reach the host on this port can open it — the header's user badge turns into an amber "Direct connection" warning that links here. This is the default so the app never refuses to start over a missing Tailscale login; see [Restricting access with Tailscale](#restricting-access-with-tailscale) to turn it on.
+Authenticated via Tailscale identity, not a password or shared secret — see [`docs/decisions.md`](docs/decisions.md#web-control-app-back-to-trusting-the-header-issue-29-twice-revisited) for the full reasoning. If `ALLOWED_TAILSCALE_LOGIN` isn't set, there's no auth at all: the app binds every network interface, and anyone who can reach the host on this port can open it — the header's user badge turns into an amber "Direct connection" warning that links here. Tailscale is the only access control: there's no password. This is the default so the app never refuses to start over a missing Tailscale login; see [Restricting access with Tailscale](#restricting-access-with-tailscale) to turn it on.
 
 ## Restricting access with Tailscale
 
@@ -90,7 +90,9 @@ Open `https://whatsapp-moderation.<your-tailnet>.ts.net/` (the console's Service
 
 ### Classifier
 
-Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service — no per-message API cost, runs entirely on the self-hosted machine. `llama3.2:3b` is the default (`docker compose exec ollama ollama pull llama3.2:3b`); change it in the Settings panel. It was chosen over the cheaper `llama3.2:1b` after the smaller model proved unreliable under JSON-schema-constrained output — see [`docs/decisions.md`](docs/decisions.md) for the comparison.
+Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service — no per-message API cost, runs entirely on the self-hosted machine. `llama3.2:3b` is the default (`docker compose exec ollama ollama pull llama3.2:3b`); change it, and the Ollama host, in the Settings panel. It was chosen over the cheaper `llama3.2:1b` after the smaller model proved unreliable under JSON-schema-constrained output — see [`docs/decisions.md`](docs/decisions.md) for the comparison.
+
+Each verdict is structured JSON: who the message targets, whether it's mutual banter, and the flag itself. Mutual banter (the user teased first and the contact answered in kind) is let through, except for real threats, sexually explicit messages, pressure after a clear refusal, and any continuation of a message moderation already removed. The last few messages (**History limit**, 10 by default) are sent as context, including the user's own and earlier warnings.
 
 **Fails open**: any Ollama error, timeout, or malformed response returns `{ ok: false }` rather than a guessed verdict — the message is left alone, never deleted, warned, or struck.
 
@@ -114,11 +116,11 @@ A larger model follows abstract rules better; change it in Settings, but measure
 
 ### Warning messages
 
-The reply sent alongside a delete (`src/classifier/warning-message.ts`) is chosen per violation: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and how many repeat offences remain before a block. In languages with a hand-written template (`src/classifier/warning-templates.ts` — English, French, Spanish, Polish) that text is sent as is, with no generation; in any other language the warning model writes it, and a small model's grammar there can be poor, so point `WARNING_MODEL` at a larger one if you need those languages. The warning model never sees the flagged message or the classifier's reason — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is chosen per violation: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and — only when a block can actually happen — how many repeat offences remain before one. With escalation off for the contact, no block is mentioned; on the warning that comes with the block, it says so. In languages with a hand-written template (`src/classifier/warning-templates.ts` — English, French, Spanish, Polish) that text is sent as is, with no generation; in any other language the warning model writes it, and a small model's grammar there can be poor, so set a larger **Warning model** in Settings if you need those languages (blank inherits the classifier model). The warning model never sees the flagged message or the classifier's reason — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
 
 ### Moderation pipeline and block/unblock scheduler
 
-Incoming messages from monitored contacts are debounced, classified, and — if flagged — deleted locally, answered with a warning, and recorded as a strike — once per incident: further flagged messages in the same burst, or within the strike cooldown of the last warning, are deleted without a new strike or warning. A contact is blocked the first time their strike count reaches the strike threshold, then automatically unblocked after the configured duration (± jitter, to avoid a fixed, detectable cadence). Disabling a contact's **escalation** toggle skips only the block/unblock step — classification, delete-for-me, warnings, strikes, and the audit log all still run. Shadow mode skips all of the above and only logs. See [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for the full design.
+Incoming messages from monitored contacts are debounced, classified, and — if flagged — deleted locally, answered with a warning, and recorded as a strike — once per incident: further flagged messages in the same burst, or within the strike cooldown of the last warning, are deleted without a new strike or warning. A contact is blocked the first time their strike count reaches the strike threshold, then automatically unblocked after the configured duration (± jitter, to avoid a fixed, detectable cadence). Strikes decay with time — one is forgiven per full **strike decay** window (24 hours by default) since the last one earned — never because of clean messages. Unblocking from the phone closes the local block record too. Disabling a contact's **escalation** toggle skips only the block/unblock step — classification, delete-for-me, warnings, strikes, and the audit log all still run. Shadow mode skips all of the above and only logs. See [`docs/decisions.md`](docs/decisions.md#trigger-duration-and-jitter-issue-8-design) for the full design.
 
 ### Manual override routines
 
@@ -138,11 +140,13 @@ ollama pull llama3.2:3b
 CONTROL_PORT=4756 npm start
 ```
 
-`npm run typecheck` and `npm run lint` check the backend; `npm test` runs the full suite (pure logic + real SQLite, no WhatsApp, no Ollama — includes the manual override routines and the control app's HTTP/auth logic against a real server on an ephemeral port).
+Runtime knobs outside the Settings panel are environment variables: `CONTROL_PORT` (default 4756), `ALLOWED_TAILSCALE_LOGIN`, `TEST_ALLOW_SELF`, `DB_PATH`, `LOG_LEVEL`. The container version comes from `APP_VERSION`; a local run reports `dev`.
+
+`npm run typecheck` and `npm run lint` check the backend; `npm test` runs the full suite (pure logic + real SQLite, no WhatsApp, no Ollama — includes the pipelines, the manual override routines and the control app's HTTP/auth logic against a real server on an ephemeral port).
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account. Each layer can be exercised on its own instead:
 
-- **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`
+- **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`; `npm run classifier:eval` runs the labelled cases in `src/classifier/eval-cases.ts` against a real model (`EVAL_POLICY_FILE`, `EVAL_CONTEXT_FILE` and `EVAL_HELD_OUT=1` tune it)
 - **Buffer** (pure timers): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
 - **Moderation pipeline** (classifier + buffer + store, actions stubbed to console output): `npm run pipeline:test`
@@ -160,7 +164,7 @@ The first run needs a WhatsApp QR code scanned interactively; `index.ts` stores 
 
 ### Frontend
 
-A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request, so a frontend change just needs a browser reload. `npm run build:web` does a one-off production build; `npm test` runs it automatically first.
+A Vite + React + TypeScript app in [`web/`](web/), styled with [shadcn/ui](https://ui.shadcn.com/) on Tailwind CSS v4 — add a component with `npx shadcn@latest add <component>` from inside `web/`. `npm run dev` (repo root) runs the backend under `nodemon` and `vite build --watch` side by side; `control-server.ts` reads `web/dist/` fresh on every request, so a frontend change just needs a browser reload. `npm run build:web` does a one-off production build; `npm test` runs it automatically first. Components have Storybook stories (`npm run storybook` from `web/`, port 6006), and `npm test` inside `web/` runs the Vitest suite.
 
 ### Building the container from source
 
@@ -181,12 +185,14 @@ Designed to run comfortably on a mid-range machine — not as low as a Raspberry
 
 - **Transport**: Baileys (no headless browser, lighter than whatsapp-web.js)
 - **Classifier**: LLM call per message (structured JSON output, not free-text), with conversation context, fail-open on API errors
-- **State**: SQLite — strike counts, block records, every setting (including the moderation policy), and a full audit log of messages + classifications (the only record once a message is deleted)
+- **State**: SQLite (Drizzle ORM, migrations in `drizzle/`) — message and call strikes, block records, every setting (including the moderation policy), and a full audit log of messages + classifications (the only record once a message is deleted)
 - **Scheduler**: periodic check for expired blocks, jittered rather than fixed-interval
+- **Control app**: Vite + React frontend in `web/`, served by `src/web/control-server.ts` with live updates over a server event stream
 - **Deployment**: self-hosted via Docker Compose, `restart: always`, `auth_info/`/`data/` on persisted + backed-up bind mounts, no other host state — see [`docs/decisions.md`](docs/decisions.md#dropping-env-configpolicymd-and-first-boot-file-imports)
 
 ## Further reading
 
 - [`docs/decisions.md`](docs/decisions.md) — durable design rationale and the full history behind decisions summarized above.
 - [`docs/roadmap.md`](docs/roadmap.md) — a one-time snapshot of the original build order, and the checklist for trusting this with a real contact.
+- [`docs/feedback-learning.md`](docs/feedback-learning.md) — a spec for learning moderation rules from labelled messages; a proposal, nothing built.
 - [`AGENTS.md`](AGENTS.md) — conventions for anyone (human or agent) contributing code to this repo.
