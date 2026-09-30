@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Activity, FileText, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useControlData } from '@/lib/useControlData';
+import { useStrikeLimits } from '@/lib/useStrikeLimits';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useViewportWidth } from '@/lib/useViewportWidth';
 import { detailPaneTarget, listPaneTarget } from '@/lib/paneLayout';
@@ -70,6 +71,7 @@ function App() {
   } = useControlData(initialUrlState.contactId);
   const { meta, settled: metaSettled } = useMeta();
   const { shadowMode, settled: shadowModeSettled } = useShadowMode();
+  const strikeLimits = useStrikeLimits();
   const [openPanel, setOpenPanel] = useState<PanelName | null>(initialUrlState.openPanel);
   const [skipInitialPanelAnimation, setSkipInitialPanelAnimation] = useState(initialUrlState.openPanel !== null);
   const [activityContactId, setActivityContactId] = useState<string | null>(initialUrlState.activityContactId);
@@ -318,6 +320,7 @@ function App() {
               <ContactList
                 contacts={contacts}
                 roster={roster}
+                strikeLimits={strikeLimits}
                 selectedId={selectedId}
                 onSelect={requestSelectContact}
                 onToggle={setMonitored}
@@ -354,6 +357,7 @@ function App() {
             key={displayedContact?.id}
             contact={displayedContact}
             entry={displayedEntry}
+            strikeLimits={strikeLimits}
             onClose={() => requestSelectContact(null)}
             onToggleMonitor={setMonitored}
             onRunCommand={runCommand}

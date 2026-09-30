@@ -1,6 +1,7 @@
 import { fn } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FIXTURE_CONTACTS, FIXTURE_ROSTER } from '@/lib/fixtures';
+import { DEFAULT_STRIKE_LIMITS } from '@/lib/strikeLimits';
 import { ContactRow } from './ContactRow';
 
 const meta = {
@@ -14,6 +15,7 @@ const meta = {
     ),
   ],
   args: {
+    strikeLimits: DEFAULT_STRIKE_LIMITS,
     onSelect: fn(),
     onToggle: fn(async () => {}),
     onViewHistory: fn(),
@@ -63,7 +65,7 @@ export const StrikesAndBlocked: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],
     monitored: true,
-    entry: { ...FIXTURE_ROSTER[0], strikeCount: 12, block: { unblockAt: Date.now() + 60 * 60 * 1000 } },
+    entry: { ...FIXTURE_ROSTER[0], strikeCount: 3, callNuisance: { ...FIXTURE_ROSTER[0].callNuisance, strikeCount: 1 }, block: { unblockAt: Date.now() + 60 * 60 * 1000 } },
     selected: false,
   },
 };
