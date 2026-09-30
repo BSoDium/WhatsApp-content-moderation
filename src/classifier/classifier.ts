@@ -54,8 +54,8 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     'Every line is labelled with who wrote it. "User" lines are written by the protected person, never by Contact. Apply this in whatever language the messages are written in: in a "Contact" line, first-person words (I, me, my, je, moi, ma, yo, mi, ich, mein…) always refer to Contact, and only second-person words (you, your, tu, toi, ton, vous, tú, ti, du, dein…) or the user\'s name refer to the user. A Contact line asking for help, or talking about "my" feelings, is Contact talking about themself, not the user.',
     'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. A newest message that continues, completes or rephrases such a line — the same sentence split across messages, or the same pressure repeated — is part of the same violation and gets flagged with the same category, even if it looks harmless on its own.',
     'Profanity or insults only count when aimed at the user. Swearing for emphasis and venting about a third party or a situation are not violations.',
-    'An insult only counts when it targets the user directly: "you"/"tu"/"toi", the user\'s name, or a name-calling word addressed to the user. A short remark that judges a situation, an idea or a thing is about that thing, not about the user.',
-    'Friendly greetings and sign-offs are never advances, in any language: "bisous", "bises", "bizou", "xoxo", kiss or heart emojis. Only flag affection when it is clearly sexual or continues after the user asked them to stop.',
+    'An insult only counts when it targets the user directly: a second-person word in any language, the user\'s name, or a name-calling word addressed to the user. A short remark that judges a situation, an idea or a thing is about that thing, not about the user.',
+    'Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis. Only flag affection when it is clearly sexual or continues after the user asked them to stop.',
     'If the user was already rude, insulting or teasing in the recent conversation, mutual banter is not a violation either. Only flag it then if the newest message is a real threat, sexually explicit, or keeps pressuring the user after a clear refusal.',
     '',
     '# Examples',
@@ -68,6 +68,8 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     'Recent conversation: (none). Newest message: "Contact: this stupid printer is broken again, damn it" -> aimed at no one, flagged false.',
     'Recent conversation: (none). Newest message: "Contact: c\'est nul comme idée" -> about the idea, not about the user, flagged false.',
     'Recent conversation: (none). Newest message: "Contact: à demain, gros bisous 😘" -> friendly sign-off, flagged false.',
+    'Recent conversation: (none). Newest message: "Contact: hasta mañana, un besazo" -> friendly sign-off in Spanish, flagged false.',
+    'Recent conversation: (none). Newest message: "Contact: du bist so ein Idiot" -> "du" is the user, aimed at the user, flagged true.',
     '',
     '# Policy',
     policy,
@@ -76,9 +78,9 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string): stri
     'Respond with JSON only, matching the given schema. First set "user_was_rude" to true if a line ' +
       'written by the user (not an automated warning) in the recent conversation was rude, insulting or ' +
       'teasing, else false. Then set "words_addressing_user" to the exact words of the newest message ' +
-      'that refer to the user directly ("you", "tu", "toi", the user\'s name), or an empty string if there are none. ' +
+      'that refer to the user directly (a second-person word in any language, or the user\'s name), or an empty string if there are none. ' +
       'Then set "target" to who the newest message is aimed at: "user" ' +
-      '(including "you"/"tu"/"toi"), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
+      '(including any second-person address), "someone_else", or "no_one" (no addressee, e.g. plain swearing). ' +
       'Then fill in "category" (a short label, e.g. "harassment", "unwanted_contact", or "none" ' +
       'when not flagged) and "reason" (one short sentence that refers to the protected person as "the user"), then set "flagged" to agree with the ' +
       'reason you just wrote.',
