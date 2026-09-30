@@ -1823,3 +1823,7 @@ The setting manifest in `src/demo/settings.ts` is a copy of `src/store/settings.
 *Rejected: a `VITE_DEMO` flag in `main.tsx`.* It keeps one entry point but puts the mock behind a runtime branch in the bundle the container ships, and a forgotten flag would serve fake data from a real deployment.
 
 *Rejected: reusing Storybook's `controlDataRoutes`.* It is a handful of static fixtures; the demo needs state that evolves (strikes, blocks, new messages), which is a different shape.
+
+*Rejected: generated SVG avatars.* They looked like cartoons next to a real contact list, which defeats the point of the screenshots.
+
+*Rejected: committing downloaded portraits.* randomuser.me sources its photos from UI Faces, whose free images are for non-commercial mockups and may not be redistributed, so the demo links to randomuser.me's own URLs (3-5 KB each) instead of copying them into the repo. Shops, scam senders and unsaved numbers get no photo, and any failed load falls back to initials. The only AI-generated faces found with a clear public-domain licence (Wikimedia Commons) number about seven, too few to fill a contact list.

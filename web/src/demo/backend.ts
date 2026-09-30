@@ -1,5 +1,4 @@
 import type { AuditLogEntry, AuditLogPage, Contact, OverrideCommand, RosterEntry, ServerStatus, Setting, Stats } from '@/lib/types';
-import { avatarDataUri } from './avatar';
 import { DEMO_PEOPLE, SELF_ID, SELF_NAME, type DemoPerson } from './people';
 import { DEMO_POLICY_TEXT, DEMO_SETTINGS, validateSettingValue } from './settings';
 
@@ -28,7 +27,6 @@ const DEFAULT_AUDIT_PAGE_LIMIT = 50;
 const MAX_AUDIT_PAGE_LIMIT = 200;
 const MAX_CONTEXT_LENGTH = 500;
 const MAX_POLICY_LENGTH = 8000;
-const PHOTO_COVERAGE_MODULUS = 6;
 const FLAGGED_DELETED_ACTIONS: ReadonlySet<string> = new Set(['delete+warn', 'delete']);
 const CATEGORY_ACTIONS: ReadonlySet<string> = new Set(['delete+warn', 'delete', 'shadow']);
 
@@ -45,10 +43,10 @@ export class DemoBackend {
 
   constructor(now: number) {
     this.startedAt = now - (9 * 24 + 6) * 60 * 60 * 1000;
-    DEMO_PEOPLE.forEach((person, index) => {
+    DEMO_PEOPLE.forEach((person) => {
       this.contacts.set(person.id, {
         person,
-        photoUrl: person.name.startsWith('+') || index % PHOTO_COVERAGE_MODULUS === 5 ? null : avatarDataUri(person.id),
+        photoUrl: person.portraitUrl,
         lastMessageAt: null,
         monitored: person.monitored,
         escalationEnabled: true,

@@ -45,6 +45,12 @@ describe('seeded demo backend', () => {
     expect(roster.some((entry) => entry.paused)).toBe(true);
   });
 
+  it('gives every contact photo a distinct face', () => {
+    const urls = DEMO_PEOPLE.flatMap((person) => (person.portraitUrl ? [person.portraitUrl] : []));
+    expect(urls.length).toBeGreaterThan(20);
+    expect(new Set(urls).size).toBe(urls.length);
+  });
+
   it('only uses fictional phone numbers', () => {
     for (const person of DEMO_PEOPLE) expect(person.id).toMatch(/^3363998\d{4}@s\.whatsapp\.net$/);
   });

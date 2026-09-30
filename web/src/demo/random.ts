@@ -21,9 +21,3 @@ export function createRandom(seed: number): Random {
     pick: (items) => items[Math.floor(next() * items.length)],
   };
 }
-
-export function hashSeed(text: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
-  return hash >>> 0;
-}

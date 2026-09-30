@@ -6,7 +6,10 @@ export interface DemoPerson {
   kind: PersonKind;
   monitored: boolean;
   context?: string;
+  portraitUrl: string | null;
 }
+
+type PortraitGender = 'men' | 'women';
 
 export const SELF_ID = '33639980000@s.whatsapp.net';
 export const SELF_NAME = 'Camille';
@@ -21,8 +24,29 @@ function formattedNumber(suffix: number): string {
   return `+33 6 39 98 ${digits.slice(0, 2)} ${digits.slice(2)}`;
 }
 
+const PORTRAIT_BASE_URL = 'https://randomuser.me/api/portraits';
+const PORTRAIT_POOL_SIZE = 100;
+// Coprime with the pool size, so the nth person of a gender always lands on a distinct face.
+const PORTRAIT_STRIDE = 11;
+const PORTRAIT_OFFSET = 5;
+
+// Accounts and numbers absent here (shops, scam senders, unsaved numbers) have no photo, as in a real contact list.
+const PORTRAIT_GENDER_BY_SUFFIX: Record<number, PortraitGender> = {
+  1: 'women', 2: 'men', 3: 'women', 4: 'men', 5: 'women', 6: 'men', 7: 'women', 8: 'men', 9: 'women', 10: 'men', 11: 'women', 14: 'women',
+  20: 'men', 21: 'men', 22: 'women', 23: 'men', 32: 'men', 33: 'women', 43: 'women', 44: 'men',
+  60: 'men', 61: 'women', 62: 'men', 63: 'women', 64: 'men', 65: 'women', 66: 'men', 67: 'women', 68: 'men', 69: 'women',
+};
+
+const portraitCount: Record<PortraitGender, number> = { men: 0, women: 0 };
+
+function portraitUrl(gender: PortraitGender): string {
+  const index = (portraitCount[gender]++ * PORTRAIT_STRIDE + PORTRAIT_OFFSET) % PORTRAIT_POOL_SIZE;
+  return `${PORTRAIT_BASE_URL}/${gender}/${index}.jpg`;
+}
+
 function person(suffix: number, name: string, kind: PersonKind, monitored: boolean, context?: string): DemoPerson {
-  return { id: jid(suffix), name, kind, monitored, context };
+  const gender = PORTRAIT_GENDER_BY_SUFFIX[suffix];
+  return { id: jid(suffix), name, kind, monitored, context, portraitUrl: gender ? portraitUrl(gender) : null };
 }
 
 export const DEMO_PEOPLE: DemoPerson[] = [
