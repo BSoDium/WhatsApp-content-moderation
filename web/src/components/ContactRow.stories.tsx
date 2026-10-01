@@ -88,7 +88,7 @@ function UnblockDemo(args: React.ComponentProps<typeof ContactRow>) {
   );
 }
 
-export const UnblockAnimates: Story = {
+export const UnblockFromStatus: Story = {
   args: {
     contact: FIXTURE_CONTACTS[0],
     monitored: true,
