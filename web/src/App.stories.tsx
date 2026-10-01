@@ -61,6 +61,7 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
     { match: '/api/meta', body: { authRequired: true, user: FIXTURE_USER } },
     { match: '/api/status', body: FIXTURE_STATUS },
     { match: '/api/stats', body: FIXTURE_STATS },
+    { match: '/api/ollama/models', body: { models: [{ name: 'llama3.2:3b', sizeBytes: 2019393189 }] } },
     { match: '/api/settings', bodyFn: () => settings },
     {
       method: 'POST',

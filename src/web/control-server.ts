@@ -21,6 +21,7 @@ import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
 import type { AuditLogRecord } from '../types.ts';
 import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
 import { listSettings, setSetting } from '../store/settings.ts';
+import { listInstalledModels } from '../classifier/installed-models.ts';
 
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
@@ -57,11 +58,13 @@ interface ControlServerDependencies {
   getSelfId: () => string | null;
   getConnectionState: () => ConnectionState;
   allowSelf: boolean;
+  listModels?: typeof listInstalledModels;
 }
 
 const logger = createLogger('control-server');
 
 const STARTED_AT = Date.now();
+const BAD_GATEWAY = 502;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
@@ -450,6 +453,16 @@ async function handleApi(
       return true;
     }
     sendJson(res, 200, { text: getPolicyText() });
+    return true;
+  }
+
+  if (req.method === 'GET' && segments.length === 2 && segments[0] === 'ollama' && segments[1] === 'models') {
+    const result = await (deps.listModels ?? listInstalledModels)();
+    if (!result.ok) {
+      sendJson(res, BAD_GATEWAY, { error: result.error });
+      return true;
+    }
+    sendJson(res, 200, { models: result.models });
     return true;
   }
 

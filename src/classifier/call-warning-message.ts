@@ -5,7 +5,7 @@ import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 import type { BlockOutlook } from './warning-consequence.ts';
 import { templateWarning } from './warning-templates.ts';
-import { generateChecked, warningModel } from './warning-text.ts';
+import { generateChecked, generatedText, warningModel } from './warning-text.ts';
 
 interface CallWarningInput {
   recentMessages: string[];
@@ -90,7 +90,7 @@ export async function generateCallWarningMessage(
         ],
         options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
       });
-      return response.message.content;
+      return generatedText(response);
     }, getNumberSetting('WARNING_MAX_LENGTH'));
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

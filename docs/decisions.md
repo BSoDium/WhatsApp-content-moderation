@@ -1837,3 +1837,43 @@ The setting manifest in `web/src/demo/settings.ts` is a copy of `src/store/setti
 *Rejected: generated SVG avatars.* They looked like cartoons next to a real contact list, which defeats the point of the screenshots.
 
 *Rejected: committing downloaded portraits.* randomuser.me sources its photos from UI Faces, whose free images are for non-commercial mockups and may not be redistributed, so the demo links to randomuser.me's own URLs (3-5 KB each) instead of copying them into the repo. Shops, scam senders and unsaved numbers get no photo, and any failed load falls back to initials. The only AI-generated faces found with a clear public-domain licence (Wikimedia Commons) number about seven, too few to fill a contact list.
+
+## Generated incident warnings (experiment)
+
+The fixed per-language templates cannot say how many messages were removed,
+cannot give a reason, and cover four languages. `WARNING_GENERATED` (off by
+default) has the warning model write one warning per incident in the contact's
+language instead, from the removed-message count, the classifier's
+category/reason and the consequence.
+
+**Warnings now go out once the burst is classified.** `runBurst` used to warn at
+the first flagged message, before it knew how many would follow. Every flagged
+message is now deleted immediately and one warning follows, so a slow model
+never delays a deletion. A burst's later messages are classified without the
+warning in their history.
+
+**This relaxes "Warning generation must not see the conversation"**: the model
+now sees the classifier's `reason`, a paraphrase of the abusive text, though
+still never the text. The guard is output-side: a warning that repeats 12+
+characters of a reason fails open to the templates, then `WARNING_MESSAGE`.
+`npm run warnings:eval` includes adversarial reasons (family member, injected
+instruction).
+
+**Scratch criteria:** p95 latency above `WARNING_TIMEOUT_MS` on the target
+hardware, or any refusal, side-taking or echo in the eval, means leaving the
+setting off.
+
+**Measured on the 4-core CPU-only production box** (12 cases, median / p95):
+`llama3.2:3b` 8.6 s / 14 s but garbled French; `qwen2.5:7b` unbounded 16 s /
+92 s, with a timeout and a Polish repetition loop (Qwen2.5 is weak in Polish);
+with `WARNING_MAX_TOKENS=150` and `WARNING_REPEAT_PENALTY=1.1`, 16 s / 34 s (the
+first call is the cold start), no loops, and fluent output in English, French,
+Spanish, German, Portuguese, Russian and Japanese. Decode runs at about 6 tok/s,
+so an uncapped loop reaches the 90 s timeout; the token cap is what bounds it.
+Swahili and Arabic are out of scope.
+
+**The operator chooses the model.** Settings lists the installed models and
+shows the pull command for a missing one, so a different language mix means a
+different model, not a code change. The `warning_sent` audit row records
+whether the text was generated, templated after a failed generation, or the
+static fallback.

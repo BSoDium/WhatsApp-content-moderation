@@ -4,6 +4,7 @@ export type WarningKind = 'message' | 'call';
 
 interface WarningTemplate {
   removedMessage: string;
+  removedMessages: (count: number) => string;
   stopCalling: string;
   consequenceMany: (remaining: number) => string;
   consequenceNext: string;
@@ -15,6 +16,7 @@ interface WarningTemplate {
 const TEMPLATES: Record<string, WarningTemplate> = {
   English: {
     removedMessage: "Your message was removed for breaking this conversation's rules. This is an automated message, not the account owner.",
+    removedMessages: (count) => `Your ${count} messages were removed for breaking this conversation's rules. This is an automated message, not the account owner.`,
     stopCalling: 'Please stop calling repeatedly without a reply. This is an automated message, not the account owner.',
     consequenceMany: (remaining) => `You will be blocked after ${remaining} more repeat offences.`,
     consequenceNext: 'The next repeat offence will get you blocked.',
@@ -23,6 +25,7 @@ const TEMPLATES: Record<string, WarningTemplate> = {
   },
   French: {
     removedMessage: 'Votre message a été supprimé car il enfreint les règles de cette conversation. Ceci est un message automatique, non envoyé par le propriétaire du compte.',
+    removedMessages: (count) => `Vos ${count} messages ont été supprimés car ils enfreignent les règles de cette conversation. Ceci est un message automatique, non envoyé par le propriétaire du compte.`,
     stopCalling: 'Merci de ne plus appeler de façon répétée sans réponse. Ceci est un message automatique, non envoyé par le propriétaire du compte.',
     consequenceMany: (remaining) => `Un blocage sera appliqué après ${remaining} récidives supplémentaires.`,
     consequenceNext: 'Un blocage sera appliqué dès la prochaine récidive.',
@@ -31,6 +34,7 @@ const TEMPLATES: Record<string, WarningTemplate> = {
   },
   Spanish: {
     removedMessage: 'Su mensaje fue eliminado por incumplir las reglas de esta conversación. Este es un mensaje automático, no enviado por el propietario de la cuenta.',
+    removedMessages: (count) => `Sus ${count} mensajes fueron eliminados por incumplir las reglas de esta conversación. Este es un mensaje automático, no enviado por el propietario de la cuenta.`,
     stopCalling: 'Por favor, deje de llamar repetidamente sin respuesta. Este es un mensaje automático, no enviado por el propietario de la cuenta.',
     consequenceMany: (remaining) => `Se aplicará un bloqueo tras ${remaining} reincidencias más.`,
     consequenceNext: 'Se aplicará un bloqueo en la próxima reincidencia.',
@@ -39,6 +43,8 @@ const TEMPLATES: Record<string, WarningTemplate> = {
   },
   Polish: {
     removedMessage: 'Wiadomość została usunięta, ponieważ narusza zasady tej rozmowy. To wiadomość automatyczna, niewysłana przez właściciela konta.',
+    // "Usunięto" is impersonal, so it fits every count without Polish's three plural forms.
+    removedMessages: (count) => `Usunięto wiadomości naruszające zasady tej rozmowy (liczba: ${count}). To wiadomość automatyczna, niewysłana przez właściciela konta.`,
     stopCalling: 'Prosimy nie dzwonić wielokrotnie bez odpowiedzi. To wiadomość automatyczna, niewysłana przez właściciela konta.',
     // "razy" is correct after every numeral from 2 up, which sidesteps Polish's three plural forms.
     consequenceMany: (remaining) => `Blokada zostanie zastosowana, jeśli naruszenie powtórzy się jeszcze ${remaining} razy.`,
@@ -54,11 +60,12 @@ const TEMPLATES: Record<string, WarningTemplate> = {
  * many more violations the contact may commit before being blocked, and
  * `outlook` says what the warning may claim about blocking; with 'never' it states no consequence.
  */
-export function templateWarning(language: string, kind: WarningKind, strikesRemaining: number, outlook: BlockOutlook = 'countdown'): string | null {
+export function templateWarning(language: string, kind: WarningKind, strikesRemaining: number, outlook: BlockOutlook = 'countdown', deletedCount = 1): string | null {
   const template = TEMPLATES[language];
   if (!template) return null;
 
-  const notice = kind === 'call' ? template.stopCalling : template.removedMessage;
+  const removed = deletedCount > 1 ? template.removedMessages(deletedCount) : template.removedMessage;
+  const notice = kind === 'call' ? template.stopCalling : removed;
   return outlook === 'never' ? notice : `${notice} ${pickConsequence(template, strikesRemaining, outlook === 'blocking')}`;
 }
 

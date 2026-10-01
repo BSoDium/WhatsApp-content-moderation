@@ -71,3 +71,12 @@ test('with no block ever coming, the warning is just the notice with no conseque
     }
   }
 });
+
+test('a count above one switches the notice to its plural wording in every templated language', () => {
+  for (const language of ['English', 'French', 'Spanish', 'Polish']) {
+    const single = templateWarning(language, 'message', 2, 'countdown', 1);
+    const several = templateWarning(language, 'message', 2, 'countdown', 4);
+    assert.notEqual(several, single);
+    assert.match(several, /4/);
+  }
+});

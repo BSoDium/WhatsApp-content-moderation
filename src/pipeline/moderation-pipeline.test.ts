@@ -462,3 +462,65 @@ test('a removed message is passed to the next classification as removed, in the 
   assert.ok(seenHistories[2].some((m) => m.text === 'first' && m.removedAs === 'harassment'));
   assert.equal(seenHistories[2].find((m) => m.text === 'second')?.removedAs, undefined);
 });
+
+test('one warning is generated for a whole burst, told how many messages went and why, after every deletion', async () => {
+  const contact = 'incident@s.whatsapp.net';
+  const order = [];
+  const seen = [];
+  const classify = async ({ message }) => ({ ok: true, flagged: true, category: 'harassment', reason: `reason for ${message}` });
+
+  await handleBurst(burst(contact, ['bad one', 'bad two', 'bad three']), {
+    ...noopActions,
+    deleteForMe: async () => order.push('delete'),
+    sendWarning: async () => order.push('warn'),
+    classify,
+    generateWarning: async (input) => {
+      seen.push(input);
+      return { ok: true, text: 'warned' };
+    },
+  });
+
+  assert.deepEqual(order, ['delete', 'delete', 'delete', 'warn']);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].deletedCount, 3);
+  assert.deepEqual(
+    seen[0].reasons.map((r) => r.reason),
+    ['reason for bad one', 'reason for bad two', 'reason for bad three'],
+  );
+});
+
+test('a burst whose only flagged message could not be deleted generates no warning', async () => {
+  const contact = 'incident-delete-failed@s.whatsapp.net';
+  let generated = false;
+
+  await handleBurst(burst(contact, ['bad']), {
+    ...noopActions,
+    deleteForMe: async () => {
+      throw new Error('chatModify failed');
+    },
+    classify: okFlag,
+    generateWarning: async () => {
+      generated = true;
+      return { ok: true, text: 'warned' };
+    },
+  });
+
+  assert.equal(generated, false);
+});
+
+test('the deleted opener is in the audit log before the warning is generated, and relabelled once it is sent', async () => {
+  const contact = 'audit-first@s.whatsapp.net';
+  let actionsWhileGenerating;
+
+  await handleBurst(burst(contact, ['bad']), {
+    ...noopActions,
+    classify: okFlag,
+    generateWarning: async () => {
+      actionsWhileGenerating = getAuditLog(contact).map((row) => row.action);
+      return { ok: true, text: 'warned' };
+    },
+  });
+
+  assert.deepEqual(actionsWhileGenerating, ['delete']);
+  assert.deepEqual(getAuditLog(contact).map((row) => row.action).sort(), ['delete+warn', 'warning_sent']);
+});

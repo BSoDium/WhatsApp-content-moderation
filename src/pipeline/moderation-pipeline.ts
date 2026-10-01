@@ -2,8 +2,9 @@ import { createLogger } from '../cli/logger.ts';
 import { classifyMessage } from '../classifier/classifier.ts';
 import type { ConversationMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
+import type { WarningReason } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike } from '../store/strikes.ts';
-import { logMessage, getAuditLog, getLastActionAt } from '../store/audit-log.ts';
+import { logMessage, getAuditLog, getLastActionAt, setLoggedAction } from '../store/audit-log.ts';
 import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { maybeBlockContact, blockOutlook } from './escalation.ts';
@@ -33,6 +34,14 @@ const logger = createLogger('pipeline');
 
 const WARNING_SENT_ACTION = 'warning_sent';
 const REMOVED_ACTIONS = ['delete+warn', 'delete'];
+const LANGUAGE_SAMPLE_MESSAGES = 3;
+const MAX_DETAIL_ERROR_LENGTH = 120;
+
+interface Incident {
+  texts: string[];
+  reasons: WarningReason[];
+  openerRowId: number;
+}
 
 function loadHistory(contactId: string): ConversationMessage[] {
   return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
@@ -69,10 +78,11 @@ function serialize<T>(contactId: string, run: () => Promise<T>): Promise<T> {
  * string — with FALLBACK_WARNING_MESSAGE used verbatim if that generation
  * fails open; either way a warning is always sent alongside the delete.
  *
- * A burst is one incident: only its first flagged message earns a strike and
- * a warning; later flagged ones in the same burst, or arriving within
- * STRIKE_COOLDOWN_MS of the last warning, are deleted and logged as 'delete'
- * without a new strike or warning. Strikes decay with time, not with clean
+ * A burst is one incident: every flagged message is deleted straight away, but
+ * only the first earns a strike, and a single warning describing all of them
+ * goes out once the burst has been classified. Flagged messages arriving
+ * within STRIKE_COOLDOWN_MS of the last warning are logged as 'delete' with no
+ * new strike or warning. Strikes decay with time, not with clean
  * messages (see src/store/strikes.ts).
  *
  * Fails open per classifyMessage's { ok: false } contract: an
@@ -130,7 +140,6 @@ async function runBurst(
 ): Promise<{ strikeCount: number }> {
   const history = loadHistory(contactId);
   let strikeCount = getStrikeCount(contactId);
-  let isBlocked = false;
   // Read once per burst, not once per message — a contact's context can't
   // change mid-burst since edits go through the roster, not this loop.
   const contactContext = getMonitored(contactId)?.context ?? undefined;
@@ -140,6 +149,7 @@ async function runBurst(
   const strikeThreshold = getNumberSetting('STRIKE_THRESHOLD');
   // One violation drip-fed across several messages is one incident: once a strike has been recorded and the contact warned (in this burst or within STRIKE_COOLDOWN_MS of the last warning), further flagged messages are only deleted.
   let incidentOpen = isWithinStrikeCooldown(contactId);
+  let incident: Incident | null = null;
 
   for (const { text, key, timestamp } of messages) {
     if (isPaused(contactId)) {
@@ -148,7 +158,7 @@ async function runBurst(
     }
 
     // Stamped with the message's own time, not the time classification finished, so a slow classifier can't file it after a reply the user sent in the meantime.
-    const logIncoming = (classification: Classification, action: string) =>
+    const logIncoming = (classification: Classification, action: string): number =>
       logMessage({ contactId, direction: 'them', message: text, classification, action, createdAt: timestamp });
 
     const classification = await classify({ message: text, history, contactContext });
@@ -170,71 +180,81 @@ async function runBurst(
       continue;
     }
 
+    try {
+      await deleteForMe(contactId, key, timestamp);
+    } catch (err) {
+      logger.error({ contactId, deleteError: String(err) }, 'deleteForMe failed');
+      logIncoming(classification, 'delete_failed');
+      continue;
+    }
+
+    if (incident) {
+      incident.texts.push(text);
+      incident.reasons.push({ category: classification.category, reason: classification.reason });
+    }
     if (incidentOpen) {
-      try {
-        await deleteForMe(contactId, key, timestamp);
-      } catch (err) {
-        logger.error({ contactId, deleteError: String(err) }, 'deleteForMe failed');
-        logIncoming(classification, 'delete_failed');
-        continue;
-      }
       logIncoming(classification, 'delete');
       continue;
     }
 
-    const warningResult = await generateWarning({
-      message: text,
-      strikeCount: strikeCount + 1,
-      strikeThreshold,
-      blockOutlook: blockOutlook(contactId, strikeCount + 1, strikeThreshold),
-    });
-    if (!warningResult.ok) {
-      logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
-    }
-    // Used only when generateWarningMessage fails open (see its own JSDoc) — the
-    // contact still needs to be told their message was removed even when the LLM
-    // call itself couldn't produce a contextual one.
-    const warningText = warningResult.ok ? warningResult.text : getRawSetting('WARNING_MESSAGE');
-
-    const [deleteOutcome, warnOutcome] = await Promise.allSettled([
-      deleteForMe(contactId, key, timestamp),
-      sendWarning(contactId, warningText),
-    ]);
-    if (deleteOutcome.status === 'rejected' || warnOutcome.status === 'rejected') {
-      // allSettled (not all) so one call's rejection never hides whether the
-      // other one actually went through — the two log distinctly ('the
-      // message was never deleted' vs. 'deleted, but the contact was never
-      // told') instead of a single ambiguous 'action_failed' either way.
-      logger.error(
-        {
-          contactId,
-          deleteError: deleteOutcome.status === 'rejected' ? String(deleteOutcome.reason) : undefined,
-          warnError: warnOutcome.status === 'rejected' ? String(warnOutcome.reason) : undefined,
-        },
-        'deleteForMe/sendWarning failed',
-      );
-      logIncoming(classification, deleteOutcome.status === 'rejected' ? 'delete_failed' : 'warn_failed');
-      continue;
-    }
-
-    strikeCount = recordStrike(contactId);
     incidentOpen = true;
-    logIncoming(classification, 'delete+warn');
-    logMessage({
-      contactId,
-      direction: 'me',
-      message: warningText,
-      classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
-      action: WARNING_SENT_ACTION,
-    });
-    history.push({ from: 'me', text: warningText, automated: true });
+    incident = {
+      texts: [text],
+      reasons: [{ category: classification.category, reason: classification.reason }],
+      openerRowId: logIncoming(classification, 'delete'),
+    };
+  }
 
-    if (!isBlocked) {
-      isBlocked = await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);
+  if (incident) {
+    const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
+    if (warning === null) {
+      setLoggedAction(incident.openerRowId, 'warn_failed');
+    } else {
+      strikeCount = recordStrike(contactId);
+      setLoggedAction(incident.openerRowId, 'delete+warn');
+      logMessage({
+        contactId,
+        direction: 'me',
+        message: warning.text,
+        classification: { ok: true, flagged: false, category: 'warning', reason: `automated warning sent (${warning.detail})` },
+        action: WARNING_SENT_ACTION,
+      });
+      await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);
     }
   }
 
   return { strikeCount };
+}
+
+// Returns the text that went out, or null when the contact was never told; the fallback is used only when generation fails open, because the contact still has to learn their messages were removed.
+async function warnAboutIncident(
+  contactId: string,
+  { texts, reasons }: Incident,
+  strikeCount: number,
+  strikeThreshold: number,
+  { sendWarning, generateWarning }: Pick<Required<BurstActions>, 'sendWarning' | 'generateWarning'>,
+): Promise<{ text: string; detail: string } | null> {
+  const warningResult = await generateWarning({
+    message: texts.slice(0, LANGUAGE_SAMPLE_MESSAGES).join('\n'),
+    deletedCount: texts.length,
+    reasons,
+    strikeCount,
+    strikeThreshold,
+    blockOutlook: blockOutlook(contactId, strikeCount, strikeThreshold),
+  });
+  if (!warningResult.ok) {
+    logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
+  }
+  const warningText = warningResult.ok ? warningResult.text : getRawSetting('WARNING_MESSAGE');
+  const detail = warningResult.ok ? (warningResult.detail ?? 'sent') : `fallback message; ${warningResult.error.slice(0, MAX_DETAIL_ERROR_LENGTH)}`;
+
+  try {
+    await sendWarning(contactId, warningText);
+  } catch (err) {
+    logger.error({ contactId, warnError: String(err) }, 'sendWarning failed');
+    return null;
+  }
+  return { text: warningText, detail };
 }
 
 function isWithinStrikeCooldown(contactId: string): boolean {
