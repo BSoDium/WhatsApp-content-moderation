@@ -10,7 +10,7 @@
   "settings": {
     "BUFFER_WINDOW_MS": "60",
     "STRIKE_THRESHOLD": "3",
-    "STRIKE_COOLDOWN_MS": "300"
+    "STRIKE_COOLDOWN_MS": "100"
   },
   "messages": [
     {
@@ -18,11 +18,11 @@
     },
     {
       "text": "Toujours aussi nul",
-      "afterMs": 500
+      "afterMs": 800
     },
     {
       "text": "Imbécile",
-      "afterMs": 500
+      "afterMs": 800
     }
   ],
   "expect": {
