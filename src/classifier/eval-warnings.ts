@@ -12,6 +12,7 @@ const SYSTEM_MARKER = /automat|système|sistema|auto/i;
 
 setSetting('WARNING_GENERATED', '1');
 setSetting('OLLAMA_MODEL', MODEL);
+if (process.env.OLLAMA_HOST) setSetting('OLLAMA_HOST', process.env.OLLAMA_HOST);
 if (process.env.WARNING_MODEL) setSetting('WARNING_MODEL', process.env.WARNING_MODEL);
 
 const latencies: number[] = [];
