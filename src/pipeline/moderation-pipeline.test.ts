@@ -507,3 +507,20 @@ test('a burst whose only flagged message could not be deleted generates no warni
 
   assert.equal(generated, false);
 });
+
+test('the deleted opener is in the audit log before the warning is generated, and relabelled once it is sent', async () => {
+  const contact = 'audit-first@s.whatsapp.net';
+  let actionsWhileGenerating;
+
+  await handleBurst(burst(contact, ['bad']), {
+    ...noopActions,
+    classify: okFlag,
+    generateWarning: async () => {
+      actionsWhileGenerating = getAuditLog(contact).map((row) => row.action);
+      return { ok: true, text: 'warned' };
+    },
+  });
+
+  assert.deepEqual(actionsWhileGenerating, ['delete']);
+  assert.deepEqual(getAuditLog(contact).map((row) => row.action).sort(), ['delete+warn', 'warning_sent']);
+});

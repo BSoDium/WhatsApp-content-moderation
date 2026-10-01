@@ -28,6 +28,9 @@ function looksLikeRefusal(text: string): boolean {
 }
 
 type WarningFailure = 'empty' | 'refused' | 'too_long';
+
+// `cutOff` is Ollama's done_reason 'length': the reply stopped at WARNING_MAX_TOKENS, not at the end of a sentence.
+export type GeneratedText = string | { text: string; cutOff: boolean };
 type CheckedWarning = { ok: true; text: string } | { ok: false; error: string; failure: WarningFailure };
 type GeneratedWarning = { ok: true; text: string } | { ok: false; error: string };
 
@@ -39,8 +42,10 @@ const RETRY_LENGTH_FRACTION = 0.6;
  * Never truncates: a warning cut mid-sentence reads worse than the static
  * fallback, so empty, refused and over-long output all fail.
  */
-function checkWarning(raw: string, maxLength: number): CheckedWarning {
+function checkWarning(generated: GeneratedText, maxLength: number): CheckedWarning {
+  const { text: raw, cutOff } = typeof generated === 'string' ? { text: generated, cutOff: false } : generated;
   const text = sanitizeWarning(raw);
+  if (cutOff) return { ok: false, error: `warning message cut off at the token limit: ${text}`, failure: 'too_long' };
   if (!text) return { ok: false, error: 'empty warning message generated', failure: 'empty' };
   if (looksLikeRefusal(text)) return { ok: false, error: `model refused to write the warning: ${text}`, failure: 'refused' };
   if (text.length > maxLength) {
@@ -49,10 +54,12 @@ function checkWarning(raw: string, maxLength: number): CheckedWarning {
   return { ok: true, text };
 }
 
-function retryHint(failure: WarningFailure, maxLength: number): string | null {
+const DEFAULT_RETRY_KEEP = 'Drop the mention of the removed message; say only that this is an automated system and the consequence.';
+
+function retryHint(failure: WarningFailure, maxLength: number, keep: string): string | null {
   if (failure !== 'too_long') return null;
   const target = Math.max(Math.floor(maxLength * RETRY_LENGTH_FRACTION), 1);
-  return `Your previous reply was too long. Write it again as ONE sentence of at most ${target} characters. Drop the mention of the removed message; say only that this is an automated system and the consequence.`;
+  return `Your previous reply was too long. Write it again as ONE sentence of at most ${target} characters. ${keep}`;
 }
 
 /**
@@ -66,8 +73,9 @@ function retryHint(failure: WarningFailure, maxLength: number): string | null {
  * wait before the fallback.
  */
 export async function generateChecked(
-  generate: (retryHint: string | null) => Promise<string>,
+  generate: (retryHint: string | null) => Promise<GeneratedText>,
   maxLength: number,
+  retryKeep = DEFAULT_RETRY_KEEP,
 ): Promise<GeneratedWarning> {
   let hint: string | null = null;
   let lastError = '';
@@ -76,8 +84,12 @@ export async function generateChecked(
     const checked = checkWarning(await generate(hint), maxLength);
     if (checked.ok) return checked;
     lastError = checked.error;
-    hint = retryHint(checked.failure, maxLength);
+    hint = retryHint(checked.failure, maxLength, retryKeep);
   }
 
   return { ok: false, error: lastError };
+}
+
+export function generatedText(response: { message: { content: string }; done_reason?: string }): GeneratedText {
+  return { text: response.message.content, cutOff: response.done_reason === 'length' };
 }

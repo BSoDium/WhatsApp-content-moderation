@@ -11,7 +11,10 @@ const args = process.argv.slice(2);
 const stub = args.includes('--stub');
 const modelIndex = args.indexOf('--model');
 const model = modelIndex === -1 ? undefined : args[modelIndex + 1];
-const setPairs = args.flatMap((arg, index) => (arg === '--set' ? [args[index + 1]] : []));
+const setPairs = args.flatMap((arg, index) => (arg === '--set' ? [args[index + 1] ?? ''] : []));
+for (const pair of setPairs) {
+  if (!pair.includes('=')) throw new Error(`--set expects KEY=VALUE, got "${pair}"`);
+}
 const settingsOverride: Record<string, string> = {
   ...(model ? { OLLAMA_MODEL: model } : {}),
   ...Object.fromEntries(setPairs.map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)])),

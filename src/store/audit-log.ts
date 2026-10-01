@@ -54,8 +54,8 @@ const CLASSIFIER_ERROR_ACTION = 'classifier_error';
  *   history stays in chat order when classification finishes after a later
  *   message was already logged.
  */
-export function logMessage({ contactId, direction, message, classification, action, createdAt = Date.now() }: AuditLogInput): void {
-  getOrm()
+export function logMessage({ contactId, direction, message, classification, action, createdAt = Date.now() }: AuditLogInput): number {
+  const { lastInsertRowid } = getOrm()
     .insert(auditLog)
     .values({
       contact_id: contactId,
@@ -70,6 +70,12 @@ export function logMessage({ contactId, direction, message, classification, acti
       created_at: createdAt,
     })
     .run();
+  emitControlEvent('audit-log');
+  return Number(lastInsertRowid);
+}
+
+export function setLoggedAction(id: number, action: string): void {
+  getOrm().update(auditLog).set({ action }).where(eq(auditLog.id, id)).run();
   emitControlEvent('audit-log');
 }
 

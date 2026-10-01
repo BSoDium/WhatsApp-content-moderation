@@ -8,7 +8,7 @@ import { ErrorBanner } from './ErrorBanner';
 import { SettingRow } from './SettingRow';
 import { ModelSelect } from './ModelSelect';
 import { MissingModelHint } from './MissingModelHint';
-import { MODEL_SETTINGS } from '@/lib/modelSettings';
+import { MODEL_SETTINGS, isModelMissing } from '@/lib/modelSettings';
 import { useInstalledModels, type InstalledModel } from '@/lib/useInstalledModels';
 import { useSettingsList, type SaveStatus } from '@/lib/useSettings';
 import type { Setting } from '@/lib/types';
@@ -191,7 +191,7 @@ export function SettingsPanel({ open, onOpenChange, skipInitialAnimation }: Sett
                         title={setting.label}
                         description={setting.description}
                         control={<SettingField setting={setting} pending={pendingKeys.has(setting.key)} installedModels={installedModels} onSave={save} onValidationChange={setValidationError} />}
-                        error={validationErrors[setting.key] ?? (installedModels && MODEL_SETTINGS[setting.key] && setting.value !== '' && !installedModels.some((m) => m.name === setting.value) ? <MissingModelHint model={setting.value} /> : undefined)}
+                        error={validationErrors[setting.key] ?? (isModelMissing(setting, installedModels) ? <MissingModelHint model={setting.value} /> : undefined)}
                       />
                     </div>
                   ))}

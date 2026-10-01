@@ -4,7 +4,7 @@ import type { ConversationMessage } from '../classifier/classifier.ts';
 import { generateWarningMessage } from '../classifier/warning-message.ts';
 import type { WarningReason } from '../classifier/warning-message.ts';
 import { getStrikeCount, recordStrike } from '../store/strikes.ts';
-import { logMessage, getAuditLog, getLastActionAt } from '../store/audit-log.ts';
+import { logMessage, getAuditLog, getLastActionAt, setLoggedAction } from '../store/audit-log.ts';
 import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { maybeBlockContact, blockOutlook } from './escalation.ts';
@@ -40,7 +40,7 @@ const MAX_DETAIL_ERROR_LENGTH = 120;
 interface Incident {
   texts: string[];
   reasons: WarningReason[];
-  logOpener: (action: string) => void;
+  openerRowId: number;
 }
 
 function loadHistory(contactId: string): ConversationMessage[] {
@@ -158,7 +158,7 @@ async function runBurst(
     }
 
     // Stamped with the message's own time, not the time classification finished, so a slow classifier can't file it after a reply the user sent in the meantime.
-    const logIncoming = (classification: Classification, action: string) =>
+    const logIncoming = (classification: Classification, action: string): number =>
       logMessage({ contactId, direction: 'them', message: text, classification, action, createdAt: timestamp });
 
     const classification = await classify({ message: text, history, contactContext });
@@ -201,17 +201,17 @@ async function runBurst(
     incident = {
       texts: [text],
       reasons: [{ category: classification.category, reason: classification.reason }],
-      logOpener: (action) => logIncoming(classification, action),
+      openerRowId: logIncoming(classification, 'delete'),
     };
   }
 
   if (incident) {
     const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
     if (warning === null) {
-      incident.logOpener('warn_failed');
+      setLoggedAction(incident.openerRowId, 'warn_failed');
     } else {
       strikeCount = recordStrike(contactId);
-      incident.logOpener('delete+warn');
+      setLoggedAction(incident.openerRowId, 'delete+warn');
       logMessage({
         contactId,
         direction: 'me',
@@ -246,7 +246,7 @@ async function warnAboutIncident(
     logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
   }
   const warningText = warningResult.ok ? warningResult.text : getRawSetting('WARNING_MESSAGE');
-  const detail = warningResult.ok ? warningResult.detail : `fallback message; ${warningResult.error.slice(0, MAX_DETAIL_ERROR_LENGTH)}`;
+  const detail = warningResult.ok ? (warningResult.detail ?? 'sent') : `fallback message; ${warningResult.error.slice(0, MAX_DETAIL_ERROR_LENGTH)}`;
 
   try {
     await sendWarning(contactId, warningText);
@@ -254,7 +254,7 @@ async function warnAboutIncident(
     logger.error({ contactId, warnError: String(err) }, 'sendWarning failed');
     return null;
   }
-  return { text: warningText, detail: detail ?? 'sent' };
+  return { text: warningText, detail };
 }
 
 function isWithinStrikeCooldown(contactId: string): boolean {

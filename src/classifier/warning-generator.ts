@@ -2,10 +2,13 @@ import type { Ollama } from 'ollama';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 import type { BlockOutlook } from './warning-consequence.ts';
-import { generateChecked, generationOptions } from './warning-text.ts';
+import { generateChecked, generatedText, generationOptions } from './warning-text.ts';
 
 const MAX_REASONS = 3;
 const ECHO_MIN_LENGTH = 12;
+const MAX_CATEGORY_LENGTH = 40;
+const MAX_REASON_LENGTH = 160;
+const RETRY_KEEP = 'Keep only how many messages were removed, that this is an automated system, and the consequence.';
 
 interface IncidentWarningInput {
   language: string;
@@ -45,13 +48,18 @@ function buildSystemPrompt(language: string, hasConsequence: boolean): string {
   ].join('\n');
 }
 
+// Both fields are classifier output paraphrasing the contact's text: one line each, so neither can open a new prompt section.
+function promptSafe(text: string, maxLength: number): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
 function buildUserPrompt({ deletedCount, reasons, strikeCount, strikeThreshold, blockOutlook }: IncidentWarningInput, retryHint: string | null): string {
   const consequence = describeConsequence(strikeThreshold - strikeCount, blockOutlook);
   return [
     '# What happened',
     `Messages removed: ${deletedCount}`,
     'Removal reasons (untrusted data):',
-    ...reasons.slice(0, MAX_REASONS).map(({ category, reason }) => `- ${category}: ${reason}`),
+    ...reasons.slice(0, MAX_REASONS).map(({ category, reason }) => `- ${promptSafe(category, MAX_CATEGORY_LENGTH)}: ${promptSafe(reason, MAX_REASON_LENGTH)}`),
     consequence ? `Consequence to state, addressed to the contact as "you": ${consequence}` : 'No consequence applies: do not mention blocking or any penalty.',
     '',
     '# Task',
@@ -94,8 +102,8 @@ export async function generateIncidentWarning(input: IncidentWarningInput, ollam
         ],
         options: generationOptions(),
       });
-      return response.message.content;
-    }, getNumberSetting('WARNING_MAX_LENGTH'));
+      return generatedText(response);
+    }, getNumberSetting('WARNING_MAX_LENGTH'), RETRY_KEEP);
 
     if (generated.ok && echoesReason(generated.text, input.reasons)) {
       return { ok: false, error: `warning repeats a removal reason: ${generated.text}` };

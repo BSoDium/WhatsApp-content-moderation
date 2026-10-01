@@ -21,7 +21,7 @@ export function ModelSelect({ value, models, inheritsClassifier, disabled, onCha
   const isMissing = value !== '' && !models.some((model) => model.name === value);
 
   return (
-    <Select value={value === '' ? INHERIT : value} disabled={disabled} onValueChange={(next) => onChange(next === INHERIT ? '' : next)}>
+    <Select value={value === '' && inheritsClassifier ? INHERIT : value} disabled={disabled} onValueChange={(next) => onChange(next === INHERIT ? '' : next)}>
       <SelectTrigger className="w-56" aria-label="Model">
         <SelectValue />
       </SelectTrigger>

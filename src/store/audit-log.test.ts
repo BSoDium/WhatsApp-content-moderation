@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-audit-log.test.sqlite';
 
-const { logMessage, getAuditLog, getAuditLogPage, getAuditLogStats, getLastActionAt } = await import('./audit-log.ts');
+const { logMessage, setLoggedAction, getAuditLog, getAuditLogPage, getAuditLogStats, getLastActionAt } = await import('./audit-log.ts');
 
 after(() => {
   for (const ext of ['', '-wal', '-shm']) rmSync(`${process.env.DB_PATH}${ext}`, { force: true });
@@ -163,4 +163,16 @@ test('getAuditLogStats counts a grouped delete as a deletion', () => {
   logMessage({ contactId: 'ida@s.whatsapp.net', direction: 'them', message: 'x', classification: { ok: true, flagged: true, category: 'spam', reason: '' }, action: 'delete' });
 
   assert.equal(getAuditLogStats().totalFlaggedDeleted, before + 1);
+});
+
+test('logMessage returns the row id and setLoggedAction relabels that row only', async () => {
+  const contact = 'relabel@s.whatsapp.net';
+  const classification = { ok: true, flagged: true, category: 'spam', reason: 'promo' };
+  const first = logMessage({ contactId: contact, direction: 'them', message: 'one', classification, action: 'delete' });
+  const second = logMessage({ contactId: contact, direction: 'them', message: 'two', classification, action: 'delete' });
+
+  setLoggedAction(first, 'delete+warn');
+
+  const actions = Object.fromEntries(getAuditLog(contact).map((row) => [row.id, row.action]));
+  assert.deepEqual(actions, { [first]: 'delete+warn', [second]: 'delete' });
 });
