@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, lte } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, lte } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { blocks } from './schema.ts';
 import type { BlockRecord } from '../types.ts';
@@ -26,6 +26,14 @@ export function getActiveBlock(contactId: string): BlockRecord | undefined {
     .from(blocks)
     .where(and(eq(blocks.contact_id, contactId), isNull(blocks.unblocked_at)))
     .get();
+}
+
+/**
+ * Returns every block record for a contact, resolved or not, newest first —
+ * the history incremental block durations are derived from.
+ */
+export function getBlockHistory(contactId: string): BlockRecord[] {
+  return getOrm().select().from(blocks).where(eq(blocks.contact_id, contactId)).orderBy(desc(blocks.blocked_at)).all();
 }
 
 /**
