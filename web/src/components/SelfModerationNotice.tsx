@@ -13,7 +13,7 @@ export function SelfModerationNotice() {
           />
         </EmptyMedia>
         <EmptyTitle className="text-lg font-semibold">You don't want to moderate yourself, do you?</EmptyTitle>
-        <EmptyDescription>I'm just software. If you want to moderate yourself, you'll need therapy, not a WhatsApp bot.</EmptyDescription>
+        <EmptyDescription>I'm just software. If you want better self-control, you'll need therapy, not a WhatsApp service.</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <EmptyDescription>
