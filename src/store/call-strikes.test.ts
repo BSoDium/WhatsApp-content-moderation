@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-call-strikes.test.sqlite';
 
-const { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall } = await import('./call-strikes.ts');
+const { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall, restartUnansweredDecay } = await import('./call-strikes.ts');
 const { setSetting } = await import('./settings.ts');
 
 after(() => {
@@ -88,7 +88,7 @@ test('UNANSWERED_CALL_DECAY_MS of 0 disables unanswered-call decay', (t) => {
   assert.equal(getCallState(contact).unansweredCount, 1);
 });
 
-test('a nuisance call strike restarts the unanswered-call decay timer', (t) => {
+test('restartUnansweredDecay restarts the timer without changing the count', (t) => {
   const contact = 'hana@s.whatsapp.net';
   t.mock.timers.enable({ apis: ['Date'], now: 0 });
   setSetting('UNANSWERED_CALL_DECAY_MS', '1000');
@@ -96,7 +96,7 @@ test('a nuisance call strike restarts the unanswered-call decay timer', (t) => {
   recordUnansweredCall(contact);
 
   t.mock.timers.setTime(900);
-  recordCallStrike(contact);
+  restartUnansweredDecay(contact);
   t.mock.timers.setTime(1800);
   assert.equal(getCallState(contact).unansweredCount, 2);
   t.mock.timers.setTime(1900);

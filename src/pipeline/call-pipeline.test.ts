@@ -164,6 +164,28 @@ test('sendWarning failing (rejectCall succeeding) does not record a strike, logg
   assert.equal(entry.action, 'call_warn_failed');
 });
 
+test('a rejected nuisance call restarts the unanswered decay timer even when the warning fails', async (t) => {
+  const contact = 'ivan@s.whatsapp.net';
+  const decayMs = 1000;
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', String(decayMs));
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+  await handleCallEvent(call(contact, 'timeout'), noopActions);
+
+  t.mock.timers.setTime(900);
+  await handleCallEvent(call(contact, 'offer'), {
+    rejectCall: async () => {},
+    sendWarning: async () => {
+      throw new Error('sendMessage failed');
+    },
+    block: async () => {},
+  });
+
+  t.mock.timers.setTime(1800);
+  assert.equal(getCallState(contact).unansweredCount, 2);
+  setSetting('UNANSWERED_CALL_DECAY_MS', String(24 * 60 * 60 * 1000));
+});
+
 test('an answered call resets the unanswered count but keeps the strike count', async () => {
   const contact = 'heidi@s.whatsapp.net';
   await handleCallEvent(call(contact, 'timeout'), noopActions);
