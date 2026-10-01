@@ -1,21 +1,25 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { formatTimestamp } from '@/lib/activity';
 import { cn } from '@/lib/utils';
 
 interface BlockStatusProps {
-  blocked: boolean;
+  // Null when the contact isn't blocked; otherwise when the block is due to end.
+  blockedUntil: number | null;
   contactName: string;
   onUnblock: () => Promise<void>;
-  className?: string;
 }
 
 /**
  * "Not blocked" as plain text, swapped for a destructive "Unblock" button
  * while the contact is blocked. There is no manual block action: blocks only
- * ever come from strikes.
+ * ever come from strikes. The button stays visible on narrow layouts, where
+ * the plain-text status is hidden to save room.
  */
-export function BlockStatus({ blocked, contactName, onUnblock, className }: BlockStatusProps) {
+export function BlockStatus({ blockedUntil, contactName, onUnblock }: BlockStatusProps) {
   const [pending, setPending] = useState(false);
+  const blocked = blockedUntil !== null;
+  const blockedLabel = blocked ? `Blocked until ${formatTimestamp(blockedUntil)}` : '';
 
   async function handleClick(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
@@ -28,12 +32,13 @@ export function BlockStatus({ blocked, contactName, onUnblock, className }: Bloc
   }
 
   return (
-    <div className={cn('items-center', className)}>
+    <div className={cn('w-20 shrink-0 items-center @lg:ml-3 @lg:flex', blocked ? 'flex' : 'hidden')}>
       {blocked ? (
         <Button
           variant="ghost"
           size="sm"
-          aria-label={`Unblock ${contactName}`}
+          aria-label={`Unblock ${contactName} (${blockedLabel.toLowerCase()})`}
+          title={blockedLabel}
           disabled={pending}
           onClick={handleClick}
           className="w-full cursor-pointer text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20 focus-visible:bg-destructive/10 dark:hover:bg-destructive/20 dark:active:bg-destructive/30 dark:focus-visible:bg-destructive/20"

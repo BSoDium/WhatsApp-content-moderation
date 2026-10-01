@@ -65,7 +65,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
         <StrikeCounter icon={MessageSquareWarning} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
         <StrikeCounter icon={PhoneMissed} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
       </div>
-      <BlockStatus blocked={block !== null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} className={STAT_COLUMN} />
+      <BlockStatus blockedUntil={block?.unblockAt ?? null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} />
       <div className="flex shrink-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
