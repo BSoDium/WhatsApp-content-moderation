@@ -10,6 +10,8 @@ const logger = createLogger('settings');
 
 const DEFAULT_STRIKE_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_STRIKE_DECAY_MS = 24 * 60 * 60 * 1000;
+const DAYS_PER_WEEK = 7;
+const DEFAULT_ESCALATION_WEEK_MS = DAYS_PER_WEEK * DEFAULT_STRIKE_DECAY_MS;
 
 export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';
@@ -189,7 +191,7 @@ export const SETTINGS: readonly SettingDef[] = [
     label: 'Escalation longest block (ms)',
     description: 'Upper limit for an escalated block. Default: 7 days.',
     type: 'int',
-    default: String(7 * 24 * 60 * 60 * 1000),
+    default: String(DEFAULT_ESCALATION_WEEK_MS),
     min: 1,
   },
   {
@@ -198,7 +200,7 @@ export const SETTINGS: readonly SettingDef[] = [
     label: 'Escalation reset (ms)',
     description: 'Time a contact must go without being blocked, counted from the end of their last block, before the next block starts over at the first step. Default: 7 days.',
     type: 'int',
-    default: String(7 * 24 * 60 * 60 * 1000),
+    default: String(DEFAULT_ESCALATION_WEEK_MS),
     min: 1,
   },
   {
