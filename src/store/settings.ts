@@ -11,7 +11,7 @@ const logger = createLogger('settings');
 const DEFAULT_STRIKE_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_STRIKE_DECAY_MS = 24 * 60 * 60 * 1000;
 const DAYS_PER_WEEK = 7;
-const DEFAULT_ESCALATION_WEEK_MS = DAYS_PER_WEEK * DEFAULT_STRIKE_DECAY_MS;
+const DEFAULT_BACKOFF_WEEK_MS = DAYS_PER_WEEK * DEFAULT_STRIKE_DECAY_MS;
 
 export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';
@@ -159,55 +159,55 @@ export const SETTINGS: readonly SettingDef[] = [
     min: 1,
   },
   {
-    key: 'BLOCK_ESCALATING',
+    key: 'BLOCK_BACKOFF',
     section: 'strikes',
-    label: 'Escalating blocks',
+    label: 'Growing blocks',
     description:
       'Lengthen the block each time the same contact is blocked again, instead of always using the fixed block duration above. A contact who stays clear of blocks for the reset window starts over at the first step.',
     type: 'bool',
     default: '0',
   },
   {
-    key: 'BLOCK_ESCALATION_BASE_MS',
+    key: 'BLOCK_BACKOFF_BASE_MS',
     section: 'strikes',
-    label: 'Escalation first block (ms)',
-    description: 'Length of the first block when escalating blocks are on. Default: 3h.',
+    label: 'Backoff first block (ms)',
+    description: 'Length of the first block when growing blocks are on. Default: 3h.',
     type: 'int',
     default: String(3 * 60 * 60 * 1000),
     min: 1,
   },
   {
-    key: 'BLOCK_ESCALATION_FACTOR',
+    key: 'BLOCK_BACKOFF_FACTOR',
     section: 'strikes',
-    label: 'Escalation factor',
+    label: 'Backoff factor',
     description: 'Each repeat block lasts this many times as long as the previous one. Default: 2 (3h, 6h, 12h, 24h...).',
     type: 'float',
     default: '2',
     min: 1,
   },
   {
-    key: 'BLOCK_ESCALATION_MAX_MS',
+    key: 'BLOCK_BACKOFF_MAX_MS',
     section: 'strikes',
-    label: 'Escalation longest block (ms)',
-    description: 'Upper limit for an escalated block. Default: 7 days.',
+    label: 'Backoff longest block (ms)',
+    description: 'Upper limit for a grown block. Default: 7 days.',
     type: 'int',
-    default: String(DEFAULT_ESCALATION_WEEK_MS),
+    default: String(DEFAULT_BACKOFF_WEEK_MS),
     min: 1,
   },
   {
-    key: 'BLOCK_ESCALATION_RESET_MS',
+    key: 'BLOCK_BACKOFF_RESET_MS',
     section: 'strikes',
-    label: 'Escalation reset (ms)',
+    label: 'Backoff reset (ms)',
     description: 'Time a contact must go without being blocked, counted from the end of their last block, before the next block starts over at the first step. Default: 7 days.',
     type: 'int',
-    default: String(DEFAULT_ESCALATION_WEEK_MS),
+    default: String(DEFAULT_BACKOFF_WEEK_MS),
     min: 1,
   },
   {
     key: 'BLOCK_JITTER_MS',
     section: 'strikes',
     label: 'Block jitter (ms)',
-    description: '+/- randomization applied to the block duration. Default: 4h.',
+    description: '+/- randomization applied to the block duration; capped at a quarter of it when growing blocks are on. Default: 4h.',
     type: 'int',
     default: String(4 * 60 * 60 * 1000),
     min: 0,

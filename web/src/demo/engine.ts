@@ -57,9 +57,9 @@ function decayStrikes(backend: DemoBackend, state: ContactState, at: number): vo
 }
 
 function baseBlockDuration(backend: DemoBackend, state: ContactState, at: number): number {
-  if (!backend.settingBool('BLOCK_ESCALATING')) return backend.settingNumber('BLOCK_DURATION_MS');
+  if (!backend.settingBool('BLOCK_BACKOFF')) return backend.settingNumber('BLOCK_DURATION_MS');
 
-  const resetMs = backend.settingNumber('BLOCK_ESCALATION_RESET_MS');
+  const resetMs = backend.settingNumber('BLOCK_BACKOFF_RESET_MS');
   let recentBlocks = 0;
   let nextStart = at;
   for (const record of [...state.blockHistory].reverse()) {
@@ -67,13 +67,14 @@ function baseBlockDuration(backend: DemoBackend, state: ContactState, at: number
     recentBlocks += 1;
     nextStart = record.startedAt;
   }
-  const escalated = backend.settingNumber('BLOCK_ESCALATION_BASE_MS') * backend.settingNumber('BLOCK_ESCALATION_FACTOR') ** recentBlocks;
-  return Math.min(escalated, backend.settingNumber('BLOCK_ESCALATION_MAX_MS'));
+  const escalated = backend.settingNumber('BLOCK_BACKOFF_BASE_MS') * backend.settingNumber('BLOCK_BACKOFF_FACTOR') ** recentBlocks;
+  return Math.min(escalated, backend.settingNumber('BLOCK_BACKOFF_MAX_MS'));
 }
 
 function startBlock(backend: DemoBackend, state: ContactState, at: number, random: Random): void {
   const base = baseBlockDuration(backend, state, at);
-  const jitter = Math.min(backend.settingNumber('BLOCK_JITTER_MS'), base * MAX_JITTER_SHARE);
+  const jitterCap = backend.settingBool('BLOCK_BACKOFF') ? base * MAX_JITTER_SHARE : base;
+  const jitter = Math.min(backend.settingNumber('BLOCK_JITTER_MS'), jitterCap);
   const duration = base + Math.round((random.next() * 2 - 1) * jitter);
   const unblockAt = at + Math.max(duration, 1);
   state.block = { unblockAt };

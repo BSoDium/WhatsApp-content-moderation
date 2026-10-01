@@ -21,13 +21,13 @@ export function countRecentBlocks(history: readonly BlockRecord[], now: number, 
 
 /**
  * Block length before jitter: the fixed BLOCK_DURATION_MS, or, with
- * BLOCK_ESCALATING on, the first-block length multiplied by the factor once
+ * BLOCK_BACKOFF on, the first-block length multiplied by the factor once
  * per recent block and capped at the longest allowed.
  */
 export function baseBlockDurationMs(contactId: string, now = Date.now()): number {
-  if (!getBoolSetting('BLOCK_ESCALATING')) return getNumberSetting('BLOCK_DURATION_MS');
+  if (!getBoolSetting('BLOCK_BACKOFF')) return getNumberSetting('BLOCK_DURATION_MS');
 
-  const recentBlocks = countRecentBlocks(getBlockHistory(contactId), now, getNumberSetting('BLOCK_ESCALATION_RESET_MS'));
-  const escalated = getNumberSetting('BLOCK_ESCALATION_BASE_MS') * getNumberSetting('BLOCK_ESCALATION_FACTOR') ** recentBlocks;
-  return Math.round(Math.min(escalated, getNumberSetting('BLOCK_ESCALATION_MAX_MS')));
+  const recentBlocks = countRecentBlocks(getBlockHistory(contactId), now, getNumberSetting('BLOCK_BACKOFF_RESET_MS'));
+  const escalated = getNumberSetting('BLOCK_BACKOFF_BASE_MS') * getNumberSetting('BLOCK_BACKOFF_FACTOR') ** recentBlocks;
+  return Math.round(Math.min(escalated, getNumberSetting('BLOCK_BACKOFF_MAX_MS')));
 }

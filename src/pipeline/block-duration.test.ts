@@ -38,14 +38,20 @@ test('countRecentBlocks is zero when the last block ended longer ago than the re
   assert.equal(countRecentBlocks([], now, 7 * DAY_MS), 0);
 });
 
+test('countRecentBlocks measures the gap from the real unblock time, not the scheduled one', () => {
+  const now = 100 * DAY_MS;
+  const unblockedEarly = { ...record(now - 9 * DAY_MS, now - 1 * DAY_MS), unblocked_at: now - 8 * DAY_MS };
+  assert.equal(countRecentBlocks([unblockedEarly], now, 7 * DAY_MS), 0);
+});
+
 test('static mode always uses BLOCK_DURATION_MS', () => {
   const contact = 'static@s.whatsapp.net';
   createBlock(contact, Date.now() + HOUR_MS);
   assert.equal(baseBlockDurationMs(contact), DAY_MS);
 });
 
-test('escalating mode doubles per repeat block up to the cap, then resets', () => {
-  setSetting('BLOCK_ESCALATING', '1');
+test('growing mode doubles per repeat block up to the cap, then resets', () => {
+  setSetting('BLOCK_BACKOFF', '1');
   const contact = 'repeat@s.whatsapp.net';
   const expected = [3, 6, 12, 24];
 
@@ -54,7 +60,7 @@ test('escalating mode doubles per repeat block up to the cap, then resets', () =
     markUnblocked(createBlock(contact, Date.now() + hours * HOUR_MS));
   }
 
-  setSetting('BLOCK_ESCALATION_MAX_MS', String(30 * HOUR_MS));
+  setSetting('BLOCK_BACKOFF_MAX_MS', String(30 * HOUR_MS));
   assert.equal(baseBlockDurationMs(contact), 30 * HOUR_MS);
 
   const later = Date.now() + 8 * DAY_MS;

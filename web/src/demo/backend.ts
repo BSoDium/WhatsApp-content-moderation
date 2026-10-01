@@ -253,7 +253,7 @@ export class DemoBackend {
     return { ok: true, body: { removed: true } };
   }
 
-  runOverride(contactId: string, command: OverrideCommand): CommandResult {
+  runOverride(contactId: string, command: OverrideCommand, now = Date.now()): CommandResult {
     const state = this.contacts.get(contactId);
     if (!state) return { ok: false, status: 404, error: 'not monitored' };
     const clearsState = command === 'reset-strikes' || command === 'unblock';
@@ -273,6 +273,8 @@ export class DemoBackend {
       message = 'Contact is not currently blocked.';
     } else {
       state.block = null;
+      const lastBlock = state.blockHistory.at(-1);
+      if (lastBlock) lastBlock.endsAt = now;
       message = 'Contact unblocked.';
     }
     this.emit('roster');

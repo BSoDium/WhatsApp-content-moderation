@@ -3,12 +3,12 @@ import { createBlock, getActiveBlock } from '../store/blocks.ts';
 import type { BlockOutlook } from '../classifier/warning-consequence.ts';
 import { isEscalationEnabled } from '../store/monitored-contacts.ts';
 import { emitControlEvent } from '../store/events.ts';
-import { getNumberSetting } from '../store/settings.ts';
+import { getBoolSetting, getNumberSetting } from '../store/settings.ts';
 import { baseBlockDurationMs } from './block-duration.ts';
 
 const logger = createLogger('pipeline');
 
-// Largest share of the block duration jitter may swing, so a 3h first block with the default 4h jitter can't roll a near-zero block.
+// With growing blocks on, the largest share of the block duration jitter may swing, so a 3h first block with the default 4h jitter can't roll a near-zero block.
 const MAX_JITTER_SHARE = 0.25;
 
 // Floor under BLOCK_DURATION_MS +/- jitter, so a misconfigured BLOCK_JITTER_MS can't roll a zero/negative block length.
@@ -46,7 +46,7 @@ export function blockOutlook(contactId: string, strikeCount: number, strikeThres
  * already have an active block. Shared by moderation-pipeline.ts (message
  * strikes) and call-pipeline.ts (nuisance-call strikes) — each has its own
  * independent counter/threshold, but both must reach a block the exact same
- * way: the block duration (fixed or escalating, see block-duration.ts) and BLOCK_JITTER_MS, the escalation_enabled per-contact
+ * way: the block duration (fixed or growing, see block-duration.ts) and BLOCK_JITTER_MS, the escalation_enabled per-contact
  * opt-out, and — critically — block() (the external call) succeeding
  * *before* createBlock (the local record) ever runs, so a failed WhatsApp
  * call never gets recorded as an active block. See docs/decisions.md
@@ -82,7 +82,8 @@ async function runMaybeBlockContact(
 
   const blockDurationMs = baseBlockDurationMs(contactId);
   const blockJitterMs = getNumberSetting('BLOCK_JITTER_MS');
-  const unblockAt = Date.now() + Math.max(blockDurationMs + jitter(Math.min(blockJitterMs, blockDurationMs * MAX_JITTER_SHARE)), MIN_BLOCK_MS);
+  const jitterCapMs = getBoolSetting('BLOCK_BACKOFF') ? blockDurationMs * MAX_JITTER_SHARE : blockDurationMs;
+  const unblockAt = Date.now() + Math.max(blockDurationMs + jitter(Math.min(blockJitterMs, jitterCapMs)), MIN_BLOCK_MS);
   let blockedOnWhatsApp = false;
   try {
     await block(contactId);
