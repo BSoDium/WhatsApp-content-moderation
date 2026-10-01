@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { moderationState, relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
 import { StrikeCounter } from './StrikeCounter';
-import { BlockStatusSelect } from './BlockStatusSelect';
+import { BlockStatus } from './BlockStatus';
 import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -24,7 +24,7 @@ interface ContactRowProps {
 }
 
 const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
-const STAT_COLUMN = 'hidden w-32 shrink-0 @lg:ml-3 @lg:flex';
+const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:ml-3 @lg:flex';
 const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-4 text-xs text-muted-foreground @lg:ml-3 @lg:flex';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
@@ -65,7 +65,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
         <StrikeCounter icon={MessageSquareWarning} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
         <StrikeCounter icon={PhoneMissed} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
       </div>
-      <BlockStatusSelect blocked={block !== null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} className={STAT_COLUMN} />
+      <BlockStatus blocked={block !== null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} className={STAT_COLUMN} />
       <div className="flex shrink-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
