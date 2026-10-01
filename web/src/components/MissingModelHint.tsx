@@ -20,12 +20,14 @@ export function MissingModelHint({ model }: { model: string }) {
   }
 
   return (
-    <span className="inline-flex flex-wrap items-center justify-end gap-x-2">
-      <span>Not installed on this Ollama. Run</span>
-      <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-foreground">{command}</code>
-      <Button type="button" variant="ghost" size="icon-xs" aria-label="Copy command" onClick={copy}>
-        {copied ? <Check /> : <Copy />}
-      </Button>
+    <span className="flex flex-col items-end gap-2 pt-1.5">
+      <span>Not installed on this Ollama. Run:</span>
+      <span className="inline-flex max-w-full items-center gap-1 rounded-lg bg-muted py-0.5 pl-2 pr-0.5 font-mono text-foreground">
+        <code className="min-w-0 break-all">{command}</code>
+        <Button type="button" variant="ghost" size="icon-xs" className="text-foreground/50 hover:bg-transparent hover:text-foreground" aria-label="Copy command" onClick={copy}>
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      </span>
     </span>
   );
 }
