@@ -78,7 +78,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
       opened.current = true;
       setStats(statsResult);
       if (background) {
-        setEntries((current) => mergeLatestEntries(current, page.entries));
+        setEntries((current) => mergeLatestEntries(current, page.entries, page.nextBefore === null));
         if (!pagedPastFirst.current) setNextBefore(page.nextBefore);
       } else {
         setEntries(page.entries);
@@ -108,7 +108,8 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
       if (seq !== requestSeq.current) return;
       setError(errorMessage(err));
     } finally {
-      if (seq === requestSeq.current) setLoadingMore(false);
+      // Cleared even when a live refresh superseded this request, or the button would stay disabled for good.
+      setLoadingMore(false);
     }
   }, [fetchPage, nextBefore]);
 
