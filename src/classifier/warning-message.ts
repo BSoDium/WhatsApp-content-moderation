@@ -120,7 +120,7 @@ export async function generateWarningMessage(
       templateDetail = `template; generation failed: ${generated.error.slice(0, MAX_DETAIL_ERROR_LENGTH)}`;
     }
 
-    const fixedText = templateWarning(detected.language, 'message', input.strikeThreshold - input.strikeCount, input.blockOutlook);
+    const fixedText = templateWarning(detected.language, 'message', input.strikeThreshold - input.strikeCount, input.blockOutlook, input.deletedCount);
     if (fixedText) return { ok: true, text: fixedText, detail: templateDetail };
 
     const written = await generateChecked(async (retryHint) => {

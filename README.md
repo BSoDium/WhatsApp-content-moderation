@@ -148,7 +148,7 @@ Both model fields in Settings list what your Ollama has pulled, and a model that
 docker compose exec ollama ollama pull qwen2.5:7b
 ```
 
-then choose it as the **Warning model**; it applies from the next warning, with no restart. Blank means "same as the classifier", which avoids keeping a second model loaded.
+then choose it as the **Warning model**; it applies from the next warning, with no restart. Blank means "same as the classifier", which avoids keeping a second model loaded. A separate model is loaded on demand and unloaded after Ollama's default 5 minutes idle; if you pick one and have the RAM for both, set `OLLAMA_KEEP_ALIVE` and `OLLAMA_MAX_LOADED_MODELS=2` on the `ollama` service to keep them resident.
 
 **Generate warnings** (experimental, off by default) has the warning model write each warning in the contact's language, saying how many messages were removed and why, instead of using the fixed per-language wording. Whenever generation fails, the fixed wording is sent, and the Activity panel's warning row says which one was used. Measured on a 4-core, CPU-only machine (`npm run warnings:eval`): `llama3.2:3b` answers in about 9 s but writes unusable French; `qwen2.5:7b` writes fluent English, French, Spanish, German, Portuguese, Russian and Japanese, with a median of 16 s per warning and a cold start of about 35 s. Neither is reliable in low-resource languages such as Swahili or Arabic. Run the eval against your own model and hardware before enabling it.
 
