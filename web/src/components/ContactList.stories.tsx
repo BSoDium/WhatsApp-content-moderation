@@ -22,6 +22,7 @@ const meta = {
     onSelect: fn(),
     onToggle: fn(async () => {}),
     onViewHistory: fn(),
+    onUnblock: fn(async () => {}),
   },
 } satisfies Meta<typeof ContactList>;
 

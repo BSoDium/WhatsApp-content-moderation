@@ -69,6 +69,12 @@ function App() {
     lastRefreshedAt,
     streamLive,
   } = useControlData(initialUrlState.contactId);
+  const unblockContact = useCallback(
+    async (contactId: string) => {
+      await runCommand(contactId, 'unblock');
+    },
+    [runCommand],
+  );
   const { meta, settled: metaSettled } = useMeta();
   const { shadowMode, settled: shadowModeSettled } = useShadowMode();
   const strikeLimits = useStrikeLimits();
@@ -325,6 +331,7 @@ function App() {
                 onSelect={requestSelectContact}
                 onToggle={setMonitored}
                 onViewHistory={(contactId) => showPanel('activity', contactId)}
+                onUnblock={unblockContact}
                 initialLoadComplete={initialLoadComplete}
                 stickyTop={<OverviewStats />}
                 stickyRef={stickyRef}

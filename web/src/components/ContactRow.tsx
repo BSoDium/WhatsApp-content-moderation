@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { moderationState, relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
 import { StrikeCounter } from './StrikeCounter';
+import { BlockStatus } from './BlockStatus';
 import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -19,15 +20,16 @@ interface ContactRowProps {
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
   onViewHistory: (contactId: string) => void;
+  onUnblock: (contactId: string) => Promise<void>;
 }
 
 const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
-const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:ml-3 @lg:block';
+const STAT_COLUMN = 'hidden w-20 shrink-0 @lg:ml-3 @lg:flex';
 const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-4 text-xs text-muted-foreground @lg:ml-3 @lg:flex';
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
 // Memoized so a keystroke in the search box, which re-renders ContactList, doesn't re-render every row.
-export const ContactRow = memo(function ContactRow({ contact, monitored, entry, strikeLimits, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
+export const ContactRow = memo(function ContactRow({ contact, monitored, entry, strikeLimits, selected, onSelect, onToggle, onViewHistory, onUnblock }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
@@ -35,7 +37,6 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
   const { strikeCount, block } = moderationState(contact, entry);
   const callStrikeCount = entry?.callNuisance.strikeCount ?? 0;
   const strikeLabel = `Message strikes: ${strikeCount} of ${strikeLimits.messageThreshold}. Call strikes: ${callStrikeCount} of ${strikeLimits.callThreshold}.`;
-  const blockLabel = block ? 'Blocked' : 'Not blocked';
 
   async function handleToggle(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {
     event.stopPropagation();
@@ -49,7 +50,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
 
   return (
     <li
-      className={cn(ROW_LAYOUT, 'group cursor-pointer hover:bg-accent', selected && 'bg-accent')}
+      className={cn(ROW_LAYOUT, 'cursor-pointer hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
@@ -64,16 +65,13 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
         <StrikeCounter icon={MessageSquareWarning} label="Message strikes" count={strikeCount} limit={strikeLimits.messageThreshold} />
         <StrikeCounter icon={PhoneMissed} label="Call strikes" count={callStrikeCount} limit={strikeLimits.callThreshold} />
       </div>
-      <p className={cn(STAT_COLUMN, 'truncate text-xs text-muted-foreground', block && 'font-medium text-foreground')} title={blockLabel}>
-        {blockLabel}
-      </p>
+      <BlockStatus blockedUntil={block?.unblockAt ?? null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} />
       <div className="flex shrink-0 items-center gap-1.5">
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-lg"
-              className={cn('[@media(hover:hover)]:opacity-0 group-focus-within:opacity-100! group-hover:opacity-100! focus-visible:opacity-100!', selected && 'opacity-100!')}
               aria-label={`View message history for ${contact.name}`}
               onClick={(event) => {
                 event.stopPropagation();
