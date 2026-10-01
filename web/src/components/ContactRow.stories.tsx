@@ -72,13 +72,15 @@ export const StrikesAndBlocked: Story = {
   },
 };
 
+const UNBLOCK_AT = Date.now() + 60 * 60 * 1000;
+
 function UnblockDemo(args: React.ComponentProps<typeof ContactRow>) {
   const [blocked, setBlocked] = useState(true);
   return (
     <div className="flex flex-col gap-3">
       <ContactRow
         {...args}
-        entry={{ ...FIXTURE_ROSTER[0], block: blocked ? { unblockAt: Date.now() + 60 * 60 * 1000 } : null }}
+        entry={{ ...FIXTURE_ROSTER[0], block: blocked ? { unblockAt: UNBLOCK_AT } : null }}
         onUnblock={async () => setBlocked(false)}
       />
       <button type="button" className="self-start text-sm underline" onClick={() => setBlocked(true)}>

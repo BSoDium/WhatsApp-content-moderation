@@ -50,7 +50,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
 
   return (
     <li
-      className={cn(ROW_LAYOUT, 'group cursor-pointer hover:bg-accent', selected && 'bg-accent')}
+      className={cn(ROW_LAYOUT, 'cursor-pointer hover:bg-accent', selected && 'bg-accent')}
       onClick={() => onSelect(contact.id)}
     >
       <ContactAvatar contact={contact} />
@@ -72,7 +72,6 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
             <Button
               variant="ghost"
               size="icon-lg"
-              className={cn('[@media(hover:hover)]:opacity-0 group-focus-within:opacity-100! group-hover:opacity-100! focus-visible:opacity-100!', selected && 'opacity-100!')}
               aria-label={`View message history for ${contact.name}`}
               onClick={(event) => {
                 event.stopPropagation();
