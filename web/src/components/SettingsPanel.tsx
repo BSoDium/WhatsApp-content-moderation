@@ -6,6 +6,10 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ErrorBanner } from './ErrorBanner';
 import { SettingRow } from './SettingRow';
+import { ModelSelect } from './ModelSelect';
+import { MissingModelHint } from './MissingModelHint';
+import { MODEL_SETTINGS } from '@/lib/modelSettings';
+import { useInstalledModels, type InstalledModel } from '@/lib/useInstalledModels';
 import { useSettingsList, type SaveStatus } from '@/lib/useSettings';
 import type { Setting } from '@/lib/types';
 
@@ -68,11 +72,12 @@ function clientValidationError(setting: Setting, raw: string): string | undefine
 interface SettingFieldProps {
   setting: Setting;
   pending: boolean;
+  installedModels: InstalledModel[] | null;
   onSave: (key: string, value: string) => Promise<boolean>;
   onValidationChange: (key: string, error: string | undefined) => void;
 }
 
-function SettingField({ setting, pending, onSave, onValidationChange }: SettingFieldProps) {
+function SettingField({ setting, pending, installedModels, onSave, onValidationChange }: SettingFieldProps) {
   const [draft, setDraft] = useState(setting.value);
   const lastSyncedValue = useRef(setting.value);
 
@@ -97,6 +102,22 @@ function SettingField({ setting, pending, onSave, onValidationChange }: SettingF
         disabled={pending}
         onCheckedChange={(checked) => {
           const next = checked ? '1' : '0';
+          setDraft(next);
+          commit(next);
+        }}
+      />
+    );
+  }
+
+  const modelSetting = MODEL_SETTINGS[setting.key];
+  if (modelSetting && installedModels) {
+    return (
+      <ModelSelect
+        value={draft}
+        models={installedModels}
+        inheritsClassifier={modelSetting.inheritsClassifier}
+        disabled={pending}
+        onChange={(next) => {
           setDraft(next);
           commit(next);
         }}
@@ -129,6 +150,7 @@ function SettingField({ setting, pending, onSave, onValidationChange }: SettingF
 
 export function SettingsPanel({ open, onOpenChange, skipInitialAnimation }: SettingsPanelProps) {
   const { settings, loading, error, pendingKeys, saveStatus, refresh, save } = useSettingsList({ open });
+  const installedModels = useInstalledModels({ open });
   const [validationErrors, setValidationErrors] = useState<Record<string, string | undefined>>({});
 
   function setValidationError(key: string, validationError: string | undefined) {
@@ -168,8 +190,8 @@ export function SettingsPanel({ open, onOpenChange, skipInitialAnimation }: Sett
                       <SettingRow
                         title={setting.label}
                         description={setting.description}
-                        control={<SettingField setting={setting} pending={pendingKeys.has(setting.key)} onSave={save} onValidationChange={setValidationError} />}
-                        error={validationErrors[setting.key]}
+                        control={<SettingField setting={setting} pending={pendingKeys.has(setting.key)} installedModels={installedModels} onSave={save} onValidationChange={setValidationError} />}
+                        error={validationErrors[setting.key] ?? (installedModels && MODEL_SETTINGS[setting.key] && setting.value !== '' && !installedModels.some((m) => m.name === setting.value) ? <MissingModelHint model={setting.value} /> : undefined)}
                       />
                     </div>
                   ))}

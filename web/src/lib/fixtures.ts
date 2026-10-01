@@ -38,7 +38,8 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
 
 export const FIXTURE_SETTINGS: Setting[] = [
   { key: 'SHADOW_MODE', section: 'general', label: 'Shadow mode', description: 'Log what would happen without deleting or blocking anything.', type: 'bool', value: '1', default: '1' },
-  { key: 'classifier.model', section: 'classifier', label: 'Model', description: 'Ollama model used to classify messages.', type: 'string', value: 'llama3.1', default: 'llama3.1', required: true },
+  { key: 'OLLAMA_MODEL', section: 'classifier', label: 'Classifier model', description: 'The Ollama model used to classify incoming messages against the policy.', type: 'string', value: 'llama3.2:3b', default: 'llama3.2:3b' },
+  { key: 'WARNING_MODEL', section: 'warning', label: 'Warning model', description: 'Model used to generate the warning reply. Leave blank to inherit the classifier model.', type: 'string', value: '', default: '' },
   {
     key: 'classifier.timeoutMs',
     section: 'classifier',

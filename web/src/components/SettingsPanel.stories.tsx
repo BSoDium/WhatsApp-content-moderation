@@ -7,9 +7,15 @@ import { SettingsPanel } from './SettingsPanel';
 // POST /api/settings/:key mutates this so a save is reflected by the
 // following GET /api/settings — SettingsPanel refetches the whole list
 // after every save rather than trusting its own optimistic write.
-function settingsRoutes(initial = FIXTURE_SETTINGS): MockRoute[] {
+const INSTALLED_MODELS = [
+  { name: 'llama3.2:3b', sizeBytes: 2019393189 },
+  { name: 'qwen2.5:7b', sizeBytes: 4683087332 },
+];
+
+function settingsRoutes(initial = FIXTURE_SETTINGS, models: object = { models: INSTALLED_MODELS }): MockRoute[] {
   let settings = initial;
   return [
+    { match: '/api/ollama/models', ...(models as object) },
     { match: '/api/settings', bodyFn: () => settings },
     {
       method: 'POST',
@@ -42,4 +48,12 @@ export const Default: Story = {
 
 export const LoadFailed: Story = {
   decorators: [withMockApi([{ match: '/api/settings', status: 500, body: { error: 'Settings store is locked' } }])],
+};
+
+export const WarningModelNotInstalled: Story = {
+  decorators: [withMockApi(settingsRoutes(FIXTURE_SETTINGS.map((setting) => (setting.key === 'WARNING_MODEL' ? { ...setting, value: 'gemma2:9b' } : setting))))],
+};
+
+export const OllamaUnreachable: Story = {
+  decorators: [withMockApi(settingsRoutes(FIXTURE_SETTINGS, { status: 502, body: { error: 'fetch failed' } }))],
 };

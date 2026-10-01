@@ -143,6 +143,7 @@ async function withServer(
     getSelfId = () => null,
     getConnectionState = () => ({ status: 'open', since: 1, statusCode: null }),
     allowSelf = false,
+    listModels = undefined,
     // A distinct flag rather than an `allowedLogin` option defaulting to
     // ALLOWED: passing `allowedLogin: undefined` explicitly wouldn't override
     // a default-parameter fallback, since default destructuring treats an
@@ -151,7 +152,7 @@ async function withServer(
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, getConnectionState, allowSelf });
+  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, getConnectionState, allowSelf, listModels });
   const port = await server.listen(0);
   try {
     await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks });
@@ -928,4 +929,22 @@ test('getControlAppUrl() returns loopback when a Tailscale login is configured',
 test('getControlAppUrl() returns a reachable IPv4 address when open to the network', () => {
   const url = getControlAppUrl(4756, undefined);
   assert.match(url, /^http:\/\/\d{1,3}(\.\d{1,3}){3}:4756$/);
+});
+
+test('GET /api/ollama/models lists the installed models', async () => {
+  const listModels = async () => ({ ok: true, models: [{ name: 'llama3.2:3b', sizeBytes: 2019393189 }] });
+  await withServer({ listModels }, async (base) => {
+    const res = await fetch(`${base}/api/ollama/models`, { headers: authHeaders() });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { models: [{ name: 'llama3.2:3b', sizeBytes: 2019393189 }] });
+  });
+});
+
+test('GET /api/ollama/models answers 502 when Ollama is unreachable', async () => {
+  const listModels = async () => ({ ok: false, error: 'fetch failed' });
+  await withServer({ listModels }, async (base) => {
+    const res = await fetch(`${base}/api/ollama/models`, { headers: authHeaders() });
+    assert.equal(res.status, 502);
+    assert.deepEqual(await res.json(), { error: 'fetch failed' });
+  });
 });

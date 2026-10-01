@@ -76,6 +76,18 @@ export function handleDemoRequest(backend: DemoBackend, method: string, url: URL
     }
   }
 
+  if (method === 'GET' && segments.length === 2 && segments[0] === 'ollama' && segments[1] === 'models') {
+    return {
+      status: 200,
+      body: {
+        models: [
+          { name: 'llama3.2:3b', sizeBytes: 2019393189 },
+          { name: 'qwen2.5:7b', sizeBytes: 4683087332 },
+        ],
+      },
+    };
+  }
+
   if (method === 'POST' && segments.length === 1 && segments[0] === 'policy') {
     return typeof body.text === 'string' ? fromResult(backend.setPolicy(body.text)) : badRequest('text must be a string');
   }
