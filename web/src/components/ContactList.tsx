@@ -17,6 +17,7 @@ interface ContactListProps {
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
   onViewHistory: (contactId: string) => void;
+  onUnblock: (contactId: string) => Promise<void>;
   initialLoadComplete: boolean;
   stickyTop?: ReactNode;
   stickyRef?: RefObject<HTMLDivElement | null>;
@@ -34,7 +35,7 @@ const SKELETON_ROW_COUNT = 8;
 const FADE_RANGE_PX = 32;
 const SEARCH_DEBOUNCE_MS = 150;
 
-export function ContactList({ contacts, roster, strikeLimits, selectedId, onSelect, onToggle, onViewHistory, initialLoadComplete, stickyTop, stickyRef, isDesktop }: ContactListProps) {
+export function ContactList({ contacts, roster, strikeLimits, selectedId, onSelect, onToggle, onViewHistory, onUnblock, initialLoadComplete, stickyTop, stickyRef, isDesktop }: ContactListProps) {
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLUListElement | null>(null);
@@ -111,6 +112,7 @@ export function ContactList({ contacts, roster, strikeLimits, selectedId, onSele
               strikeLimits={strikeLimits}
               onToggle={onToggle}
               onViewHistory={onViewHistory}
+              onUnblock={onUnblock}
             />
           ))}
           {moderated.length > 0 && others.length > 0 && <li key="divider" role="separator" className="mx-2 my-2 border-t" />}
@@ -126,6 +128,7 @@ export function ContactList({ contacts, roster, strikeLimits, selectedId, onSele
               strikeLimits={strikeLimits}
               onToggle={onToggle}
               onViewHistory={onViewHistory}
+              onUnblock={onUnblock}
             />
           ))}
         </ul>

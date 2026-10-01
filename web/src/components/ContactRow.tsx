@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { moderationState, relativeTime } from '@/lib/contact';
 import { ContactAvatar } from './ContactAvatar';
 import { StrikeCounter } from './StrikeCounter';
+import { UnblockButton } from './UnblockButton';
 import type { StrikeLimits } from '@/lib/strikeLimits';
 import type { Contact, RosterEntry } from '@/lib/types';
 
@@ -19,6 +20,7 @@ interface ContactRowProps {
   onSelect: (contactId: string) => void;
   onToggle: (contactId: string, monitored: boolean) => Promise<void>;
   onViewHistory: (contactId: string) => void;
+  onUnblock: (contactId: string) => Promise<void>;
 }
 
 const ROW_LAYOUT = 'flex items-center gap-3 rounded-xl px-3 py-2';
@@ -27,7 +29,7 @@ const STRIKE_COLUMN = 'hidden w-28 shrink-0 items-center gap-4 text-xs text-mute
 const SELF_NAME_COLOR = 'text-emerald-600 dark:text-emerald-400';
 
 // Memoized so a keystroke in the search box, which re-renders ContactList, doesn't re-render every row.
-export const ContactRow = memo(function ContactRow({ contact, monitored, entry, strikeLimits, selected, onSelect, onToggle, onViewHistory }: ContactRowProps) {
+export const ContactRow = memo(function ContactRow({ contact, monitored, entry, strikeLimits, selected, onSelect, onToggle, onViewHistory, onUnblock }: ContactRowProps) {
   const [pending, setPending] = useState(false);
   // Only blocks turning it ON: an already-monitored self (TEST_ALLOW_SELF turned back off) must stay switch-off-able.
   const selfBlocked = contact.isSelf && !contact.allowSelf && !monitored;
@@ -85,6 +87,7 @@ export const ContactRow = memo(function ContactRow({ contact, monitored, entry, 
           </TooltipTrigger>
           <TooltipContent>Message history</TooltipContent>
         </Tooltip>
+        <UnblockButton visible={block !== null} contactName={contact.name} onUnblock={() => onUnblock(contact.id)} />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
