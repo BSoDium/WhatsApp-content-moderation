@@ -168,6 +168,7 @@ Runtime knobs outside the Settings panel are environment variables: `CONTROL_POR
 
 Sending real WhatsApp messages back and forth for every change is slow and, for block/unblock, requires a second WhatsApp account. Each layer can be exercised on its own instead:
 
+- **Generated warnings** (experimental, Ollama only): `npm run warnings:eval` runs `src/classifier/eval-warning-cases.ts` through the `WARNING_GENERATED` path and prints each warning with its latency (`OLLAMA_MODEL` and `WARNING_MODEL` pick the models); read the output, it is the go/no-go evidence
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`; `npm run classifier:eval` runs the labelled cases in `src/classifier/eval-cases.ts` against a real model (`EVAL_POLICY_FILE`, `EVAL_CONTEXT_FILE` and `EVAL_HELD_OUT=1` tune it)
 - **Buffer** (pure timers): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
