@@ -18,6 +18,7 @@ export interface ContactState {
   block: { unblockAt: number } | null;
   blockHistory: { startedAt: number; endsAt: number }[];
   callUnanswered: number;
+  lastUnansweredAt: number | null;
   callStrikes: number;
   callThresholdOverride: number | null;
 }
@@ -30,6 +31,15 @@ const MAX_CONTEXT_LENGTH = 500;
 const MAX_POLICY_LENGTH = 8000;
 const FLAGGED_DELETED_ACTIONS: ReadonlySet<string> = new Set(['delete+warn', 'delete']);
 const CATEGORY_ACTIONS: ReadonlySet<string> = new Set(['delete+warn', 'delete', 'shadow']);
+
+export function decayUnanswered(backend: DemoBackend, state: ContactState, at: number): void {
+  const decayMs = backend.settingNumber('UNANSWERED_CALL_DECAY_MS');
+  if (decayMs <= 0 || state.lastUnansweredAt === null || state.callUnanswered === 0) return;
+  const forgiven = Math.floor((at - state.lastUnansweredAt) / decayMs);
+  if (forgiven <= 0) return;
+  state.callUnanswered = Math.max(0, state.callUnanswered - forgiven);
+  state.lastUnansweredAt += forgiven * decayMs;
+}
 
 export type CommandResult = { ok: true; body: unknown } | { ok: false; status: number; error: string };
 
@@ -59,6 +69,7 @@ export class DemoBackend {
         block: null,
         blockHistory: [],
         callUnanswered: 0,
+        lastUnansweredAt: null,
         callStrikes: 0,
         callThresholdOverride: null,
       });
@@ -134,6 +145,7 @@ export class DemoBackend {
   }
 
   private rosterEntry(state: ContactState): RosterEntry {
+    decayUnanswered(this, state, Date.now());
     return {
       id: state.person.id,
       name: state.person.name,
@@ -262,12 +274,12 @@ export class DemoBackend {
     let message: string;
     if (command === 'pause') {
       state.paused = true;
-      message = 'Moderation paused — incoming messages will not be classified or actioned until resumed.';
+      message = 'Moderation paused — incoming messages and calls will not be classified or actioned until resumed.';
     } else if (command === 'resume') {
       state.paused = false;
       message = 'Moderation resumed.';
     } else if (command === 'reset-strikes') {
-      Object.assign(state, { strikeCount: 0, lastStrikeAt: null, callStrikes: 0, callUnanswered: 0 });
+      Object.assign(state, { strikeCount: 0, lastStrikeAt: null, callStrikes: 0, callUnanswered: 0, lastUnansweredAt: null });
       message = 'Strikes reset.';
     } else if (!state.block) {
       message = 'Contact is not currently blocked.';

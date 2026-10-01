@@ -1,0 +1,1 @@
+ALTER TABLE `call_strikes` ADD `unanswered_updated_at` integer DEFAULT 0 NOT NULL;

@@ -1877,3 +1877,13 @@ shows the pull command for a missing one, so a different language mix means a
 different model, not a code change. The `warning_sent` audit row records
 whether the text was generated, templated after a failed generation, or the
 static fallback.
+
+## Unanswered calls decay with time
+
+The unanswered-call count only ever went up until the owner answered a call, so a contact ringing once a week eventually reached `NUISANCE_CALL_THRESHOLD` and had calls rejected and struck.
+
+**Chosen: one unanswered call is forgotten per `UNANSWERED_CALL_DECAY_MS` (default 24h) since the contact last called unanswered**, reusing `settleStrikes` on read like strikes do. It needs its own clock: `call_strikes.updated_at` already belongs to call strikes, so migration 0002 adds `unanswered_updated_at` (default 0, which forgives counts that predate it). A new unanswered call restarts the timer, and so does a rejected nuisance call (it never produces the 'timeout' that would), so a contact who keeps calling stays over the threshold until a full window passes without a call. Answering a call still clears the count at once, and 0 disables decay. At the defaults, one unanswered call a day never accumulates, while a burst still reaches the threshold.
+
+*Rejected: a sliding window of timestamps.* It would need a table of call times for the same behaviour.
+
+Pausing a contact skips both messages and calls (`index.ts` drops their events before the pipelines); unlike turning moderation off it keeps strikes and blocks, and strikes keep decaying meanwhile.

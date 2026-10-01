@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-call-strikes.test.sqlite';
 
-const { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall } = await import('./call-strikes.ts');
+const { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall, restartUnansweredDecay } = await import('./call-strikes.ts');
 const { setSetting } = await import('./settings.ts');
 
 after(() => {
@@ -51,4 +51,54 @@ test('call strikes decay after STRIKE_DECAY_MS, unaffected by unanswered calls',
   recordUnansweredCall(contact);
   t.mock.timers.setTime(1100);
   assert.deepEqual(getCallState(contact), { unansweredCount: 1, strikeCount: 1 });
+});
+
+test('unanswered calls decay after UNANSWERED_CALL_DECAY_MS, and a new one restarts the timer', (t) => {
+  const contact = 'erin@s.whatsapp.net';
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', '1000');
+  recordUnansweredCall(contact);
+  recordUnansweredCall(contact);
+
+  t.mock.timers.setTime(1100);
+  assert.equal(getCallState(contact).unansweredCount, 1);
+  assert.equal(recordUnansweredCall(contact), 2);
+
+  t.mock.timers.setTime(3200);
+  assert.equal(getCallState(contact).unansweredCount, 0);
+});
+
+test('a daily unanswered call never accumulates past one', (t) => {
+  const contact = 'frank@s.whatsapp.net';
+  const day = 24 * 60 * 60 * 1000;
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', String(day));
+  for (let i = 0; i < 5; i++) {
+    t.mock.timers.setTime(i * day);
+    assert.equal(recordUnansweredCall(contact), 1);
+  }
+});
+
+test('UNANSWERED_CALL_DECAY_MS of 0 disables unanswered-call decay', (t) => {
+  const contact = 'gina@s.whatsapp.net';
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', '0');
+  recordUnansweredCall(contact);
+  t.mock.timers.setTime(365 * 24 * 60 * 60 * 1000);
+  assert.equal(getCallState(contact).unansweredCount, 1);
+});
+
+test('restartUnansweredDecay restarts the timer without changing the count', (t) => {
+  const contact = 'hana@s.whatsapp.net';
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', '1000');
+  recordUnansweredCall(contact);
+  recordUnansweredCall(contact);
+
+  t.mock.timers.setTime(900);
+  restartUnansweredDecay(contact);
+  t.mock.timers.setTime(1800);
+  assert.equal(getCallState(contact).unansweredCount, 2);
+  t.mock.timers.setTime(1900);
+  assert.equal(getCallState(contact).unansweredCount, 1);
 });

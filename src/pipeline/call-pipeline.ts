@@ -1,7 +1,7 @@
 import { createLogger } from '../cli/logger.ts';
 import { generateCallWarningMessage } from '../classifier/call-warning-message.ts';
 import { getAuditLog, logMessage } from '../store/audit-log.ts';
-import { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall } from '../store/call-strikes.ts';
+import { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall, restartUnansweredDecay } from '../store/call-strikes.ts';
 import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { maybeBlockContact, blockOutlook } from './escalation.ts';
@@ -137,6 +137,7 @@ async function handleOffer(contactId: string, call: WACallEvent, actions: CallAc
     if (rejectOutcome.status === 'fulfilled') {
       // Only mark as "ours" once the reject actually succeeded, so a failed attempt never swallows the real 'reject' event that follows it.
       rejectedCallIds.add(call.id);
+      restartUnansweredDecay(contactId);
     } else {
       logger.warn({ contactId, callId: call.id, error: errorMessage(rejectOutcome.reason) }, 'rejectCall failed; falling back to warning only');
       logCallEvent(contactId, call, 'call_reject_failed');

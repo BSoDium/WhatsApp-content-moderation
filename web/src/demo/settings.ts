@@ -218,6 +218,16 @@ export const DEMO_SETTINGS: Setting[] = [
     min: 0,
   }),
   setting({
+    key: 'UNANSWERED_CALL_DECAY_MS',
+    section: 'calls',
+    label: 'Unanswered call decay (ms)',
+    description:
+      'One unanswered call is forgotten for every full window since the contact last called without being answered, so a contact calling once a day never reaches the threshold. Answering a call still clears the count at once. 0 disables decay. Default: 24h.',
+    type: 'int',
+    default: String(24 * HOUR_MS),
+    min: 0,
+  }),
+  setting({
     key: 'NUISANCE_CALL_STRIKE_THRESHOLD',
     section: 'calls',
     label: 'Nuisance call strike threshold',
