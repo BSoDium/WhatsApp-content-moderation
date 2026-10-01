@@ -10,6 +10,8 @@ const logger = createLogger('settings');
 
 const DEFAULT_STRIKE_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_STRIKE_DECAY_MS = 24 * 60 * 60 * 1000;
+const DAYS_PER_WEEK = 7;
+const DEFAULT_ESCALATION_WEEK_MS = DAYS_PER_WEEK * DEFAULT_STRIKE_DECAY_MS;
 
 export type SettingSection = 'general' | 'classifier' | 'warning' | 'strikes' | 'calls';
 export type SettingType = 'string' | 'int' | 'float' | 'bool';
@@ -154,6 +156,51 @@ export const SETTINGS: readonly SettingDef[] = [
     description: 'Block length before auto-unblock is scheduled. Default: 24h.',
     type: 'int',
     default: String(24 * 60 * 60 * 1000),
+    min: 1,
+  },
+  {
+    key: 'BLOCK_ESCALATING',
+    section: 'strikes',
+    label: 'Escalating blocks',
+    description:
+      'Lengthen the block each time the same contact is blocked again, instead of always using the fixed block duration above. A contact who stays clear of blocks for the reset window starts over at the first step.',
+    type: 'bool',
+    default: '0',
+  },
+  {
+    key: 'BLOCK_ESCALATION_BASE_MS',
+    section: 'strikes',
+    label: 'Escalation first block (ms)',
+    description: 'Length of the first block when escalating blocks are on. Default: 3h.',
+    type: 'int',
+    default: String(3 * 60 * 60 * 1000),
+    min: 1,
+  },
+  {
+    key: 'BLOCK_ESCALATION_FACTOR',
+    section: 'strikes',
+    label: 'Escalation factor',
+    description: 'Each repeat block lasts this many times as long as the previous one. Default: 2 (3h, 6h, 12h, 24h...).',
+    type: 'float',
+    default: '2',
+    min: 1,
+  },
+  {
+    key: 'BLOCK_ESCALATION_MAX_MS',
+    section: 'strikes',
+    label: 'Escalation longest block (ms)',
+    description: 'Upper limit for an escalated block. Default: 7 days.',
+    type: 'int',
+    default: String(DEFAULT_ESCALATION_WEEK_MS),
+    min: 1,
+  },
+  {
+    key: 'BLOCK_ESCALATION_RESET_MS',
+    section: 'strikes',
+    label: 'Escalation reset (ms)',
+    description: 'Time a contact must go without being blocked, counted from the end of their last block, before the next block starts over at the first step. Default: 7 days.',
+    type: 'int',
+    default: String(DEFAULT_ESCALATION_WEEK_MS),
     min: 1,
   },
   {

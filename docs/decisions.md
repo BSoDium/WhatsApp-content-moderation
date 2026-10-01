@@ -48,6 +48,15 @@ intervals, as a partial mitigation against that pattern being recognizable.
   *when a block ends*, not in how often the scheduler looks — that's what
   actually varies the pattern an outside observer (or WhatsApp's abuse
   detection) would see.
+- **Escalating durations** (opt-in, `BLOCK_ESCALATING`, off by default so
+  the fixed duration above stays the behavior): a repeat offender's blocks
+  grow from `BLOCK_ESCALATION_BASE_MS` (3h) by `BLOCK_ESCALATION_FACTOR` (2)
+  per recent block — 3h, 6h, 12h, 24h… — capped at
+  `BLOCK_ESCALATION_MAX_MS` (7d). "Recent" is derived from the existing
+  `blocks` rows (no new column): the chain of earlier blocks, each starting
+  less than `BLOCK_ESCALATION_RESET_MS` (7d) after the previous one ended.
+  A longer clean gap resets the contact to the first step. Jitter is capped
+  at a quarter of the block so a short first block can't roll near zero.
 - **Scheduler**: a poll loop, not a per-block `setTimeout` — timers don't
   survive a process restart, and this needs to run for a day at a time on a
   host that may restart. Every `UNBLOCK_POLL_INTERVAL_MS` (default
