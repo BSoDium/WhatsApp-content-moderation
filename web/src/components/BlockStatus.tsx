@@ -32,7 +32,7 @@ export function BlockStatus({ blockedUntil, contactName, onUnblock }: BlockStatu
   }
 
   return (
-    <div className={cn('w-20 shrink-0 items-center @lg:ml-3 @lg:flex', blocked ? 'flex' : 'hidden')}>
+    <div className={cn('w-20 shrink-0 items-center justify-center @lg:ml-3 @lg:flex', blocked ? 'flex' : 'hidden')}>
       {blocked ? (
         <Button
           variant="ghost"
