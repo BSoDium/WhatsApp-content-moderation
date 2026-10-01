@@ -36,7 +36,7 @@ export function BlockStatus({ blocked, contactName, onUnblock, className }: Bloc
           aria-label={`Unblock ${contactName}`}
           disabled={pending}
           onClick={handleClick}
-          className="-ml-2 cursor-pointer px-2 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20 focus-visible:bg-destructive/10 dark:hover:bg-destructive/20 dark:active:bg-destructive/30 dark:focus-visible:bg-destructive/20"
+          className="w-full cursor-pointer text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive active:bg-destructive/20 focus-visible:bg-destructive/10 dark:hover:bg-destructive/20 dark:active:bg-destructive/30 dark:focus-visible:bg-destructive/20"
         >
           Unblock
         </Button>
