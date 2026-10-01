@@ -50,11 +50,11 @@ export const fadeAndSlide: AutoAnimationPlugin = (el, action, oldCoords, newCoor
   if (action === 'remove') {
     return new KeyframeEffect(el, [{ opacity: 1 }, { opacity: 0 }], { duration, easing: 'ease-out' });
   }
-  const deltaX = oldCoords!.left - newCoords!.left;
+  // Rows only ever reorder vertically. auto-animate refreshes its cached coordinates on resize and scroll but not when the whole list is moved sideways (the side pane opening shifts it), so a horizontal delta is always stale and would make rows slide diagonally.
   const deltaY = oldCoords!.top - newCoords!.top;
   return new KeyframeEffect(
     el,
-    [{ transform: `translate(${deltaX}px, ${deltaY}px)` }, { transform: 'translate(0, 0)' }],
+    [{ transform: `translateY(${deltaY}px)` }, { transform: 'translateY(0)' }],
     { duration, easing: 'ease-in-out' },
   );
 };
