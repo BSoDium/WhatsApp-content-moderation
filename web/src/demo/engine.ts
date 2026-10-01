@@ -5,6 +5,7 @@ import type { Random } from './random';
 
 export const WARNING_DELAY_MS = 2000;
 export const CALL_OUTCOME_DELAY_MS = 18_000;
+const MAX_JITTER_SHARE = 0.25;
 const ENGLISH_HINT = /\b(the|you|your|dear|hello|hi|is|are|last chance|answer)\b/i;
 
 interface EntryFields {
@@ -55,10 +56,28 @@ function decayStrikes(backend: DemoBackend, state: ContactState, at: number): vo
   state.lastStrikeAt += forgiven * decayMs;
 }
 
+function baseBlockDuration(backend: DemoBackend, state: ContactState, at: number): number {
+  if (!backend.settingBool('BLOCK_ESCALATING')) return backend.settingNumber('BLOCK_DURATION_MS');
+
+  const resetMs = backend.settingNumber('BLOCK_ESCALATION_RESET_MS');
+  let recentBlocks = 0;
+  let nextStart = at;
+  for (const record of [...state.blockHistory].reverse()) {
+    if (nextStart - record.endsAt > resetMs) break;
+    recentBlocks += 1;
+    nextStart = record.startedAt;
+  }
+  const escalated = backend.settingNumber('BLOCK_ESCALATION_BASE_MS') * backend.settingNumber('BLOCK_ESCALATION_FACTOR') ** recentBlocks;
+  return Math.min(escalated, backend.settingNumber('BLOCK_ESCALATION_MAX_MS'));
+}
+
 function startBlock(backend: DemoBackend, state: ContactState, at: number, random: Random): void {
-  const jitter = backend.settingNumber('BLOCK_JITTER_MS');
-  const duration = backend.settingNumber('BLOCK_DURATION_MS') + Math.round((random.next() * 2 - 1) * jitter);
-  state.block = { unblockAt: at + Math.max(duration, 1) };
+  const base = baseBlockDuration(backend, state, at);
+  const jitter = Math.min(backend.settingNumber('BLOCK_JITTER_MS'), base * MAX_JITTER_SHARE);
+  const duration = base + Math.round((random.next() * 2 - 1) * jitter);
+  const unblockAt = at + Math.max(duration, 1);
+  state.block = { unblockAt };
+  state.blockHistory.push({ startedAt: at, endsAt: unblockAt });
   state.strikeCount = 0;
   state.lastStrikeAt = null;
   state.callStrikes = 0;

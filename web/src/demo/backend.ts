@@ -16,6 +16,7 @@ export interface ContactState {
   lastStrikeAt: number | null;
   lastWarnAt: number | null;
   block: { unblockAt: number } | null;
+  blockHistory: { startedAt: number; endsAt: number }[];
   callUnanswered: number;
   callStrikes: number;
   callThresholdOverride: number | null;
@@ -56,6 +57,7 @@ export class DemoBackend {
         lastStrikeAt: null,
         lastWarnAt: null,
         block: null,
+        blockHistory: [],
         callUnanswered: 0,
         callStrikes: 0,
         callThresholdOverride: null,
