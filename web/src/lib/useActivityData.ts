@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './api';
+import { mergeLatestEntries } from './mergeLatestEntries';
 import type { AuditLogEntry, AuditLogPage, Stats } from './types';
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -36,6 +37,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
   // Bumped by every fetch and checked before applying a response, so an older response never clobbers a newer one.
   const requestSeq = useRef(0);
   const opened = useRef(false);
+  const pagedPastFirst = useRef(false);
 
   useEffect(() => {
     const id = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -53,6 +55,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     try {
       const page = await fetchPage();
       if (seq !== requestSeq.current) return;
+      pagedPastFirst.current = false;
       setEntries(page.entries);
       setNextBefore(page.nextBefore);
       setError(null);
@@ -66,14 +69,21 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
 
   const refresh = useCallback(async function refresh() {
     const seq = ++requestSeq.current;
-    setLoading(true);
+    // Only the first load swaps the rows for skeletons; a live update that did the same would collapse the list and reset the scroll position.
+    const background = opened.current;
+    if (!background) setLoading(true);
     try {
       const [statsResult, page] = await Promise.all([apiFetch<Stats>('/api/stats'), fetchPage()]);
       if (seq !== requestSeq.current) return;
       opened.current = true;
       setStats(statsResult);
-      setEntries(page.entries);
-      setNextBefore(page.nextBefore);
+      if (background) {
+        setEntries((current) => mergeLatestEntries(current, page.entries, page.nextBefore === null));
+        if (!pagedPastFirst.current) setNextBefore(page.nextBefore);
+      } else {
+        setEntries(page.entries);
+        setNextBefore(page.nextBefore);
+      }
       setError(null);
     } catch (err: unknown) {
       if (seq !== requestSeq.current) return;
@@ -90,6 +100,7 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     try {
       const page = await fetchPage(nextBefore);
       if (seq !== requestSeq.current) return;
+      pagedPastFirst.current = true;
       setEntries((prev) => [...prev, ...page.entries]);
       setNextBefore(page.nextBefore);
       setError(null);
@@ -97,7 +108,8 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
       if (seq !== requestSeq.current) return;
       setError(errorMessage(err));
     } finally {
-      if (seq === requestSeq.current) setLoadingMore(false);
+      // Cleared even when a live refresh superseded this request, or the button would stay disabled for good.
+      setLoadingMore(false);
     }
   }, [fetchPage, nextBefore]);
 
