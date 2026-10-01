@@ -2,7 +2,7 @@ import type { Ollama } from 'ollama';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 import type { BlockOutlook } from './warning-consequence.ts';
-import { generateChecked } from './warning-text.ts';
+import { generateChecked, generationOptions } from './warning-text.ts';
 
 const MAX_REASONS = 3;
 const ECHO_MIN_LENGTH = 12;
@@ -92,7 +92,7 @@ export async function generateIncidentWarning(input: IncidentWarningInput, ollam
           { role: 'system', content: buildSystemPrompt(input.language, hasConsequence) },
           { role: 'user', content: buildUserPrompt(input, retryHint) },
         ],
-        options: { temperature: getNumberSetting('WARNING_TEMPERATURE') },
+        options: generationOptions(),
       });
       return response.message.content;
     }, getNumberSetting('WARNING_MAX_LENGTH'));

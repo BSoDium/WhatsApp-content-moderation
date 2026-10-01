@@ -47,6 +47,11 @@ services:
     restart: always
     ports:
       - "127.0.0.1:11434:11434"
+    environment:
+      # Keeps a separate warning model resident next to the classifier model
+      # (see Settings > Warning model) so a warning never waits on a reload.
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_MAX_LOADED_MODELS: "2"
     volumes:
       - ollama:/root/.ollama
 

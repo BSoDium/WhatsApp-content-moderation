@@ -35,6 +35,7 @@ const logger = createLogger('pipeline');
 const WARNING_SENT_ACTION = 'warning_sent';
 const REMOVED_ACTIONS = ['delete+warn', 'delete'];
 const LANGUAGE_SAMPLE_MESSAGES = 3;
+const MAX_DETAIL_ERROR_LENGTH = 120;
 
 interface Incident {
   texts: string[];
@@ -205,8 +206,8 @@ async function runBurst(
   }
 
   if (incident) {
-    const warningText = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
-    if (warningText === null) {
+    const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
+    if (warning === null) {
       incident.logOpener('warn_failed');
     } else {
       strikeCount = recordStrike(contactId);
@@ -214,8 +215,8 @@ async function runBurst(
       logMessage({
         contactId,
         direction: 'me',
-        message: warningText,
-        classification: { ok: true, flagged: false, category: 'warning', reason: 'automated warning sent' },
+        message: warning.text,
+        classification: { ok: true, flagged: false, category: 'warning', reason: `automated warning sent (${warning.detail})` },
         action: WARNING_SENT_ACTION,
       });
       await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);
@@ -232,7 +233,7 @@ async function warnAboutIncident(
   strikeCount: number,
   strikeThreshold: number,
   { sendWarning, generateWarning }: Pick<Required<BurstActions>, 'sendWarning' | 'generateWarning'>,
-): Promise<string | null> {
+): Promise<{ text: string; detail: string } | null> {
   const warningResult = await generateWarning({
     message: texts.slice(0, LANGUAGE_SAMPLE_MESSAGES).join('\n'),
     deletedCount: texts.length,
@@ -245,6 +246,7 @@ async function warnAboutIncident(
     logger.warn({ contactId, error: warningResult.error }, 'warning message generation failed open; falling back to the static message');
   }
   const warningText = warningResult.ok ? warningResult.text : getRawSetting('WARNING_MESSAGE');
+  const detail = warningResult.ok ? warningResult.detail : `fallback message; ${warningResult.error.slice(0, MAX_DETAIL_ERROR_LENGTH)}`;
 
   try {
     await sendWarning(contactId, warningText);
@@ -252,7 +254,7 @@ async function warnAboutIncident(
     logger.error({ contactId, warnError: String(err) }, 'sendWarning failed');
     return null;
   }
-  return warningText;
+  return { text: warningText, detail: detail ?? 'sent' };
 }
 
 function isWithinStrikeCooldown(contactId: string): boolean {

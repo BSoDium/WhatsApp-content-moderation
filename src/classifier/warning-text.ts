@@ -1,8 +1,17 @@
-import { getRawSetting } from '../store/settings.ts';
+import { getNumberSetting, getRawSetting } from '../store/settings.ts';
 
 // Empty WARNING_MODEL (its manifest default) means "inherit the classifier model", so `||` not `??`.
 export function warningModel(): string {
   return getRawSetting('WARNING_MODEL') || getRawSetting('OLLAMA_MODEL');
+}
+
+// num_predict and repeat_penalty bound a degenerate loop: at CPU decode speeds an unbounded one runs until the request timeout.
+export function generationOptions() {
+  return {
+    temperature: getNumberSetting('WARNING_TEMPERATURE'),
+    num_predict: getNumberSetting('WARNING_MAX_TOKENS'),
+    repeat_penalty: getNumberSetting('WARNING_REPEAT_PENALTY'),
+  };
 }
 
 // Collapses the formatting a small local model adds (quotes, stray newlines, emoji) into the single plain line a text message would be.
