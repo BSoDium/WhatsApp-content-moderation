@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
-import { excluded } from './excluded.ts';
 import { callStrikes } from './schema.ts';
 import { getNumberSetting } from './settings.ts';
 import { settleStrikes } from './strike-decay.ts';
@@ -70,14 +69,22 @@ export function recordUnansweredCall(contactId: string): number {
 /**
  * Records a nuisance call that was rejected and/or warned: increments the
  * contact's decayed call-strike count by one, toward
- * NUISANCE_CALL_STRIKE_THRESHOLD, and restarts the decay timer.
+ * NUISANCE_CALL_STRIKE_THRESHOLD, and restarts the decay timer. It also
+ * restarts the unanswered-call timer, since a rejected call never produces
+ * the 'timeout' that would otherwise do it: a contact who keeps calling stays
+ * over the threshold until a full decay window passes without a call.
  */
 export function recordCallStrike(contactId: string): number {
-  const strikeCount = getCallState(contactId).strikeCount + 1;
+  const state = getCallState(contactId);
+  const strikeCount = state.strikeCount + 1;
+  const now = Date.now();
   getOrm()
     .insert(callStrikes)
-    .values({ contact_id: contactId, unanswered_count: 0, strike_count: strikeCount, updated_at: Date.now() })
-    .onConflictDoUpdate({ target: callStrikes.contact_id, set: { strike_count: strikeCount, updated_at: excluded(callStrikes.updated_at) } })
+    .values({ contact_id: contactId, unanswered_count: state.unansweredCount, strike_count: strikeCount, updated_at: now, unanswered_updated_at: now })
+    .onConflictDoUpdate({
+      target: callStrikes.contact_id,
+      set: { strike_count: strikeCount, updated_at: now, unanswered_count: state.unansweredCount, unanswered_updated_at: now },
+    })
     .run();
   emitControlEvent('roster');
   return strikeCount;

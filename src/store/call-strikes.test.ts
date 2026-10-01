@@ -87,3 +87,18 @@ test('UNANSWERED_CALL_DECAY_MS of 0 disables unanswered-call decay', (t) => {
   t.mock.timers.setTime(365 * 24 * 60 * 60 * 1000);
   assert.equal(getCallState(contact).unansweredCount, 1);
 });
+
+test('a nuisance call strike restarts the unanswered-call decay timer', (t) => {
+  const contact = 'hana@s.whatsapp.net';
+  t.mock.timers.enable({ apis: ['Date'], now: 0 });
+  setSetting('UNANSWERED_CALL_DECAY_MS', '1000');
+  recordUnansweredCall(contact);
+  recordUnansweredCall(contact);
+
+  t.mock.timers.setTime(900);
+  recordCallStrike(contact);
+  t.mock.timers.setTime(1800);
+  assert.equal(getCallState(contact).unansweredCount, 2);
+  t.mock.timers.setTime(1900);
+  assert.equal(getCallState(contact).unansweredCount, 1);
+});

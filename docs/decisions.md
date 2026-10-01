@@ -1882,7 +1882,7 @@ static fallback.
 
 The unanswered-call count only ever went up until the owner answered a call, so a contact ringing once a week eventually reached `NUISANCE_CALL_THRESHOLD` and had calls rejected and struck.
 
-**Chosen: one unanswered call is forgotten per `UNANSWERED_CALL_DECAY_MS` (default 24h) since the contact last called unanswered**, reusing `settleStrikes` on read like strikes do. It needs its own clock: `call_strikes.updated_at` already belongs to call strikes, so migration 0002 adds `unanswered_updated_at` (default 0, which forgives counts that predate it). A new unanswered call restarts the timer, answering a call still clears the count at once, and 0 disables decay. At the defaults, one unanswered call a day never accumulates, while a burst still reaches the threshold.
+**Chosen: one unanswered call is forgotten per `UNANSWERED_CALL_DECAY_MS` (default 24h) since the contact last called unanswered**, reusing `settleStrikes` on read like strikes do. It needs its own clock: `call_strikes.updated_at` already belongs to call strikes, so migration 0002 adds `unanswered_updated_at` (default 0, which forgives counts that predate it). A new unanswered call restarts the timer, and so does a rejected nuisance call (it never produces the 'timeout' that would), so a contact who keeps calling stays over the threshold until a full window passes without a call. Answering a call still clears the count at once, and 0 disables decay. At the defaults, one unanswered call a day never accumulates, while a burst still reaches the threshold.
 
 *Rejected: a sliding window of timestamps.* It would need a table of call times for the same behaviour.
 
