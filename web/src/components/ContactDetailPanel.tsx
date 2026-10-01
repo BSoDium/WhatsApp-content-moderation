@@ -301,7 +301,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
           <section className="rounded-xl border border-border bg-card px-4">
             <SettingRow
               title="Unanswered calls"
-              description="Calls that rang out since the last one you answered. Past the threshold below, further calls are rejected and earn a call strike."
+              description="Calls that rang out without an answer, forgotten over time and cleared when you answer one. Past the threshold below, further calls are rejected and earn a call strike."
               control={<span className="tabular-nums">{unansweredCount}</span>}
             />
             <Separator />
@@ -317,7 +317,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
           <section className="rounded-xl border border-border bg-card px-4">
             <SettingRow
               title="Paused"
-              description="Temporarily stop moderating without losing strike history."
+              description="Temporarily ignore this contact's messages and calls. Unlike turning moderation off, strikes and any block are kept (strikes still expire over time), and it resets when the app restarts."
               control={
                 <Switch
                   checked={Boolean(entry?.paused)}

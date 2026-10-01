@@ -1,5 +1,5 @@
 import type { AuditAction, AuditLogEntry } from '@/lib/types';
-import type { ContactState, DemoBackend } from './backend';
+import { decayUnanswered, type ContactState, type DemoBackend } from './backend';
 import { CALL_WARNING_TEMPLATE, CLASSIFIER_ERRORS, GENERATED_WARNINGS, type FlaggedTemplate, type PassedTemplate } from './messages';
 import type { Random } from './random';
 
@@ -83,6 +83,7 @@ function startBlock(backend: DemoBackend, state: ContactState, at: number, rando
   state.lastStrikeAt = null;
   state.callStrikes = 0;
   state.callUnanswered = 0;
+  state.lastUnansweredAt = null;
 }
 
 export function ingestPassed(backend: DemoBackend, contactId: string, template: PassedTemplate, at: number): void {
@@ -154,16 +155,19 @@ export function ingestCall(backend: DemoBackend, contactId: string, at: number, 
   const outcomeAt = at + CALL_OUTCOME_DELAY_MS;
   log(backend, contactId, at, { message, action: 'call_received' });
 
+  decayUnanswered(backend, state, at);
   if (answered) {
     state.callUnanswered = 0;
     log(backend, contactId, outcomeAt, { message, action: 'call_answered' });
   } else if (backend.settingBool('SHADOW_MODE')) {
     const nuisance = state.callUnanswered >= backend.callThreshold(state);
     state.callUnanswered++;
+    state.lastUnansweredAt = at;
     log(backend, contactId, outcomeAt, { message, flagged: nuisance, action: 'call_shadow' });
   } else {
     const nuisance = state.callUnanswered >= backend.callThreshold(state);
     state.callUnanswered++;
+    state.lastUnansweredAt = at;
     if (nuisance) {
       state.callStrikes++;
       const warning = CALL_WARNING_TEMPLATE.replace('{strikes}', String(state.callStrikes)).replace('{threshold}', String(backend.settingNumber('NUISANCE_CALL_STRIKE_THRESHOLD')));

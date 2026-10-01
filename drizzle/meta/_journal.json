@@ -15,6 +15,13 @@
       "when": 1790614034356,
       "tag": "0001_zippy_cerebro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790893960156,
+      "tag": "0002_secret_swordsman",
+      "breakpoints": true
     }
   ]
 }

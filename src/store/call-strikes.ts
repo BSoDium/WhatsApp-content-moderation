@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { excluded } from './excluded.ts';
@@ -15,19 +15,27 @@ const EMPTY_STATE: CallState = { unansweredCount: 0, strikeCount: 0 };
 
 /**
  * Returns a contact's current nuisance-call state (zeroes if they have no
- * row yet). The strike count is net of time-based decay, computed on read
- * from `updated_at` — the time of the last call strike, which nothing else
- * in this file moves.
+ * row yet). Both counts are net of time-based decay, computed on read: the
+ * strike count from `updated_at` (the last call strike, which nothing else
+ * in this file moves) and the unanswered count from `unanswered_updated_at`
+ * (the last unanswered call), each against its own setting.
  */
 export function getCallState(contactId: string): CallState {
   const row = getOrm()
-    .select({ unanswered_count: callStrikes.unanswered_count, strike_count: callStrikes.strike_count, updated_at: callStrikes.updated_at })
+    .select({
+      unanswered_count: callStrikes.unanswered_count,
+      strike_count: callStrikes.strike_count,
+      updated_at: callStrikes.updated_at,
+      unanswered_updated_at: callStrikes.unanswered_updated_at,
+    })
     .from(callStrikes)
     .where(eq(callStrikes.contact_id, contactId))
     .get();
   if (!row) return EMPTY_STATE;
-  const { count } = settleStrikes({ count: row.strike_count, updatedAt: row.updated_at }, Date.now(), getNumberSetting('STRIKE_DECAY_MS'));
-  return { unansweredCount: row.unanswered_count, strikeCount: count };
+  const now = Date.now();
+  const strikes = settleStrikes({ count: row.strike_count, updatedAt: row.updated_at }, now, getNumberSetting('STRIKE_DECAY_MS'));
+  const unanswered = settleStrikes({ count: row.unanswered_count, updatedAt: row.unanswered_updated_at }, now, getNumberSetting('UNANSWERED_CALL_DECAY_MS'));
+  return { unansweredCount: unanswered.count, strikeCount: strikes.count };
 }
 
 /**
@@ -36,25 +44,27 @@ export function getCallState(contactId: string): CallState {
  * reason as strikes.ts's resetStrikes.
  */
 export function resetCallState(contactId: string): void {
-  getOrm().update(callStrikes).set({ unanswered_count: 0, strike_count: 0, updated_at: Date.now() }).where(eq(callStrikes.contact_id, contactId)).run();
+  getOrm().update(callStrikes).set({ unanswered_count: 0, strike_count: 0, updated_at: Date.now(), unanswered_updated_at: Date.now() }).where(eq(callStrikes.contact_id, contactId)).run();
 }
 
 /**
  * Records a call that rang out without being answered (or was manually
- * declined): increments the contact's unanswered-call count by one.
+ * declined): increments the contact's decayed unanswered-call count by one
+ * and restarts its decay timer.
  */
 export function recordUnansweredCall(contactId: string): number {
-  const row = getOrm()
+  const unansweredCount = getCallState(contactId).unansweredCount + 1;
+  const now = Date.now();
+  getOrm()
     .insert(callStrikes)
-    .values({ contact_id: contactId, unanswered_count: 1, strike_count: 0, updated_at: Date.now() })
+    .values({ contact_id: contactId, unanswered_count: unansweredCount, strike_count: 0, updated_at: now, unanswered_updated_at: now })
     .onConflictDoUpdate({
       target: callStrikes.contact_id,
-      set: { unanswered_count: sql`${callStrikes.unanswered_count} + 1` },
+      set: { unanswered_count: unansweredCount, unanswered_updated_at: now },
     })
-    .returning({ unanswered_count: callStrikes.unanswered_count })
-    .get();
+    .run();
   emitControlEvent('roster');
-  return row.unanswered_count;
+  return unansweredCount;
 }
 
 /**

@@ -65,11 +65,11 @@ const EXPECTED_SHAPE = {
   },
 };
 
-// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added (currently just 0001's call_strikes table and monitored_contacts.call_nuisance_threshold) — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
+// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added (currently 0001's call_strikes table and monitored_contacts.call_nuisance_threshold, and 0002's call_strikes.unanswered_updated_at) — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
 const FULLY_MIGRATED_SHAPE = {
   ...EXPECTED_SHAPE,
   call_strikes: {
-    columns: ['contact_id text', 'strike_count integer', 'unanswered_count integer', 'updated_at integer'],
+    columns: ['contact_id text', 'strike_count integer', 'unanswered_count integer', 'unanswered_updated_at integer', 'updated_at integer'],
     indexes: [],
   },
   monitored_contacts: {

@@ -13,6 +13,7 @@ export const callStrikes = sqliteTable('call_strikes', {
   unanswered_count: integer().notNull().default(0),
   strike_count: integer().notNull().default(0),
   updated_at: integer().notNull(),
+  unanswered_updated_at: integer().notNull().default(0),
 });
 
 export const blocks = sqliteTable(

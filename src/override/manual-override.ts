@@ -73,7 +73,7 @@ export function createManualOverride({ unblock }: { unblock: (contactId: string)
         paused.set(contactId, true);
         logger.info({ contactId }, 'moderation paused via manual override');
         emitControlEvent('roster');
-        return 'Moderation paused — incoming messages will not be classified or actioned until resumed.';
+        return 'Moderation paused — incoming messages and calls will not be classified or actioned until resumed.';
 
       case 'resume':
         paused.set(contactId, false);
