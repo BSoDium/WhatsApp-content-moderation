@@ -1861,4 +1861,19 @@ instruction).
 
 **Scratch criteria:** p95 latency above `WARNING_TIMEOUT_MS` on the target
 hardware, or any refusal, side-taking or echo in the eval, means leaving the
-setting off. Results go here once measured.
+setting off.
+
+**Measured on the 4-core CPU-only production box** (12 cases, median / p95):
+`llama3.2:3b` 8.6 s / 14 s but garbled French; `qwen2.5:7b` unbounded 16 s /
+92 s, with a timeout and a Polish repetition loop (Qwen2.5 is weak in Polish);
+with `WARNING_MAX_TOKENS=150` and `WARNING_REPEAT_PENALTY=1.1`, 16 s / 34 s (the
+first call is the cold start), no loops, and fluent output in English, French,
+Spanish, German, Portuguese, Russian and Japanese. Decode runs at about 6 tok/s,
+so an uncapped loop reaches the 90 s timeout; the token cap is what bounds it.
+Swahili and Arabic are out of scope.
+
+**The operator chooses the model.** Settings lists the installed models and
+shows the pull command for a missing one, so a different language mix means a
+different model, not a code change. The `warning_sent` audit row records
+whether the text was generated, templated after a failed generation, or the
+static fallback.

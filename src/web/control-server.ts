@@ -64,6 +64,7 @@ interface ControlServerDependencies {
 const logger = createLogger('control-server');
 
 const STARTED_AT = Date.now();
+const BAD_GATEWAY = 502;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
@@ -458,7 +459,7 @@ async function handleApi(
   if (req.method === 'GET' && segments.length === 2 && segments[0] === 'ollama' && segments[1] === 'models') {
     const result = await (deps.listModels ?? listInstalledModels)();
     if (!result.ok) {
-      sendJson(res, 502, { error: result.error });
+      sendJson(res, BAD_GATEWAY, { error: result.error });
       return true;
     }
     sendJson(res, 200, { models: result.models });

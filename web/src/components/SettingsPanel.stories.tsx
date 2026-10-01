@@ -12,7 +12,7 @@ const INSTALLED_MODELS = [
   { name: 'qwen2.5:7b', sizeBytes: 4683087332 },
 ];
 
-function settingsRoutes(initial = FIXTURE_SETTINGS, models: object = { models: INSTALLED_MODELS }): MockRoute[] {
+function settingsRoutes(initial = FIXTURE_SETTINGS, models: object = { body: { models: INSTALLED_MODELS } }): MockRoute[] {
   let settings = initial;
   return [
     { match: '/api/ollama/models', ...(models as object) },

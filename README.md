@@ -138,7 +138,19 @@ A larger model follows abstract rules better; change it in Settings, but measure
 
 ### Warning messages
 
-The reply sent alongside a delete (`src/classifier/warning-message.ts`) is chosen per violation: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and — only when a block can actually happen — how many repeat offences remain before one. With escalation off for the contact, no block is mentioned; on the warning that comes with the block, it says so. In languages with a hand-written template (`src/classifier/warning-templates.ts` — English, French, Spanish, Polish) that text is sent as is, with no generation; in any other language the warning model writes it, and a small model's grammar there can be poor, so set a larger **Warning model** in Settings if you need those languages (blank inherits the classifier model). The warning model never sees the flagged message or the classifier's reason — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
+The reply sent alongside a delete (`src/classifier/warning-message.ts`) is chosen per violation: it tells the contact plainly that their message was removed, that an automated moderation system (not the account owner) is watching the chat, and — only when a block can actually happen — how many repeat offences remain before one. With escalation off for the contact, no block is mentioned; on the warning that comes with the block, it says so. In languages with a hand-written template (`src/classifier/warning-templates.ts` — English, French, Spanish, Polish) that text is sent as is, with no generation; in any other language the warning model writes it, and a small model's grammar there can be poor, so set a larger **Warning model** in Settings if you need those languages (blank inherits the classifier model). The warning model never sees the flagged message — only a separate language-detection call does, so the warning comes out in the contact's language without the model arguing with, answering or refusing what they wrote. Same fail-open contract as the classifier — a static fallback message (configurable in Settings) is sent instead if language detection or generation fails, or if the model refuses.
+
+### Choosing a warning model
+
+Both model fields in Settings list what your Ollama has pulled, and a model that is not installed shows the command to pull it. To try another one:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:7b
+```
+
+then choose it as the **Warning model**; it applies from the next warning, with no restart. Blank means "same as the classifier", which avoids keeping a second model loaded.
+
+**Generate warnings** (experimental, off by default) has the warning model write each warning in the contact's language, saying how many messages were removed and why, instead of using the fixed per-language wording. Whenever generation fails, the fixed wording is sent, and the Activity panel's warning row says which one was used. Measured on a 4-core, CPU-only machine (`npm run warnings:eval`): `llama3.2:3b` answers in about 9 s but writes unusable French; `qwen2.5:7b` writes fluent English, French, Spanish, German, Portuguese, Russian and Japanese, with a median of 16 s per warning and a cold start of about 35 s. Neither is reliable in low-resource languages such as Swahili or Arabic. Run the eval against your own model and hardware before enabling it.
 
 ### Moderation pipeline and block/unblock scheduler
 
