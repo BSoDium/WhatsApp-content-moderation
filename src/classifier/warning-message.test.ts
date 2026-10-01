@@ -247,3 +247,52 @@ test('a language without a template is written by the warning model', async () =
   assert.deepEqual(result, { ok: true, text: 'Ujumbe wako umeondolewa.' });
   assert.equal(generations.length, 1);
 });
+
+const INCIDENT = { message: 'you should be scared', deletedCount: 3, reasons: [{ category: 'threat', reason: 'threatens physical harm' }], strikeCount: 1, strikeThreshold: 3 };
+
+function recordingClient(content, language = 'Swahili') {
+  const requests = [];
+  return {
+    requests,
+    chat: async (request) => {
+      requests.push(request);
+      return { message: { content: request.format ? JSON.stringify({ language }) : content } };
+    },
+  };
+}
+
+test('WARNING_GENERATED passes the removed count and reason to the model and never the removed text', async () => {
+  setSetting('WARNING_GENERATED', '1');
+  setSetting('WARNING_MAX_LENGTH', '500');
+  const client = recordingClient('Jumbe 3 zimeondolewa kwa sababu ya vitisho. Hii ni ujumbe wa kiotomatiki.');
+
+  const result = await generateWarningMessage(INCIDENT, { client });
+
+  assert.equal(result.ok, true);
+  const [, generation] = client.requests;
+  const prompt = generation.messages.map((m) => m.content).join('\n');
+  assert.match(prompt, /Messages removed: 3/);
+  assert.match(prompt, /threatens physical harm/);
+  assert.equal(prompt.includes('you should be scared'), false);
+});
+
+test('WARNING_GENERATED rejects a warning that repeats a removal reason and falls back to the template path', async () => {
+  setSetting('WARNING_GENERATED', '1');
+  setSetting('WARNING_MAX_LENGTH', '500');
+  const client = recordingClient('Your messages were removed: threatens physical harm. Automated notice.', 'English');
+
+  const result = await generateWarningMessage(INCIDENT, { client });
+
+  assert.equal(result.ok, true);
+  assert.match(result.text, /removed for breaking this conversation's rules/);
+});
+
+test('WARNING_GENERATED off never makes a generation call for a templated language', async () => {
+  setSetting('WARNING_GENERATED', '0');
+  const client = recordingClient('unused', 'French');
+
+  const result = await generateWarningMessage(INCIDENT, { client });
+
+  assert.equal(result.ok, true);
+  assert.equal(client.requests.length, 1);
+});

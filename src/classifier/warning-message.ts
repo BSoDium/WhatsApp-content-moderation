@@ -1,19 +1,30 @@
 import type { Ollama } from 'ollama';
 import { createOllamaClient } from './ollama-client.ts';
 import { detectLanguage } from './language.ts';
-import { getNumberSetting } from '../store/settings.ts';
+import { getBoolSetting, getNumberSetting } from '../store/settings.ts';
+import { createLogger } from '../cli/logger.ts';
 import { generateChecked, warningModel } from './warning-text.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 import type { BlockOutlook } from './warning-consequence.ts';
 import { templateWarning } from './warning-templates.ts';
+import { generateIncidentWarning } from './warning-generator.ts';
+
+export interface WarningReason {
+  category: string;
+  reason: string;
+}
 
 interface WarningMessageInput {
   message: string;
+  deletedCount: number;
+  reasons: WarningReason[];
   strikeCount: number;
   strikeThreshold: number;
   blockOutlook?: BlockOutlook;
   model?: string;
 }
+
+const logger = createLogger('warning');
 
 interface WarningMessageDependencies {
   client?: Ollama;
@@ -95,6 +106,12 @@ export async function generateWarningMessage(
   try {
     const detected = await detectLanguage(input.message, ollama, model);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
+
+    if (getBoolSetting('WARNING_GENERATED')) {
+      const generated = await generateIncidentWarning({ ...input, language: detected.language, model }, ollama);
+      if (generated.ok) return generated;
+      logger.warn({ error: generated.error }, 'incident warning generation failed; using the template path');
+    }
 
     const fixedText = templateWarning(detected.language, 'message', input.strikeThreshold - input.strikeCount, input.blockOutlook);
     if (fixedText) return { ok: true, text: fixedText };

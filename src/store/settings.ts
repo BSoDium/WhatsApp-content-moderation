@@ -77,6 +77,14 @@ export const SETTINGS: readonly SettingDef[] = [
     min: 0,
   },
   {
+    key: 'WARNING_GENERATED',
+    section: 'warning',
+    label: 'Generate warnings',
+    description: 'Experimental. Have the warning model write each warning in the contact\'s language, stating how many messages were removed and why, instead of using the fixed per-language wording. Falls back to the fixed wording if generation fails.',
+    type: 'bool',
+    default: '0',
+  },
+  {
     key: 'WARNING_MODEL',
     section: 'warning',
     label: 'Warning model',
