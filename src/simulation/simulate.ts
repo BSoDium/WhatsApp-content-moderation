@@ -11,9 +11,13 @@ const args = process.argv.slice(2);
 const stub = args.includes('--stub');
 const modelIndex = args.indexOf('--model');
 const model = modelIndex === -1 ? undefined : args[modelIndex + 1];
-const modelOverride: Record<string, string> = model ? { OLLAMA_MODEL: model } : {};
-const modelValueIndex = modelIndex === -1 ? -1 : modelIndex + 1;
-const requested = args.filter((arg, index) => !arg.startsWith('--') && index !== modelValueIndex);
+const setPairs = args.flatMap((arg, index) => (arg === '--set' ? [args[index + 1]] : []));
+const settingsOverride: Record<string, string> = {
+  ...(model ? { OLLAMA_MODEL: model } : {}),
+  ...Object.fromEntries(setPairs.map((pair) => [pair.slice(0, pair.indexOf('=')), pair.slice(pair.indexOf('=') + 1)])),
+};
+const flagValueIndexes = new Set(args.flatMap((arg, index) => (arg === '--model' || arg === '--set' ? [index + 1] : [])));
+const requested = args.filter((arg, index) => !arg.startsWith('--') && !flagValueIndexes.has(index));
 
 const workDir = mkdtempSync(join(tmpdir(), 'moderation-sim-'));
 process.env.DB_PATH = join(workDir, 'sim.sqlite');
@@ -32,7 +36,7 @@ try {
     const contactId = `${basename(file, '.json')}@s.whatsapp.net`;
     const dependencies = stub
       ? { classify: keywordClassifier(scenario.flagWords ?? []), generateWarning: stubWarning }
-      : { settingsOverride: modelOverride };
+      : { settingsOverride };
 
     const outcome = await runScenario(scenario, contactId, dependencies);
     console.log(`${formatOutcome(scenario, outcome)}\n`);
