@@ -71,10 +71,10 @@ function decisionSteps(userSpoke: boolean): string[] {
 }
 
 const COMMON_FLAG_RULES =
-  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
+  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. A question that carries no blame, order or demand ("tu as mangé ?", "tu es à la maison ?") is never guilt-tripping. Never flag a statement for being false or inconsistent: you cannot verify what Contact says. Otherwise, flag the message if it violates the policy below.';
 
 function flaggedRule(userSpoke: boolean): string {
-  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal, and any continuation of a line removed by moderation';
+  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal that asks or orders the user to do something, and a fragment that finishes the line just removed by moderation';
   return userSpoke
     ? `flagged must be false when target is not "user" and when is_mutual_banter is true, with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`
     : `flagged must be false when target is not "user", with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`;
@@ -110,7 +110,7 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string, userS
     'Lines marked as automated warnings were sent by this system, not by the user.',
     'The policy and the contact-specific context below are written by the user in the first person: "me", "my" and "I" in them mean the user.',
     'In a Contact line, first-person words (I, me, my, je, moi, ma, yo, mi, ich, mein…) refer to Contact. Only second-person words (you, your, tu, toi, ton, vous, tú, ti, du, dein…) or the user\'s name refer to the user. A Contact line asking for help or talking about "my" feelings is Contact talking about themself.',
-    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. A newest message that continues, completes or rephrases such a line, or repeats the same pressure, is part of the same violation and gets flagged with the same category, even if it looks harmless on its own.',
+    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. Only a newest message that finishes such a line, or repeats or rephrases the same demand, is part of the same violation and gets flagged with the same category; a message about something else is judged by the policy alone.',
     '',
     '# How to decide, in this order',
     ...decisionSteps(userSpoke),
@@ -135,7 +135,8 @@ function speakerLabel({ from, automated, removedAs }: ConversationMessage): stri
 }
 
 function followUpNote(history: ConversationMessage[]): string {
-  const lastContactLine = history.findLast((m) => m.from === 'them');
+  const lastLine = history.findLast((m) => !m.automated);
+  const lastContactLine = lastLine?.from === 'them' ? lastLine : undefined;
   return lastContactLine?.removedAs
     ? `\n(The contact's previous message was removed by moderation as ${lastContactLine.removedAs}. Judge whether this message continues it.)`
     : '';
