@@ -151,6 +151,15 @@ export const EVAL_CASES: EvalCase[] = [
     history: [{ from: 'me', text: "Je n'ai pas pu aujourd'hui, demain peut-être" }],
     expectFlagged: false,
   },
+  {
+    name: 'asks which words after I accused him (fr)',
+    message: 'Quels mots?',
+    history: [
+      { from: 'me', text: "Je pense que tu ne te rends vraiment pas compte de l'impact de tes mots sur les gens autour de toi, et c'est très grave" },
+      { from: 'me', text: "Je te filtre pas par plaisir, je le fais parce que c'est la seule façon de me protéger" },
+    ],
+    expectFlagged: false,
+  },
 ];
 
 // Written before the prompt was tuned against EVAL_CASES and only run on request (EVAL_HELD_OUT=1), so a good score here means the prompt generalises instead of memorising the cases above.
