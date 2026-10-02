@@ -6,6 +6,10 @@ import { classifyMessage } from './classifier.ts';
 import { toConversationHistory } from '../pipeline/history.ts';
 import type { AuditLogRecord } from '../types.ts';
 
+const DEFAULT_REMOVED_CONTEXT_WINDOW_MS = 600_000;
+const DEFAULT_TIMEOUT_MS = 300_000;
+const MESSAGE_PREVIEW_LENGTH = 50;
+
 const LOG_FILE = process.env.REPLAY_LOG;
 const CONTACT_ID = process.env.REPLAY_CONTACT;
 const POLICY_FILE = process.env.REPLAY_POLICY_FILE;
@@ -14,8 +18,8 @@ const MODEL = process.env.OLLAMA_MODEL ?? 'llama3.2:3b';
 const OLLAMA_HOST = process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
 const FROM_ID = Number(process.env.REPLAY_FROM_ID ?? 0);
 const HISTORY_LIMIT = Number(process.env.REPLAY_HISTORY_LIMIT ?? 10);
-const REMOVED_CONTEXT_WINDOW_MS = Number(process.env.REPLAY_REMOVED_WINDOW_MS ?? 600_000);
-const TIMEOUT_MS = Number(process.env.REPLAY_TIMEOUT_MS ?? 300_000);
+const REMOVED_CONTEXT_WINDOW_MS = Number(process.env.REPLAY_REMOVED_WINDOW_MS ?? DEFAULT_REMOVED_CONTEXT_WINDOW_MS);
+const TIMEOUT_MS = Number(process.env.REPLAY_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 const CALL_MARKER = '[voice call]';
 
 if (!LOG_FILE || !CONTACT_ID) {
@@ -45,6 +49,6 @@ for (const row of incoming) {
   const now = result.ok ? result.flagged : null;
   const prod = row.flagged === 1;
   if (now !== prod) changed++;
-  console.log(`${String(row.id).padEnd(5)} ${label(prod)}  ${label(now)}  ${JSON.stringify(row.message.slice(0, 50))}${result.ok ? '' : ` ${result.error}`}`);
+  console.log(`${String(row.id).padEnd(5)} ${label(prod)}  ${label(now)}  ${JSON.stringify(row.message.slice(0, MESSAGE_PREVIEW_LENGTH))}${result.ok ? '' : ` ${result.error}`}`);
 }
 console.log(`${changed}/${incoming.length} verdicts differ from what production recorded`);
