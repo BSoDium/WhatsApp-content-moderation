@@ -5,7 +5,7 @@ import { rmSync } from 'node:fs';
 process.env.DB_PATH = 'data/test-moderation-pipeline.test.sqlite';
 
 const { handleBurst } = await import('./moderation-pipeline.ts');
-const { getAuditLog } = await import('../store/audit-log.ts');
+const { getAuditLog, logMessage } = await import('../store/audit-log.ts');
 const { createBlock, getActiveBlock } = await import('../store/blocks.ts');
 const { addMonitored, setEscalationEnabled, setContext } = await import('../store/monitored-contacts.ts');
 const { setSetting } = await import('../store/settings.ts');
@@ -523,4 +523,45 @@ test('the deleted opener is in the audit log before the warning is generated, an
 
   assert.deepEqual(actionsWhileGenerating, ['delete']);
   assert.deepEqual(getAuditLog(contact).map((row) => row.action).sort(), ['delete+warn', 'warning_sent']);
+});
+
+const MINUTE_MS = 60_000;
+
+function seedLine(contactId, direction, message, action, createdAt) {
+  logMessage({ contactId, direction, message, classification: { ok: true, flagged: action === 'delete', category: action === 'delete' ? 'harassment' : 'none', reason: 'seed' }, action, createdAt });
+}
+
+test('a reply the user sent after the burst began is not shown as earlier context', async () => {
+  const contact = 'replied-later@s.whatsapp.net';
+  const sent = Date.now() - MINUTE_MS;
+  seedLine(contact, 'me', 'before', 'outgoing', sent - MINUTE_MS);
+  seedLine(contact, 'me', 'after', 'outgoing', sent + 20_000);
+  let seen;
+  const classify = async ({ history }) => {
+    seen = history.map((m) => m.text);
+    return okPass();
+  };
+
+  await handleBurst({ contactId: contact, messages: [{ text: 'hello', key: { id: 'k' }, timestamp: sent }] }, { ...noopActions, classify });
+
+  assert.deepEqual(seen, ['before']);
+});
+
+test('a removal older than the context window no longer marks the history as removed', async () => {
+  const contact = 'stale-removal@s.whatsapp.net';
+  const now = Date.now();
+  seedLine(contact, 'them', 'long ago', 'delete', now - 60 * MINUTE_MS);
+  seedLine(contact, 'them', 'just now', 'delete', now - MINUTE_MS);
+  let seen;
+  const classify = async ({ history }) => {
+    seen = history.map((m) => ({ text: m.text, removedAs: m.removedAs }));
+    return okPass();
+  };
+
+  await handleBurst(burst(contact, ['hello']), { ...noopActions, classify });
+
+  assert.deepEqual(seen, [
+    { text: 'long ago', removedAs: undefined },
+    { text: 'just now', removedAs: 'harassment' },
+  ]);
 });

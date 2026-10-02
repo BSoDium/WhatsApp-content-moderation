@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, lt, lte, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
@@ -82,11 +82,11 @@ export function setLoggedAction(id: number, action: string): void {
 /**
  * Returns a contact's most recent audit log entries, newest first.
  */
-export function getAuditLog(contactId: string, limit = DEFAULT_PAGE_LIMIT): AuditLogRecord[] {
+export function getAuditLog(contactId: string, limit = DEFAULT_PAGE_LIMIT, upTo?: number): AuditLogRecord[] {
   return getOrm()
     .select()
     .from(auditLog)
-    .where(eq(auditLog.contact_id, contactId))
+    .where(upTo === undefined ? eq(auditLog.contact_id, contactId) : and(eq(auditLog.contact_id, contactId), lte(auditLog.created_at, upTo)))
     .orderBy(desc(auditLog.created_at))
     .limit(limit)
     .all();

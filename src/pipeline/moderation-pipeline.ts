@@ -43,14 +43,21 @@ interface Incident {
   openerRowId: number;
 }
 
-function loadHistory(contactId: string): ConversationMessage[] {
-  return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'))
+/**
+ * History as it stood when the burst's first message was sent: replies the
+ * user sent while the burst sat buffered are left out, or the classifier would
+ * read them as having come before the message they answered. A removal only
+ * counts as one if it is recent enough to still be the live topic.
+ */
+function loadHistory(contactId: string, burstStart: number): ConversationMessage[] {
+  const removalCutoff = burstStart - getNumberSetting('REMOVED_CONTEXT_WINDOW_MS');
+  return getAuditLog(contactId, getNumberSetting('CLASSIFIER_HISTORY_LIMIT'), burstStart)
     .reverse()
     .map((row) => ({
       from: row.direction === 'me' ? 'me' : 'them',
       text: row.message,
       automated: row.action === WARNING_SENT_ACTION,
-      removedAs: REMOVED_ACTIONS.includes(row.action) ? (row.category ?? 'violation') : undefined,
+      removedAs: REMOVED_ACTIONS.includes(row.action) && row.created_at >= removalCutoff ? (row.category ?? 'violation') : undefined,
     }));
 }
 
@@ -138,7 +145,7 @@ async function runBurst(
   { contactId, messages }: Burst,
   { deleteForMe, sendWarning, block, classify = classifyMessage, generateWarning = generateWarningMessage, isPaused = () => false }: BurstActions,
 ): Promise<{ strikeCount: number }> {
-  const history = loadHistory(contactId);
+  const history = loadHistory(contactId, Math.min(...messages.map((m) => m.timestamp)));
   let strikeCount = getStrikeCount(contactId);
   // Read once per burst, not once per message — a contact's context can't
   // change mid-burst since edits go through the roster, not this loop.
