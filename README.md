@@ -182,6 +182,7 @@ Sending real WhatsApp messages back and forth for every change is slow and, for 
 
 - **Generated warnings** (experimental, Ollama only): `npm run warnings:eval` runs `src/classifier/eval-warning-cases.ts` through the `WARNING_GENERATED` path and prints each warning with its latency (`OLLAMA_MODEL` and `WARNING_MODEL` pick the models); read the output, it is the go/no-go evidence
 - **Classifier** (Ollama only, no WhatsApp): `npm run classifier:test`; `npm run classifier:eval` runs the labelled cases in `src/classifier/eval-cases.ts` against a real model (`EVAL_POLICY_FILE`, `EVAL_CONTEXT_FILE` and `EVAL_HELD_OUT=1` tune it)
+- **Real conversations** (Ollama only): `npm run classifier:replay` classifies every message a contact sent in a JSON dump of `audit_log` rows, with the history the pipeline would have built, and lists where the verdict differs from what production recorded. `REPLAY_LOG`, `REPLAY_CONTACT`, `REPLAY_POLICY_FILE`, `REPLAY_CONTEXT_FILE`, `REPLAY_FROM_ID`, `OLLAMA_MODEL` and `OLLAMA_HOST` tune it; keep dumps under `data/replay/` (gitignored), they are real chats
 - **Buffer** (pure timers): `npm run buffer:test`
 - **Store** (SQLite, no WhatsApp): `npm run store:test`
 - **Moderation pipeline** (classifier + buffer + store, actions stubbed to console output): `npm run pipeline:test`

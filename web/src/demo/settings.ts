@@ -45,6 +45,15 @@ export const DEMO_SETTINGS: Setting[] = [
     min: 0,
   }),
   setting({
+    key: 'REMOVED_CONTEXT_WINDOW_MS',
+    section: 'classifier',
+    label: 'Removal context window (ms)',
+    description: 'How long a removed message keeps shaping how the contact\'s next messages are judged. After this, it is just an earlier message.',
+    type: 'int',
+    default: '600000',
+    min: 0,
+  }),
+  setting({
     key: 'WARNING_GENERATED',
     section: 'warning',
     label: 'Generate warnings',

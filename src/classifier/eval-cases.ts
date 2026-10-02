@@ -151,6 +151,39 @@ export const EVAL_CASES: EvalCase[] = [
     history: [{ from: 'me', text: "Je n'ai pas pu aujourd'hui, demain peut-être" }],
     expectFlagged: false,
   },
+  {
+    name: 'asks which words after I accused him (fr)',
+    message: 'Quels mots?',
+    history: [
+      { from: 'me', text: "Je pense que tu ne te rends vraiment pas compte de l'impact de tes mots sur les gens autour de toi, et c'est très grave" },
+      { from: 'me', text: "Je te filtre pas par plaisir, je le fais parce que c'est la seule façon de me protéger" },
+    ],
+    expectFlagged: false,
+  },
+  {
+    name: 'states a hospital ward after a removed plea (fr)',
+    message: "Le service c'est la cardiologie, au deuxième étage.",
+    history: [
+      { from: 'them', text: 'Passe me voir, je suis hospitalisé', removedAs: 'unwanted_contact' },
+      { from: 'me', text: "Je n'ai pas pu aujourd'hui" },
+    ],
+    expectFlagged: false,
+  },
+  {
+    name: 'gives a room number (fr)',
+    message: 'Chambre 212',
+    history: [
+      { from: 'me', text: 'Je vais voir si je peux passer, sans garantie' },
+      { from: 'them', text: "Je suis à l'hôpital Saint-Louis" },
+    ],
+    expectFlagged: false,
+  },
+  {
+    name: 'describes his own condition (fr)',
+    message: "Je suis très fatigué et j'ai mal partout",
+    history: [{ from: 'them', text: 'Réponds-moi', removedAs: 'unwanted_contact' }, { from: 'me', text: 'ok' }],
+    expectFlagged: false,
+  },
 ];
 
 // Written before the prompt was tuned against EVAL_CASES and only run on request (EVAL_HELD_OUT=1), so a good score here means the prompt generalises instead of memorising the cases above.
