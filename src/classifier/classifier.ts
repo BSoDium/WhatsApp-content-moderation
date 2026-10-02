@@ -71,10 +71,10 @@ function decisionSteps(userSpoke: boolean): string[] {
 }
 
 const COMMON_FLAG_RULES =
-  'You cannot verify anything Contact says (where they are, how they feel, what happened): never flag or justify a flag by calling a statement false, inaccurate or inconsistent. Contact telling the user where to find them, or inviting a visit, asks nothing and is not a violation by itself. Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
+  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Never flag a statement for being false or inconsistent: you cannot verify what Contact says. Otherwise, flag the message if it violates the policy below.';
 
 function flaggedRule(userSpoke: boolean): string {
-  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal (the message itself must ask, order or push the user to do something; stating where Contact is or what is happening to them is not pressure), and a fragment that finishes or repeats the line just removed by moderation';
+  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal that asks or orders the user to do something, and a fragment that finishes the line just removed by moderation';
   return userSpoke
     ? `flagged must be false when target is not "user" and when is_mutual_banter is true, with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`
     : `flagged must be false when target is not "user", with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`;
@@ -90,8 +90,6 @@ const BANTER_EXAMPLES = [
 const EXAMPLES = [
   'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: ma sensibilité." -> finishes the removed sentence, same violation, flagged true.',
   'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
-  'Recent conversation: "Contact: tu m\'abandonnes (removed by moderation: unwanted_contact)" / "User: ok". Newest message: "Contact: je suis aux urgences, chambre 418, j\'ai très mal à la jambe" -> a different subject (Contact\'s own health and location) after a reply from the user, judged by the policy alone, flagged false.',
-  'Recent conversation: "User: je ne peux pas venir aujourd\'hui, peut-être demain". Newest message: "Contact: je suis au service des urgences, à l\'arrêt de tram Purpan" -> only states where Contact is, asks nothing of the user, so it is not pressure after a refusal: flagged false.',
   'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: ayúdame, mi coche no arranca" -> same in Spanish, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: il mio capo è un vero stronzo, non lo sopporto" -> about a third person, words_addressing_user empty, target someone_else, flagged false.',
@@ -112,7 +110,7 @@ function buildSystemPrompt(policy = loadPolicy(), contactContext?: string, userS
     'Lines marked as automated warnings were sent by this system, not by the user.',
     'The policy and the contact-specific context below are written by the user in the first person: "me", "my" and "I" in them mean the user.',
     'In a Contact line, first-person words (I, me, my, je, moi, ma, yo, mi, ich, mein…) refer to Contact. Only second-person words (you, your, tu, toi, ton, vous, tú, ti, du, dein…) or the user\'s name refer to the user. A Contact line asking for help or talking about "my" feelings is Contact talking about themself.',
-    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. Only a newest message that is a fragment finishing such a line, or that repeats or rephrases the same demand, is part of the same violation and gets flagged with the same category. A removed line is not a reason to distrust what follows: a newest message with its own, different content (about Contact\'s own health, location, day or plans) is judged by the policy alone.',
+    'Some Contact lines are marked "(removed by moderation: ...)": they were already judged a violation and deleted. Only a newest message that finishes such a line, or repeats or rephrases the same demand, is part of the same violation and gets flagged with the same category; a message about something else is judged by the policy alone.',
     '',
     '# How to decide, in this order',
     ...decisionSteps(userSpoke),
@@ -140,7 +138,7 @@ function followUpNote(history: ConversationMessage[]): string {
   const lastLine = history.findLast((m) => !m.automated);
   const lastContactLine = lastLine?.from === 'them' ? lastLine : undefined;
   return lastContactLine?.removedAs
-    ? `\n(The contact's previous message was removed by moderation as ${lastContactLine.removedAs}. Flag this message only if it finishes or repeats that line.)`
+    ? `\n(The contact's previous message was removed by moderation as ${lastContactLine.removedAs}. Judge whether this message continues it.)`
     : '';
 }
 

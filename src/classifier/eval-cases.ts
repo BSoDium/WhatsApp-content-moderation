@@ -130,6 +130,27 @@ export const EVAL_CASES: EvalCase[] = [
     ],
     expectFlagged: true,
   },
+  {
+    name: 'own health after a removed message and a reply from me (fr)',
+    message: 'Je suis très mal en point physiquement',
+    history: [
+      { from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' },
+      { from: 'me', text: 'Très bien' },
+    ],
+    expectFlagged: false,
+  },
+  {
+    name: 'own hospital situation straight after a removed message (fr)',
+    message: "Le service c'est le pum (post urgences médicales)",
+    history: [{ from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' }],
+    expectFlagged: false,
+  },
+  {
+    name: 'states his location after I declined to visit (fr)',
+    message: "Le service c'est le pum (post urgences médicales). C'est à l'arrêt du tramway à Purpan.",
+    history: [{ from: 'me', text: "Je n'ai pas pu aujourd'hui, demain peut-être" }],
+    expectFlagged: false,
+  },
 ];
 
 // Written before the prompt was tuned against EVAL_CASES and only run on request (EVAL_HELD_OUT=1), so a good score here means the prompt generalises instead of memorising the cases above.
@@ -166,27 +187,6 @@ export const HELD_OUT_EVAL_CASES: EvalCase[] = [
     message: 'réponds-moi',
     history: [{ from: 'them', text: 'tu me manques tellement, ne me laisse pas comme ça', removedAs: 'unwanted_contact' }],
     expectFlagged: true,
-  },
-  {
-    name: 'own health after a removed message and a reply from me (fr)',
-    message: 'Je suis très mal en point physiquement',
-    history: [
-      { from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' },
-      { from: 'me', text: 'Très bien' },
-    ],
-    expectFlagged: false,
-  },
-  {
-    name: 'own hospital situation straight after a removed message (fr)',
-    message: "Le service c'est le pum (post urgences médicales)",
-    history: [{ from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' }],
-    expectFlagged: false,
-  },
-  {
-    name: 'states his location after I declined to visit (fr)',
-    message: "Le service c'est le pum (post urgences médicales). C'est à l'arrêt du tramway à Purpan.",
-    history: [{ from: 'me', text: "Je n'ai pas pu aujourd'hui, demain peut-être" }],
-    expectFlagged: false,
   },
 ];
 
