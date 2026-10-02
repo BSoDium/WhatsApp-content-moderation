@@ -182,6 +182,12 @@ export const HELD_OUT_EVAL_CASES: EvalCase[] = [
     history: [{ from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' }],
     expectFlagged: false,
   },
+  {
+    name: 'states his location after I declined to visit (fr)',
+    message: "Le service c'est le pum (post urgences médicales). C'est à l'arrêt du tramway à Purpan.",
+    history: [{ from: 'me', text: "Je n'ai pas pu aujourd'hui, demain peut-être" }],
+    expectFlagged: false,
+  },
 ];
 
 const withContext = (name: string, message: string, expectFlagged: boolean): EvalCase => ({

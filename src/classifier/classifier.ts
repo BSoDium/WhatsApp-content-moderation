@@ -74,7 +74,7 @@ const COMMON_FLAG_RULES =
   'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
 
 function flaggedRule(userSpoke: boolean): string {
-  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal, and a fragment that finishes or repeats the line just removed by moderation';
+  const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal (the message itself must ask, order or push the user to do something; stating where Contact is or what is happening to them is not pressure), and a fragment that finishes or repeats the line just removed by moderation';
   return userSpoke
     ? `flagged must be false when target is not "user" and when is_mutual_banter is true, with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`
     : `flagged must be false when target is not "user", with these exceptions, which are flagged whatever the target: ${exceptions}. ${COMMON_FLAG_RULES}`;
@@ -91,6 +91,7 @@ const EXAMPLES = [
   'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: ma sensibilité." -> finishes the removed sentence, same violation, flagged true.',
   'Recent conversation: "Contact: sinon tu comprendrais mon amour (removed by moderation: unwanted_contact)". Newest message: "Contact: aide moi" -> keeps pressuring the user after a removed message, flagged true.',
   'Recent conversation: "Contact: tu m\'abandonnes (removed by moderation: unwanted_contact)" / "User: ok". Newest message: "Contact: je suis aux urgences, chambre 418, j\'ai très mal à la jambe" -> a different subject (Contact\'s own health and location) after a reply from the user, judged by the policy alone, flagged false.',
+  'Recent conversation: "User: je ne peux pas venir aujourd\'hui, peut-être demain". Newest message: "Contact: je suis au service des urgences, à l\'arrêt de tram Purpan" -> only states where Contact is, asks nothing of the user, so it is not pressure after a refusal: flagged false.',
   'Recent conversation: (none). Newest message: "Contact: aide moi, ma voiture ne démarre pas" -> Contact asking for help for themself, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: ayúdame, mi coche no arranca" -> same in Spanish, flagged false.',
   'Recent conversation: (none). Newest message: "Contact: il mio capo è un vero stronzo, non lo sopporto" -> about a third person, words_addressing_user empty, target someone_else, flagged false.',
