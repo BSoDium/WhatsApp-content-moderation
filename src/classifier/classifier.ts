@@ -71,7 +71,7 @@ function decisionSteps(userSpoke: boolean): string[] {
 }
 
 const COMMON_FLAG_RULES =
-  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Never flag a statement for being false or inconsistent: you cannot verify what Contact says. Otherwise, flag the message if it violates the policy below.';
+  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. A question that carries no blame, order or demand ("tu as mangé ?", "tu es à la maison ?") is never guilt-tripping. Never flag a statement for being false or inconsistent: you cannot verify what Contact says. Otherwise, flag the message if it violates the policy below.';
 
 function flaggedRule(userSpoke: boolean): string {
   const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal that asks or orders the user to do something, and a fragment that finishes the line just removed by moderation';
