@@ -71,7 +71,7 @@ function decisionSteps(userSpoke: boolean): string[] {
 }
 
 const COMMON_FLAG_RULES =
-  'Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
+  'You cannot verify anything Contact says (where they are, how they feel, what happened): never flag or justify a flag by calling a statement false, inaccurate or inconsistent. Contact telling the user where to find them, or inviting a visit, asks nothing and is not a violation by itself. Swearing for emphasis and venting about a third party or a situation are never violations. Friendly greetings and sign-offs are never advances, in any language and whatever the local convention (e.g. "xoxo", "bisous", "besos", "Küsschen", "abraços"), nor are kiss or heart emojis; only flag affection that is clearly sexual or continues after the user asked them to stop. Otherwise, flag the message if it violates the policy below.';
 
 function flaggedRule(userSpoke: boolean): string {
   const exceptions = 'a real threat, a sexually explicit message, pressure on the user after a clear refusal (the message itself must ask, order or push the user to do something; stating where Contact is or what is happening to them is not pressure), and a fragment that finishes or repeats the line just removed by moderation';
