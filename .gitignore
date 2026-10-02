@@ -38,3 +38,6 @@ compose.override.yml
 
 # Local conversation scenarios built from real chats — they describe real people, so they stay off GitHub
 src/simulation/scenarios/*.local.json
+
+# Real audit-log dumps replayed by `npm run classifier:replay` — they hold actual conversations
+data/replay/
