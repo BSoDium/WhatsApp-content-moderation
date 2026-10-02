@@ -167,6 +167,21 @@ export const HELD_OUT_EVAL_CASES: EvalCase[] = [
     history: [{ from: 'them', text: 'tu me manques tellement, ne me laisse pas comme ça', removedAs: 'unwanted_contact' }],
     expectFlagged: true,
   },
+  {
+    name: 'own health after a removed message and a reply from me (fr)',
+    message: 'Je suis très mal en point physiquement',
+    history: [
+      { from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' },
+      { from: 'me', text: 'Très bien' },
+    ],
+    expectFlagged: false,
+  },
+  {
+    name: 'own hospital situation straight after a removed message (fr)',
+    message: "Le service c'est le pum (post urgences médicales)",
+    history: [{ from: 'them', text: 'réponds-moi', removedAs: 'unwanted_contact' }],
+    expectFlagged: false,
+  },
 ];
 
 const withContext = (name: string, message: string, expectFlagged: boolean): EvalCase => ({
