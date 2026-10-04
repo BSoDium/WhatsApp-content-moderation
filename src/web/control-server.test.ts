@@ -21,6 +21,7 @@ after(() => {
 const DIST_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../web/dist/assets');
 
 const ALLOWED = 'alice@github';
+const DEFAULT_BLOCK_BACKOFF_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
 function makeOverride() {
   const paused = new Map();
@@ -79,14 +80,14 @@ function makeProfilePhotos(photos = {}) {
 }
 
 function makeMonitoredContacts(initial = []) {
-  const roster = new Map(initial.map((row) => [row.contactId, { context: null, callNuisanceThreshold: null, ...row }]));
+  const roster = new Map(initial.map((row) => [row.contactId, { context: null, callNuisanceThreshold: null, blockBackoffMaxMs: null, ...row }]));
   return {
     list: () => Array.from(roster.values()),
     isMonitored: (contactId) => roster.has(contactId),
     get: (contactId) => roster.get(contactId),
     add: (contactId) => {
       if (!roster.has(contactId))
-        roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now(), context: null, callNuisanceThreshold: null });
+        roster.set(contactId, { contactId, escalationEnabled: true, addedAt: Date.now(), context: null, callNuisanceThreshold: null, blockBackoffMaxMs: null });
     },
     remove: (contactId) => roster.delete(contactId),
     setEscalationEnabled: (contactId, enabled) => {
@@ -107,6 +108,12 @@ function makeMonitoredContacts(initial = []) {
       const row = roster.get(contactId);
       if (!row) return false;
       row.callNuisanceThreshold = threshold;
+      return true;
+    },
+    setBlockBackoffMax: (contactId, maxMs) => {
+      const row = roster.get(contactId);
+      if (!row) return false;
+      row.blockBackoffMaxMs = maxMs;
       return true;
     },
   };
@@ -415,6 +422,7 @@ test('GET /api/roster returns one aggregate entry per monitored contact', async 
         strikeCount: 2,
         block: null,
         callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+        blockBackoff: { maxDurationMs: DEFAULT_BLOCK_BACKOFF_MAX_MS, maxDurationOverrideMs: null },
       },
     ]);
   });

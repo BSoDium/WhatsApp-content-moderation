@@ -47,6 +47,7 @@ export interface MonitoredContactRecord {
   added_at: number;
   context: string | null;
   call_nuisance_threshold: number | null;
+  block_backoff_max_ms: number | null;
 }
 
 export interface StrikeRecord {

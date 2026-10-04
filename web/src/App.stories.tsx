@@ -4,6 +4,8 @@ import type { RosterEntry } from '@/lib/types';
 import { withMockApi, type MockRoute } from '../.storybook/withMockApi';
 import App from './App';
 
+const DEFAULT_BLOCK_BACKOFF_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
 // Backs every endpoint the app calls on load or through user action, with
 // enough statefulness (roster add/remove, settings/policy saves) that
 // clicking around this story behaves like the real control panel instead of
@@ -34,6 +36,7 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
               strikeCount: 0,
               block: null,
               callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+              blockBackoff: { maxDurationMs: DEFAULT_BLOCK_BACKOFF_MAX_MS, maxDurationOverrideMs: null },
             },
           ];
         }
@@ -56,6 +59,20 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         const id = decodeURIComponent(path.split('/')[3]);
         roster = roster.map((entry) => (entry.id === id ? { ...entry, strikeCount: 0, callNuisance: { ...entry.callNuisance, unansweredCount: 0, strikeCount: 0 } } : entry));
         return { message: 'Strikes reset.' };
+      },
+    },
+    {
+      method: 'POST',
+      match: /^\/api\/roster\/[^/]+\/block-backoff-max$/,
+      bodyFn: (path, init) => {
+        const id = decodeURIComponent(path.split('/')[3]);
+        const { maxDurationMs } = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        roster = roster.map((entry) =>
+          entry.id === id
+            ? { ...entry, blockBackoff: { maxDurationMs: maxDurationMs ?? DEFAULT_BLOCK_BACKOFF_MAX_MS, maxDurationOverrideMs: maxDurationMs } }
+            : entry,
+        );
+        return { blockBackoff: roster.find((entry) => entry.id === id)?.blockBackoff };
       },
     },
     { match: '/api/meta', body: { authRequired: true, user: FIXTURE_USER } },

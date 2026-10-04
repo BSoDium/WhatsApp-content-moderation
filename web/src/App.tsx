@@ -65,6 +65,7 @@ function App() {
     setEscalation,
     setContext,
     setCallNuisanceThreshold,
+    setBlockBackoffMax,
     initialLoadComplete,
     lastRefreshedAt,
     streamLive,
@@ -371,6 +372,7 @@ function App() {
             onSetEscalation={setEscalation}
             onSetContext={setContext}
             onSetCallNuisanceThreshold={setCallNuisanceThreshold}
+            onSetBlockBackoffMax={setBlockBackoffMax}
             onViewHistory={(contactId) => showPanel('activity', contactId)}
           />
         </motion.section>

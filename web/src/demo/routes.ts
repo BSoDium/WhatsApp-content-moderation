@@ -49,6 +49,11 @@ function handleRoster(backend: DemoBackend, method: string, segments: string[], 
     const valid = threshold === null || (typeof threshold === 'number' && Number.isInteger(threshold) && threshold >= 0);
     return valid ? fromResult(backend.setCallThreshold(contactId, threshold as number | null)) : badRequest('threshold must be a non-negative integer, or null to use the global default');
   }
+  if (action === 'block-backoff-max') {
+    const { maxDurationMs } = body;
+    const valid = maxDurationMs === null || (typeof maxDurationMs === 'number' && Number.isSafeInteger(maxDurationMs) && maxDurationMs >= 1);
+    return valid ? fromResult(backend.setBlockBackoffMax(contactId, maxDurationMs as number | null)) : badRequest('maxDurationMs must be a positive integer, or null to use the global cap');
+  }
   return null;
 }
 

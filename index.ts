@@ -25,6 +25,7 @@ import {
   setEscalationEnabled,
   setContext,
   setCallNuisanceThreshold,
+  setBlockBackoffMax,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
@@ -116,6 +117,7 @@ const monitoredContacts = {
   setEscalationEnabled,
   setContext,
   setCallNuisanceThreshold,
+  setBlockBackoffMax,
 };
 const callActions = {
   rejectCall: (callId: string, callFrom: string) => rejectCall(currentSocket(), callId, callFrom),

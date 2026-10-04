@@ -59,6 +59,8 @@ export const monitoredContacts = sqliteTable('monitored_contacts', {
   context: text(),
   // null = use the global NUISANCE_CALL_THRESHOLD setting.
   call_nuisance_threshold: integer(),
+  // null = use the global BLOCK_BACKOFF_MAX_MS setting.
+  block_backoff_max_ms: integer(),
 });
 
 export const contacts = sqliteTable('contacts', {

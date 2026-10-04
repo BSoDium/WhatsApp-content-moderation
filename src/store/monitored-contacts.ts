@@ -11,6 +11,7 @@ export interface MonitoredContact {
   addedAt: number;
   context: string | null;
   callNuisanceThreshold: number | null;
+  blockBackoffMaxMs: number | null;
 }
 
 function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
@@ -20,6 +21,7 @@ function toMonitoredContact(row: MonitoredContactRecord): MonitoredContact {
     addedAt: row.added_at,
     context: row.context,
     callNuisanceThreshold: row.call_nuisance_threshold,
+    blockBackoffMaxMs: row.block_backoff_max_ms,
   };
 }
 
@@ -44,7 +46,7 @@ export function isMonitored(contactId: string): boolean {
 }
 
 /**
- * @returns {{ contactId: string, escalationEnabled: boolean, addedAt: number, context: string | null } | undefined}
+ * @returns The contact's moderation overrides, or undefined if not monitored.
  */
 export function getMonitored(contactId: string): MonitoredContact | undefined {
   const row = getOrm().select().from(monitoredContacts).where(eq(monitoredContacts.contact_id, contactId)).get();
@@ -122,6 +124,20 @@ export function setCallNuisanceThreshold(contactId: string, threshold: number | 
   const { changes } = getOrm()
     .update(monitoredContacts)
     .set({ call_nuisance_threshold: threshold })
+    .where(eq(monitoredContacts.contact_id, contactId))
+    .run();
+  if (changes > 0) emitControlEvent('roster');
+  return changes > 0;
+}
+
+/**
+ * Sets or clears the contact's growing-block cap override; null uses the
+ * global BLOCK_BACKOFF_MAX_MS setting.
+ */
+export function setBlockBackoffMax(contactId: string, maxMs: number | null): boolean {
+  const { changes } = getOrm()
+    .update(monitoredContacts)
+    .set({ block_backoff_max_ms: maxMs })
     .where(eq(monitoredContacts.contact_id, contactId))
     .run();
   if (changes > 0) emitControlEvent('roster');

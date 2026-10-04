@@ -1,0 +1,1 @@
+ALTER TABLE `monitored_contacts` ADD `block_backoff_max_ms` integer;

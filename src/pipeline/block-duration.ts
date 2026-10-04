@@ -1,4 +1,5 @@
 import { getBlockHistory } from '../store/blocks.ts';
+import { getMonitored } from '../store/monitored-contacts.ts';
 import { getBoolSetting, getNumberSetting } from '../store/settings.ts';
 import type { BlockRecord } from '../types.ts';
 
@@ -29,5 +30,6 @@ export function baseBlockDurationMs(contactId: string, now = Date.now()): number
 
   const recentBlocks = countRecentBlocks(getBlockHistory(contactId), now, getNumberSetting('BLOCK_BACKOFF_RESET_MS'));
   const escalated = getNumberSetting('BLOCK_BACKOFF_BASE_MS') * getNumberSetting('BLOCK_BACKOFF_FACTOR') ** recentBlocks;
-  return Math.round(Math.min(escalated, getNumberSetting('BLOCK_BACKOFF_MAX_MS')));
+  const maxMs = getMonitored(contactId)?.blockBackoffMaxMs ?? getNumberSetting('BLOCK_BACKOFF_MAX_MS');
+  return Math.round(Math.min(escalated, maxMs));
 }
