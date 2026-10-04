@@ -58,6 +58,10 @@ docker compose logs -f --no-log-prefix app
 
 On your phone, open **WhatsApp → Settings → Linked devices → Link a device** and scan the QR code in the logs. Press `Ctrl+C` to stop following the logs; the app keeps running. Once the new link is working, delete `auth_info.backup` because it contains the old session credentials. Keep it private until then. If that backup name already exists, choose another name. Do not delete `data/`; it contains the app's settings and moderation history.
 
+```sh
+rm -r auth_info.backup
+```
+
 Open `http://<this-machine's-address>:4756` (`http://localhost:4756` on the same machine) and add a contact to the monitored roster — every incoming message from a monitored contact is now buffered, classified, and acted on. Everyone else is ignored.
 
 Everything else — the moderation policy, the classifier model, warning behavior, strike/block timings, and shadow mode itself — starts at a safe default and is edited live from that page, no restart needed. **Shadow mode is on by default**: the app classifies and logs but takes no action. Review the Activity panel against real traffic before turning it off in Settings.
