@@ -68,7 +68,7 @@ function baseBlockDuration(backend: DemoBackend, state: ContactState, at: number
     nextStart = record.startedAt;
   }
   const escalated = backend.settingNumber('BLOCK_BACKOFF_BASE_MS') * backend.settingNumber('BLOCK_BACKOFF_FACTOR') ** recentBlocks;
-  return Math.min(escalated, backend.settingNumber('BLOCK_BACKOFF_MAX_MS'));
+  return Math.min(escalated, state.blockBackoffMaxOverrideMs ?? backend.settingNumber('BLOCK_BACKOFF_MAX_MS'));
 }
 
 function startBlock(backend: DemoBackend, state: ContactState, at: number, random: Random): void {

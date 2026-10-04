@@ -22,6 +22,7 @@ const meta = {
     onSetEscalation: fn(async () => {}),
     onSetContext: fn(async () => true as const),
     onSetCallNuisanceThreshold: fn(async () => true as const),
+    onSetBlockBackoffMax: fn(async () => true as const),
     onViewHistory: fn(),
   },
 } satisfies Meta<typeof ContactDetailPanel>;

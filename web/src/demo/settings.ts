@@ -175,8 +175,8 @@ export const DEMO_SETTINGS: Setting[] = [
   setting({
     key: 'BLOCK_BACKOFF_MAX_MS',
     section: 'strikes',
-    label: 'Backoff longest block (ms)',
-    description: 'Upper limit for a grown block. Default: 7 days.',
+    label: 'Global backoff cap (ms)',
+    description: 'Global cap for the base length of a growing block, before jitter. A contact can override this from its details. Default: 7 days.',
     type: 'int',
     default: String(7 * 24 * HOUR_MS),
     min: 1,

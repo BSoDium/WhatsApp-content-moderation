@@ -3,6 +3,7 @@ import type { AuditLogEntry, Contact, RosterEntry, ServerStatus, SignedInUser, S
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
+const DEFAULT_BLOCK_BACKOFF_MAX_MS = 7 * 24 * HOUR_MS;
 
 export const FIXTURE_CONTACTS: Contact[] = [
   { id: 'alice', name: 'Alice Moreau', lastMessageAt: Date.now() - 5 * MINUTE_MS, isSelf: false, allowSelf: false },
@@ -23,6 +24,7 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
     strikeCount: 2,
     block: null,
     callNuisance: { unansweredCount: 1, strikeCount: 1, threshold: 2, thresholdOverride: null },
+    blockBackoff: { maxDurationMs: DEFAULT_BLOCK_BACKOFF_MAX_MS, maxDurationOverrideMs: null },
   },
   {
     id: 'carol',
@@ -33,6 +35,7 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
     strikeCount: 0,
     block: { unblockAt: Date.now() + HOUR_MS },
     callNuisance: { unansweredCount: 1, strikeCount: 0, threshold: 2, thresholdOverride: null },
+    blockBackoff: { maxDurationMs: 24 * HOUR_MS, maxDurationOverrideMs: 24 * HOUR_MS },
   },
 ];
 

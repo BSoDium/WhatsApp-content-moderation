@@ -54,7 +54,7 @@ export function useControlData(initialSelectedId: string | null = null) {
         // Strikes and blocks of contacts that aren't on the roster only exist in the contacts feed.
         refreshRoster();
         refreshContacts();
-      }
+      } else if (event.data === 'settings') refreshRoster();
     };
 
     const id = setInterval(() => {
@@ -161,6 +161,23 @@ export function useControlData(initialSelectedId: string | null = null) {
     [refreshRoster],
   );
 
+  const setBlockBackoffMax = useCallback(
+    async function setBlockBackoffMax(contactId: string, maxDurationMs: number | null): Promise<true> {
+      try {
+        await apiFetch(`/api/roster/${encodeURIComponent(contactId)}/block-backoff-max`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ maxDurationMs }),
+        });
+        await refreshRoster();
+        return true;
+      } catch (error: unknown) {
+        throw new Error(errorMessage(error));
+      }
+    },
+    [refreshRoster],
+  );
+
   const dismissError = useCallback(() => setError(null), []);
 
   return {
@@ -176,6 +193,7 @@ export function useControlData(initialSelectedId: string | null = null) {
     setEscalation,
     setContext,
     setCallNuisanceThreshold,
+    setBlockBackoffMax,
     initialLoadComplete,
     lastRefreshedAt,
     streamLive,

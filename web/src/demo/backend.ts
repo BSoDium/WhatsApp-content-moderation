@@ -21,6 +21,7 @@ export interface ContactState {
   lastUnansweredAt: number | null;
   callStrikes: number;
   callThresholdOverride: number | null;
+  blockBackoffMaxOverrideMs: number | null;
 }
 
 export type NewAuditEntry = Omit<AuditLogEntry, 'id' | 'contactName'>;
@@ -72,6 +73,7 @@ export class DemoBackend {
         lastUnansweredAt: null,
         callStrikes: 0,
         callThresholdOverride: null,
+        blockBackoffMaxOverrideMs: null,
       });
     });
   }
@@ -159,6 +161,10 @@ export class DemoBackend {
         strikeCount: state.callStrikes,
         threshold: this.callThreshold(state),
         thresholdOverride: state.callThresholdOverride,
+      },
+      blockBackoff: {
+        maxDurationMs: state.blockBackoffMaxOverrideMs ?? this.settingNumber('BLOCK_BACKOFF_MAX_MS'),
+        maxDurationOverrideMs: state.blockBackoffMaxOverrideMs,
       },
     };
   }
@@ -316,5 +322,13 @@ export class DemoBackend {
     state.callThresholdOverride = threshold;
     this.emit('roster');
     return { ok: true, body: { callNuisance: this.rosterEntry(state).callNuisance } };
+  }
+
+  setBlockBackoffMax(contactId: string, maxDurationMs: number | null): CommandResult {
+    const state = this.contacts.get(contactId);
+    if (!state?.monitored) return { ok: false, status: 404, error: 'not monitored' };
+    state.blockBackoffMaxOverrideMs = maxDurationMs;
+    this.emit('roster');
+    return { ok: true, body: { blockBackoff: this.rosterEntry(state).blockBackoff } };
   }
 }

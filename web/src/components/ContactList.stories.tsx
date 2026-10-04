@@ -55,6 +55,7 @@ export const AllModerated: Story = {
       strikeCount: 0,
       block: null,
       callNuisance: { unansweredCount: 0, strikeCount: 0, threshold: 2, thresholdOverride: null },
+      blockBackoff: FIXTURE_ROSTER[0].blockBackoff,
     })),
   },
 };

@@ -20,6 +20,7 @@ export interface RosterEntry {
   strikeCount: number;
   block: { unblockAt: number } | null;
   callNuisance: { unansweredCount: number; strikeCount: number; threshold: number; thresholdOverride: number | null };
+  blockBackoff: { maxDurationMs: number; maxDurationOverrideMs: number | null };
 }
 
 // Matches src/store/settings.ts's SettingDef/SettingView shape.

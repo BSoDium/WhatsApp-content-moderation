@@ -24,6 +24,7 @@ interface ContactDetailPanelProps {
   onSetEscalation: (contactId: string, enabled: boolean) => Promise<void>;
   onSetContext: (contactId: string, context: string) => Promise<true>;
   onSetCallNuisanceThreshold: (contactId: string, threshold: number | null) => Promise<true>;
+  onSetBlockBackoffMax: (contactId: string, maxDurationMs: number | null) => Promise<true>;
   onViewHistory: (contactId: string) => void;
 }
 
@@ -37,6 +38,7 @@ export interface ContactDetailPanelHandle {
 type FieldSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 const SAVED_CONFIRMATION_MS = 2500;
+const HOUR_MS = 60 * 60 * 1000;
 
 // Mirrors setContext in src/store/monitored-contacts.ts, which stores the trimmed value (all-whitespace as null, surfaced here as '').
 function normalizeContext(context: string): string {
@@ -124,9 +126,92 @@ function CallNuisanceThresholdField({ contactId, thresholdOverride, effectiveThr
   );
 }
 
+interface BlockBackoffMaxFieldProps {
+  contactId: string;
+  maxDurationOverrideMs: number | null;
+  effectiveMaxDurationMs: number;
+  disabled: boolean;
+  onSave: (contactId: string, maxDurationMs: number | null) => Promise<true>;
+}
+
+function hoursFromMs(ms: number): string {
+  return String(Number((ms / HOUR_MS).toFixed(9)));
+}
+
+function BlockBackoffMaxField({ contactId, maxDurationOverrideMs, effectiveMaxDurationMs, disabled, onSave }: BlockBackoffMaxFieldProps) {
+  const [draft, setDraft] = useState(maxDurationOverrideMs !== null ? hoursFromMs(maxDurationOverrideMs) : '');
+  const lastSynced = useRef(maxDurationOverrideMs);
+  const [saveState, setSaveState] = useState<FieldSaveState>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const savedConfirmationTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (lastSynced.current === maxDurationOverrideMs) return;
+    lastSynced.current = maxDurationOverrideMs;
+    setDraft(maxDurationOverrideMs !== null ? hoursFromMs(maxDurationOverrideMs) : '');
+  }, [maxDurationOverrideMs]);
+
+  useEffect(() => () => clearTimeout(savedConfirmationTimeout.current), []);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    const hours = trimmed === '' ? null : Number(trimmed);
+    if (hours !== null && (!Number.isFinite(hours) || hours <= 0 || !Number.isSafeInteger(Math.round(hours * HOUR_MS)) || Math.round(hours * HOUR_MS) < 1)) {
+      setError('Enter a positive number of hours, or leave empty to use the global cap.');
+      return;
+    }
+    const next = hours === null ? null : Math.round(hours * HOUR_MS);
+    if (next === lastSynced.current) return;
+    setError(null);
+    setSaveState('saving');
+    try {
+      await onSave(contactId, next);
+      lastSynced.current = next;
+      setSaveState('saved');
+      clearTimeout(savedConfirmationTimeout.current);
+      savedConfirmationTimeout.current = setTimeout(() => setSaveState('idle'), SAVED_CONFIRMATION_MS);
+    } catch (err) {
+      setSaveState('idle');
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const description = `Caps a growing block's base length before jitter, which can shift the actual time. Empty uses the global cap (currently ${hoursFromMs(effectiveMaxDurationMs)} hours). Applies when Growing blocks is enabled.`;
+
+  return (
+    <SettingRow
+      title="Growing-block cap (hours)"
+      description={description}
+      control={
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min="0.01"
+            step="0.25"
+            placeholder={hoursFromMs(effectiveMaxDurationMs)}
+            className="w-24"
+            value={draft}
+            disabled={disabled}
+            aria-label="Growing-block cap in hours"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              if (error) setError(null);
+            }}
+            onBlur={commit}
+          />
+          <span className="text-sm text-muted-foreground">hours</span>
+          {saveState === 'saving' && <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />}
+          {saveState === 'saved' && <span className="text-xs text-muted-foreground">Saved</span>}
+        </div>
+      }
+      error={error}
+    />
+  );
+}
+
 // Mounted with `key={contact.id}` so `message` resets on a new selection.
 export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDetailPanelProps>(function ContactDetailPanel(
-  { contact, entry, strikeLimits, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onViewHistory },
+  { contact, entry, strikeLimits, onClose, onToggleMonitor, onRunCommand, onSetEscalation, onSetContext, onSetCallNuisanceThreshold, onSetBlockBackoffMax, onViewHistory },
   ref,
 ) {
   const [message, setMessage] = useState('');
@@ -297,6 +382,18 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
               }
             />
           </section>
+
+          {entry && (
+            <section className="rounded-xl border border-border bg-card px-4">
+              <BlockBackoffMaxField
+                contactId={contact.id}
+                maxDurationOverrideMs={entry.blockBackoff.maxDurationOverrideMs}
+                effectiveMaxDurationMs={entry.blockBackoff.maxDurationMs}
+                disabled={!monitored}
+                onSave={onSetBlockBackoffMax}
+              />
+            </section>
+          )}
 
           <section className="rounded-xl border border-border bg-card px-4">
             <SettingRow

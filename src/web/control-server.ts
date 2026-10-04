@@ -20,7 +20,7 @@ import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
 import type { AuditLogRecord } from '../types.ts';
 import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
-import { listSettings, setSetting } from '../store/settings.ts';
+import { getNumberSetting, listSettings, setSetting } from '../store/settings.ts';
 import { listInstalledModels } from '../classifier/installed-models.ts';
 
 interface ControlServerDependencies {
@@ -36,6 +36,7 @@ interface ControlServerDependencies {
     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean;
     setContext: (contactId: string, context: string | null) => boolean;
     setCallNuisanceThreshold: (contactId: string, threshold: number | null) => boolean;
+    setBlockBackoffMax: (contactId: string, maxMs: number | null) => boolean;
   };
   auditLog: {
     getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
@@ -272,7 +273,8 @@ function rosterEntry(
     escalationEnabled,
     context,
     callNuisanceThreshold,
-  }: { contactId: string; escalationEnabled: boolean; context: string | null; callNuisanceThreshold: number | null },
+    blockBackoffMaxMs,
+  }: { contactId: string; escalationEnabled: boolean; context: string | null; callNuisanceThreshold: number | null; blockBackoffMaxMs: number | null },
   { contactDirectory, manualOverride }: Pick<ControlServerDependencies, 'contactDirectory' | 'manualOverride'>,
 ) {
   const { callNuisance, ...status } = manualOverride.getStatus(contactId);
@@ -283,6 +285,10 @@ function rosterEntry(
     context,
     ...status,
     callNuisance: { ...callNuisance, thresholdOverride: callNuisanceThreshold },
+    blockBackoff: {
+      maxDurationMs: blockBackoffMaxMs ?? getNumberSetting('BLOCK_BACKOFF_MAX_MS'),
+      maxDurationOverrideMs: blockBackoffMaxMs,
+    },
   };
 }
 
@@ -607,6 +613,34 @@ async function handleApi(
       sendJson(res, 200, { callNuisance: { ...manualOverride.getStatus(contactId).callNuisance, thresholdOverride: threshold } });
       return true;
     }
+
+    if (action === 'block-backoff-max') {
+      if (!requireJsonContentType(req, res)) return true;
+      const body = await readValidatedJsonBody(req, res);
+      if (body === undefined) return true;
+      if (typeof body !== 'object' || body === null || !('maxDurationMs' in body)) {
+        sendJson(res, 400, { error: 'maxDurationMs must be a positive integer, or null to use the global cap' });
+        return true;
+      }
+      const { maxDurationMs } = body as { maxDurationMs: unknown };
+      if (maxDurationMs !== null && (typeof maxDurationMs !== 'number' || !Number.isSafeInteger(maxDurationMs) || maxDurationMs < 1)) {
+        sendJson(res, 400, { error: 'maxDurationMs must be a positive integer, or null to use the global cap' });
+        return true;
+      }
+      const overrideMaxMs = maxDurationMs as number | null;
+      const updated = monitoredContacts.setBlockBackoffMax(contactId, overrideMaxMs);
+      if (!updated) {
+        sendJson(res, 404, { error: 'not monitored' });
+        return true;
+      }
+      sendJson(res, 200, {
+        blockBackoff: {
+          maxDurationMs: overrideMaxMs ?? getNumberSetting('BLOCK_BACKOFF_MAX_MS'),
+          maxDurationOverrideMs: overrideMaxMs,
+        },
+      });
+      return true;
+    }
   }
 
   return false;
@@ -717,6 +751,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     setEscalationEnabled: (contactId: string, enabled: boolean) => boolean,
  *     setContext: (contactId: string, context: string | null) => boolean,
  *     setCallNuisanceThreshold: (contactId: string, threshold: number | null) => boolean,
+ *     setBlockBackoffMax: (contactId: string, maxMs: number | null) => boolean,
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
  *   blocks: { countActive: () => number },

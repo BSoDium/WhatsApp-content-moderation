@@ -65,7 +65,7 @@ const EXPECTED_SHAPE = {
   },
 };
 
-// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added (currently 0001's call_strikes table and monitored_contacts.call_nuisance_threshold, and 0002's call_strikes.unanswered_updated_at) — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
+// EXPECTED_SHAPE plus whatever every post-baseline Drizzle migration in drizzle/ has added — the shape a database ends up with once actually, fully migrated: a fresh install, or a pre-ORM database that's been adopted and then caught up.
 const FULLY_MIGRATED_SHAPE = {
   ...EXPECTED_SHAPE,
   call_strikes: {
@@ -73,7 +73,7 @@ const FULLY_MIGRATED_SHAPE = {
     indexes: [],
   },
   monitored_contacts: {
-    columns: ['added_at integer', 'call_nuisance_threshold integer', 'contact_id text', 'context text', 'escalation_enabled integer'],
+    columns: ['added_at integer', 'block_backoff_max_ms integer', 'call_nuisance_threshold integer', 'contact_id text', 'context text', 'escalation_enabled integer'],
     indexes: [],
   },
 };
@@ -385,6 +385,7 @@ test('every store module reads and writes an adopted up-to-date database correct
     addedAt: 1690000000000,
     context: ALICE_CONTEXT,
     callNuisanceThreshold: null,
+    blockBackoffMaxMs: null,
   });
   assert.equal(getMonitored(BOB)?.escalationEnabled, false);
   assert.deepEqual(listMonitored().map((m) => m.contactId), [ALICE, BOB]);
