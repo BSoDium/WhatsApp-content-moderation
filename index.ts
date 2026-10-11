@@ -218,11 +218,11 @@ async function start() {
     },
     onReconnectFailed: () => setConnectionState('offline'),
     onQr: () => setConnectionState('awaiting-link'),
-    onClose: ({ statusCode, shouldReconnect, linked }: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean }) => {
+    onClose: ({ statusCode, shouldReconnect, linked, reason }: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean; reason: string | undefined }) => {
       // An unlinked session just times out its QR and reopens; calling that "reconnecting" would hide that a scan is what it's waiting for.
       const status = !shouldReconnect ? 'logged-out' : linked ? 'reconnecting' : 'awaiting-link';
       setConnectionState(status, statusCode ?? null);
-      logger.warn({ statusCode, shouldReconnect, linked }, 'connection closed');
+      logger.warn({ statusCode, shouldReconnect, linked, reason }, 'connection closed');
     },
   });
 }
