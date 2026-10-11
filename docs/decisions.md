@@ -1912,3 +1912,26 @@ header popover) instead of `reconnecting`: the socket has no `creds.me`, so
 the close that follows each QR timeout is a wait for a scan, not a dropped
 connection. Atomic replacement can't repair a file corrupted by an older
 release — those sessions need one relink, after which they are protected.
+
+## Exit on sustained DNS failure so the container re-copies the host resolver
+
+After a power cut the container sat on "Reconnecting" for good while the host
+itself resolved names fine. With `network_mode: host`, Docker copies the
+host's `/etc/resolv.conf` into the container once, at start. On boot
+`restart: always` launched the container two seconds after `tailscaled`, before
+Tailscale had written its nameservers, so the snapshot had no `nameserver`
+line at all: every lookup went to `127.0.0.1:53` and failed with `EAI_AGAIN`,
+which Baileys reports as a 408 and `connection.ts` retries forever. The host
+recovered; the container's copy never does, short of a restart.
+
+`src/whatsapp/dns-failure-watchdog.ts` counts a close as a DNS failure only
+when the underlying error code is `EAI_AGAIN` or `ENOTFOUND`, and exits the
+process (code 1, through the normal graceful shutdown) once that has been the
+only kind of failure for `DNS_FAILURE_RESTART_MS` (default two minutes). The
+restart policy then brings the container back with a fresh copy of the file.
+Any successful open or any non-DNS close resets the clock, so a flaky link
+never trips it; a genuine multi-minute outage costs one cheap restart per
+window, which is harmless. Fixing the boot order on the host
+(`After=tailscaled.service` for `docker.service`) removes the cause, but the
+app can't assume operators did that.
+

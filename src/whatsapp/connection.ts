@@ -13,7 +13,7 @@ interface ConnectionOptions {
   onSocket?: (sock: WASocket) => void;
   onOpen?: (sock: WASocket) => void;
   onQr?: () => void;
-  onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean; reason: string | undefined }) => void;
+  onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean; reason: string | undefined; errorCode: string | undefined }) => void;
   onReconnectFailed?: () => void;
 }
 
@@ -35,7 +35,7 @@ interface ConnectionOptions {
  *   onSocket?: (sock: object) => void,
  *   onOpen?: (sock: object) => void,
  *   onQr?: () => void,
- *   onClose?: (info: { statusCode: number|undefined, shouldReconnect: boolean, linked: boolean, reason: string|undefined }) => void,
+ *   onClose?: (info: { statusCode: number|undefined, shouldReconnect: boolean, linked: boolean, reason: string|undefined, errorCode: string|undefined }) => void,
  * }} [options]
  * @returns {Promise<object>} the Baileys socket
  */
@@ -73,9 +73,11 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
     }
 
     if (connection === 'close') {
-      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      const closeError = new Boom(lastDisconnect?.error);
+      const statusCode = closeError.output.statusCode;
+      const errorCode = typeof closeError.data?.code === 'string' ? closeError.data.code : undefined;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      onClose?.({ statusCode, shouldReconnect, linked: Boolean(state.creds.me), reason: lastDisconnect?.error?.message });
+      onClose?.({ statusCode, shouldReconnect, linked: Boolean(state.creds.me), reason: lastDisconnect?.error?.message, errorCode });
       if (shouldReconnect) {
         connectWhatsApp({ authDir, qrPngPath, onSocket, onOpen, onQr, onClose, onReconnectFailed }).catch((err: unknown) => {
           console.error('Reconnect failed:', err instanceof Error ? err.message : err);
