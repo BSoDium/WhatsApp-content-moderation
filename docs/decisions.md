@@ -1887,3 +1887,29 @@ The unanswered-call count only ever went up until the owner answered a call, so 
 *Rejected: a sliding window of timestamps.* It would need a table of call times for the same behaviour.
 
 Pausing a contact skips both messages and calls (`index.ts` drops their events before the pipelines); unlike turning moderation off it keeps strikes and blocks, and strikes keep decaying meanwhile.
+
+## Crash-safe WhatsApp session storage
+
+An abrupt power loss left a deployment stuck on "Reconnecting" forever, with
+a healthy control app and no way to recover short of relinking. Baileys'
+`useMultiFileAuthState` rewrites `creds.json` in place and, when that file
+fails to parse, silently substitutes `initAuthCreds()` — an unlinked session.
+A file truncated or zero-length by a power cut therefore became a brand-new
+device that showed a QR nobody was looking at, timed out (status 408, which
+`connection.ts` treats as reconnectable), and looped, with the fresh
+credentials overwriting what was left on disk.
+
+`src/whatsapp/auth-state.ts` replaces it with the same on-disk layout, so an
+existing `auth_info/` works untouched, and three guarantees. Every write goes
+to a temp file, is fsynced, then renamed over the target, with the directory
+fsynced once per batch — a reader sees the old file or the new one, never a
+half. `creds.json` is mirrored to `creds.json.bak` on every save and restored
+from it at load when the primary is missing, empty or unparseable. When
+neither is usable the corrupt file is renamed to `creds.json.corrupt-<ts>`
+rather than deleted or overwritten, and the app starts unlinked on purpose.
+
+An unlinked session now reports `awaiting-link` ("Needs linking" in the
+header popover) instead of `reconnecting`: the socket has no `creds.me`, so
+the close that follows each QR timeout is a wait for a scan, not a dropped
+connection. Atomic replacement can't repair a file corrupted by an older
+release — those sessions need one relink, after which they are protected.
