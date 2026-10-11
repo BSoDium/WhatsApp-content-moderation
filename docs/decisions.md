@@ -1890,13 +1890,12 @@ Pausing a contact skips both messages and calls (`index.ts` drops their events b
 
 ## Crash-safe WhatsApp session storage
 
-An abrupt power loss left a deployment stuck on "Reconnecting" forever, with
-a healthy control app and no way to recover short of relinking. Baileys'
+Hardening against an unclean shutdown. Baileys'
 `useMultiFileAuthState` rewrites `creds.json` in place and, when that file
 fails to parse, silently substitutes `initAuthCreds()` — an unlinked session.
-A file truncated or zero-length by a power cut therefore became a brand-new
-device that showed a QR nobody was looking at, timed out (status 408, which
-`connection.ts` treats as reconnectable), and looped, with the fresh
+A file truncated or zero-length by a power cut would therefore become a
+brand-new device that shows a QR nobody is looking at, times out (status 408,
+which `connection.ts` treats as reconnectable), and loops, with the fresh
 credentials overwriting what was left on disk.
 
 `src/whatsapp/auth-state.ts` replaces it with the same on-disk layout, so an
