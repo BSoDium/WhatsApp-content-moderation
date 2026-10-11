@@ -1,5 +1,6 @@
 import { createLogger } from './src/cli/logger.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
+import type { CloseInfo } from './src/whatsapp/connection.ts';
 import { getConnectionState, setConnectionState } from './src/whatsapp/connection-state.ts';
 import { createDnsFailureWatchdog } from './src/whatsapp/dns-failure-watchdog.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
@@ -232,7 +233,7 @@ async function start() {
     },
     onReconnectFailed: () => setConnectionState('offline'),
     onQr: () => setConnectionState('awaiting-link'),
-    onClose: ({ statusCode, shouldReconnect, linked, reason, errorCode }: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean; reason: string | undefined; errorCode: string | undefined }) => {
+    onClose: ({ statusCode, shouldReconnect, linked, reason, errorCode }: CloseInfo) => {
       // An unlinked session just times out its QR and reopens; calling that "reconnecting" would hide that a scan is what it's waiting for.
       const status = !shouldReconnect ? 'logged-out' : linked ? 'reconnecting' : 'awaiting-link';
       setConnectionState(status, statusCode ?? null);

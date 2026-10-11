@@ -7,13 +7,21 @@ import { colors } from '../cli/terminal-output.ts';
 import { useDurableAuthState } from './auth-state.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 
+export interface CloseInfo {
+  statusCode: number | undefined;
+  shouldReconnect: boolean;
+  linked: boolean;
+  reason: string | undefined;
+  errorCode: string | undefined;
+}
+
 interface ConnectionOptions {
   authDir?: string;
   qrPngPath?: string;
   onSocket?: (sock: WASocket) => void;
   onOpen?: (sock: WASocket) => void;
   onQr?: () => void;
-  onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean; reason: string | undefined; errorCode: string | undefined }) => void;
+  onClose?: (info: CloseInfo) => void;
   onReconnectFailed?: () => void;
 }
 
@@ -35,7 +43,7 @@ interface ConnectionOptions {
  *   onSocket?: (sock: object) => void,
  *   onOpen?: (sock: object) => void,
  *   onQr?: () => void,
- *   onClose?: (info: { statusCode: number|undefined, shouldReconnect: boolean, linked: boolean, reason: string|undefined, errorCode: string|undefined }) => void,
+ *   onClose?: (info: CloseInfo) => void,
  * }} [options]
  * @returns {Promise<object>} the Baileys socket
  */

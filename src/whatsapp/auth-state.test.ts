@@ -102,15 +102,23 @@ test('valid JSON that is not credentials counts as corrupt', async () => {
 
 test('leftover temp files from an interrupted write are cleaned up and never read', async () => {
   await withDir(async (dir) => {
-    const first = await useDurableAuthState(dir);
-    await first.saveCreds();
     await writeFile(join(dir, 'creds.json.tmp'), '{"half-writt');
     await writeFile(join(dir, 'session-abc.json.tmp'), '{');
 
-    const second = await useDurableAuthState(dir);
-    assert.equal(second.recovery, 'none');
+    const { recovery } = await useDurableAuthState(dir);
+    assert.equal(recovery, 'none');
     const names = await readdir(dir);
     assert.ok(!names.some((name) => name.endsWith('.tmp')));
+  });
+});
+
+test('temp files are only swept on the first load, so a reconnect cannot delete a write still in flight', async () => {
+  await withDir(async (dir) => {
+    await useDurableAuthState(dir);
+    await writeFile(join(dir, 'session-abc.json.tmp'), '{');
+
+    await useDurableAuthState(dir);
+    assert.ok((await readdir(dir)).includes('session-abc.json.tmp'));
   });
 });
 

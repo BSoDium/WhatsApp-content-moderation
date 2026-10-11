@@ -59,8 +59,7 @@ async function syncDirectory(dir: string): Promise<void> {
   }
 }
 
-// Write-to-temp, fsync, rename: a power cut leaves either the whole old file or the whole new one, never a truncated hybrid.
-// Callers fsync the directory once per batch via syncDirectory so the rename itself survives too.
+// Temp file + fsync + rename, so a power cut leaves the whole old file or the whole new one; callers fsync the directory once per batch.
 async function writeFileAtomic(filePath: string, contents: string): Promise<void> {
   const tmpPath = `${filePath}${TMP_SUFFIX}`;
   const handle = await open(tmpPath, 'w');
@@ -98,7 +97,12 @@ async function readCreds(filePath: string): Promise<ReadResult> {
   return result;
 }
 
+// Once per directory per process: a reconnect reloads auth state while the previous socket's writes may still be in flight.
+const cleanedDirs = new Set<string>();
+
 async function removeStaleTempFiles(dir: string): Promise<void> {
+  if (cleanedDirs.has(dir)) return;
+  cleanedDirs.add(dir);
   const names = await readdir(dir);
   await Promise.all(
     names
