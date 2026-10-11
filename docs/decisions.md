@@ -1935,3 +1935,22 @@ window, which is harmless. Fixing the boot order on the host
 (`After=tailscaled.service` for `docker.service`) removes the cause, but the
 app can't assume operators did that.
 
+## Keep libsignal session dumps out of the container logs
+
+`docker compose logs app` carried full `SessionEntry { ... }` dumps: libsignal
+calls `console.info("Closing session:", session)` (and the same for opening and
+pruning a session) with the whole record, which includes the ratchet's
+ephemeral private key and the root key. Those calls bypass Baileys' `logger`
+option, so the `pino({ level: 'silent' })` in `connection.ts` never saw them.
+`auth_info/` is a credential and is treated as one; the container logs are
+shared far more freely, so the same key material must not end up there.
+
+`src/cli/libsignal-log-filter.ts` wraps `console.log/info/warn/error/debug`
+at startup (`index.ts`) and drops a call when its first argument starts with
+one of libsignal's three session messages or any argument is a `SessionEntry`
+(by class name, or by the `currentRatchet` + `indexInfo` shape in case a
+bundler renames it). Everything else passes through, and the app's own pino
+output writes to the stream directly, so it is unaffected. The closed/opened
+session events themselves are not preserved in a redacted form: they carry no
+information the app acts on, and a dump that is safe today is one libsignal
+version away from not being.
