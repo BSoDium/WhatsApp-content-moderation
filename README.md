@@ -47,7 +47,7 @@ docker compose logs -f --no-log-prefix app   # scan the QR code shown here; Ctrl
 
 ### Re-linking WhatsApp
 
-If you remove the service from WhatsApp's **Linked devices**, it may stop reconnecting. From the directory containing `compose.yml`, move the saved session aside and restart the app to get a new QR code:
+If you remove the service from WhatsApp's **Linked devices**, it may stop reconnecting; the header's status popover then shows **Logged out** or **Needs linking**. Session files are written atomically and `creds.json` is mirrored to `creds.json.bak`, so a power cut doesn't lose the link; only if both copies are unreadable is the damaged file set aside as `creds.json.corrupt-<timestamp>` and a new link needed. From the directory containing `compose.yml`, move the saved session aside and restart the app to get a new QR code:
 
 ```sh
 docker compose stop app

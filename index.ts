@@ -1,6 +1,8 @@
 import { createLogger } from './src/cli/logger.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
+import type { CloseInfo } from './src/whatsapp/connection.ts';
 import { getConnectionState, setConnectionState } from './src/whatsapp/connection-state.ts';
+import { createDnsFailureWatchdog } from './src/whatsapp/dns-failure-watchdog.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
 import { handleBurst, pendingBursts } from './src/pipeline/moderation-pipeline.ts';
 import { handleCallEvent, pendingCallEvents } from './src/pipeline/call-pipeline.ts';
@@ -125,6 +127,18 @@ const callActions = {
   block: (jid: string) => block(currentSocket(), jid),
 };
 
+const DEFAULT_DNS_FAILURE_RESTART_MS = 120_000;
+const DNS_FAILURE_RESTART_MS = Number(process.env.DNS_FAILURE_RESTART_MS) || DEFAULT_DNS_FAILURE_RESTART_MS;
+const DNS_FAILURE_EXIT_CODE = 1;
+
+const dnsFailureWatchdog = createDnsFailureWatchdog({
+  maxFailingMs: DNS_FAILURE_RESTART_MS,
+  onTripped: () => {
+    logger.error({ afterMs: DNS_FAILURE_RESTART_MS }, 'name resolution has been failing continuously; exiting so the container restart policy re-copies the host resolver config');
+    void shutdown('DNS_FAILURE', DNS_FAILURE_EXIT_CODE);
+  },
+});
+
 let unblockScheduler: ReturnType<typeof startUnblockScheduler> | undefined;
 let controlServer: ReturnType<typeof createControlServer> | undefined;
 
@@ -205,6 +219,7 @@ async function start() {
       });
     },
     onOpen: () => {
+      dnsFailureWatchdog.recordOpen();
       setConnectionState('open');
       logger.info({ monitored: listMonitored().length, allowSelf: ALLOW_SELF }, 'connected; moderating monitored contacts');
       printSuccessBanner([
@@ -217,21 +232,25 @@ async function start() {
       blocklistSync?.reconcile().catch((err: unknown) => logger.error({ error: err instanceof Error ? err.message : String(err) }, 'blocklist reconcile failed'));
     },
     onReconnectFailed: () => setConnectionState('offline'),
-    onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => {
-      setConnectionState(shouldReconnect ? 'reconnecting' : 'logged-out', statusCode ?? null);
-      logger.warn({ statusCode, shouldReconnect }, 'connection closed');
+    onQr: () => setConnectionState('awaiting-link'),
+    onClose: ({ statusCode, shouldReconnect, linked, reason, errorCode }: CloseInfo) => {
+      // An unlinked session just times out its QR and reopens; calling that "reconnecting" would hide that a scan is what it's waiting for.
+      const status = !shouldReconnect ? 'logged-out' : linked ? 'reconnecting' : 'awaiting-link';
+      setConnectionState(status, statusCode ?? null);
+      logger.warn({ statusCode, shouldReconnect, linked, reason }, 'connection closed');
+      dnsFailureWatchdog.recordClose(errorCode);
     },
   });
 }
 
-async function shutdown(signal: NodeJS.Signals): Promise<void> {
+async function shutdown(signal: string, exitCode = 0): Promise<void> {
   logger.info({ signal }, 'shutting down');
   await controlServer?.close();
   await unblockScheduler?.stop();
   await buffer.flushAll();
   await Promise.allSettled([...pendingBursts(), ...pendingCallEvents()]);
   closeDb();
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
