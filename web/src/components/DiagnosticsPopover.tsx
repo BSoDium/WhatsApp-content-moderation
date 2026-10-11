@@ -34,6 +34,7 @@ const WHATSAPP_LABELS: Record<WhatsAppStatus, WhatsAppLabel> = {
   reconnecting: { label: 'Reconnecting', variant: 'secondary' },
   offline: { label: 'Offline', variant: 'destructive' },
   'logged-out': { label: 'Logged out', variant: 'destructive' },
+  'awaiting-link': { label: 'Needs linking', variant: 'destructive' },
 };
 
 function Row({ label, children }: { label: string; children: ReactNode }) {

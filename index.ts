@@ -217,9 +217,12 @@ async function start() {
       blocklistSync?.reconcile().catch((err: unknown) => logger.error({ error: err instanceof Error ? err.message : String(err) }, 'blocklist reconcile failed'));
     },
     onReconnectFailed: () => setConnectionState('offline'),
-    onClose: ({ statusCode, shouldReconnect }: { statusCode: number | undefined; shouldReconnect: boolean }) => {
-      setConnectionState(shouldReconnect ? 'reconnecting' : 'logged-out', statusCode ?? null);
-      logger.warn({ statusCode, shouldReconnect }, 'connection closed');
+    onQr: () => setConnectionState('awaiting-link'),
+    onClose: ({ statusCode, shouldReconnect, linked }: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean }) => {
+      // An unlinked session just times out its QR and reopens; calling that "reconnecting" would hide that a scan is what it's waiting for.
+      const status = !shouldReconnect ? 'logged-out' : linked ? 'reconnecting' : 'awaiting-link';
+      setConnectionState(status, statusCode ?? null);
+      logger.warn({ statusCode, shouldReconnect, linked }, 'connection closed');
     },
   });
 }

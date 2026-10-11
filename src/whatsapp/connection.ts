@@ -1,9 +1,10 @@
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import { colors } from '../cli/terminal-output.ts';
+import { useDurableAuthState } from './auth-state.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
 
 interface ConnectionOptions {
@@ -11,7 +12,8 @@ interface ConnectionOptions {
   qrPngPath?: string;
   onSocket?: (sock: WASocket) => void;
   onOpen?: (sock: WASocket) => void;
-  onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean }) => void;
+  onQr?: () => void;
+  onClose?: (info: { statusCode: number | undefined; shouldReconnect: boolean; linked: boolean }) => void;
   onReconnectFailed?: () => void;
 }
 
@@ -32,12 +34,13 @@ interface ConnectionOptions {
  *   qrPngPath?: string,
  *   onSocket?: (sock: object) => void,
  *   onOpen?: (sock: object) => void,
- *   onClose?: (info: { statusCode: number|undefined, shouldReconnect: boolean }) => void,
+ *   onQr?: () => void,
+ *   onClose?: (info: { statusCode: number|undefined, shouldReconnect: boolean, linked: boolean }) => void,
  * }} [options]
  * @returns {Promise<object>} the Baileys socket
  */
-export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSocket, onOpen, onClose, onReconnectFailed }: ConnectionOptions = {}): Promise<WASocket> {
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSocket, onOpen, onQr, onClose, onReconnectFailed }: ConnectionOptions = {}): Promise<WASocket> {
+  const { state, saveCreds } = await useDurableAuthState(authDir);
 
   // Requests the phone's *complete* chat history at link time (not just a
   // recent window), so contact-directory.js's one-time messaging-history.set
@@ -59,6 +62,7 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
+      onQr?.();
       console.log(`\n${colors.bold('Scan this QR code with WhatsApp on your phone (Linked Devices):')}\n`);
       qrcode.generate(qr, { small: true });
       if (qrPngPath) {
@@ -71,9 +75,9 @@ export async function connectWhatsApp({ authDir = './auth_info', qrPngPath, onSo
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      onClose?.({ statusCode, shouldReconnect });
+      onClose?.({ statusCode, shouldReconnect, linked: Boolean(state.creds.me) });
       if (shouldReconnect) {
-        connectWhatsApp({ authDir, qrPngPath, onSocket, onOpen, onClose, onReconnectFailed }).catch((err: unknown) => {
+        connectWhatsApp({ authDir, qrPngPath, onSocket, onOpen, onQr, onClose, onReconnectFailed }).catch((err: unknown) => {
           console.error('Reconnect failed:', err instanceof Error ? err.message : err);
           onReconnectFailed?.();
         });
