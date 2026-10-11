@@ -1,4 +1,5 @@
 import { createLogger } from './src/cli/logger.ts';
+import { installLibsignalLogFilter } from './src/cli/libsignal-log-filter.ts';
 import { connectWhatsApp } from './src/whatsapp/connection.ts';
 import { getConnectionState, setConnectionState } from './src/whatsapp/connection-state.ts';
 import { createMessageBuffer } from './src/buffer/message-buffer.ts';
@@ -68,6 +69,8 @@ if (!ALLOWED_TAILSCALE_LOGIN) {
     '!! Set ALLOWED_TAILSCALE_LOGIN to restrict it to one Tailscale identity — see the README.',
   ]);
 }
+
+installLibsignalLogFilter();
 
 const logger = createLogger('index');
 
