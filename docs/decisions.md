@@ -1888,6 +1888,53 @@ The unanswered-call count only ever went up until the owner answered a call, so 
 
 Pausing a contact skips both messages and calls (`index.ts` drops their events before the pipelines); unlike turning moderation off it keeps strikes and blocks, and strikes keep decaying meanwhile.
 
+## Crash-safe WhatsApp session storage
+
+Hardening against an unclean shutdown. Baileys'
+`useMultiFileAuthState` rewrites `creds.json` in place and, when that file
+fails to parse, silently substitutes `initAuthCreds()` — an unlinked session.
+A file truncated or zero-length by a power cut would therefore become a
+brand-new device that shows a QR nobody is looking at, times out (status 408,
+which `connection.ts` treats as reconnectable), and loops, with the fresh
+credentials overwriting what was left on disk.
+
+`src/whatsapp/auth-state.ts` replaces it with the same on-disk layout, so an
+existing `auth_info/` works untouched, and three guarantees. Every write goes
+to a temp file, is fsynced, then renamed over the target, with the directory
+fsynced once per batch — a reader sees the old file or the new one, never a
+half. `creds.json` is mirrored to `creds.json.bak` on every save and restored
+from it at load when the primary is missing, empty or unparseable. When
+neither is usable the corrupt file is renamed to `creds.json.corrupt-<ts>`
+rather than deleted or overwritten, and the app starts unlinked on purpose.
+
+An unlinked session now reports `awaiting-link` ("Needs linking" in the
+header popover) instead of `reconnecting`: the socket has no `creds.me`, so
+the close that follows each QR timeout is a wait for a scan, not a dropped
+connection. Atomic replacement can't repair a file corrupted by an older
+release — those sessions need one relink, after which they are protected.
+
+## Exit on sustained DNS failure so the container re-copies the host resolver
+
+After a power cut the container sat on "Reconnecting" for good while the host
+itself resolved names fine. With `network_mode: host`, Docker copies the
+host's `/etc/resolv.conf` into the container once, at start. On boot
+`restart: always` launched the container two seconds after `tailscaled`, before
+Tailscale had written its nameservers, so the snapshot had no `nameserver`
+line at all: every lookup went to `127.0.0.1:53` and failed with `EAI_AGAIN`,
+which Baileys reports as a 408 and `connection.ts` retries forever. The host
+recovered; the container's copy never does, short of a restart.
+
+`src/whatsapp/dns-failure-watchdog.ts` counts a close as a DNS failure only
+when the underlying error code is `EAI_AGAIN` or `ENOTFOUND`, and exits the
+process (code 1, through the normal graceful shutdown) once that has been the
+only kind of failure for `DNS_FAILURE_RESTART_MS` (default two minutes). The
+restart policy then brings the container back with a fresh copy of the file.
+Any successful open or any non-DNS close resets the clock, so a flaky link
+never trips it; a genuine multi-minute outage costs one cheap restart per
+window, which is harmless. Fixing the boot order on the host
+(`After=tailscaled.service` for `docker.service`) removes the cause, but the
+app can't assume operators did that.
+
 ## Keep libsignal session dumps out of the container logs
 
 `docker compose logs app` carried full `SessionEntry { ... }` dumps: libsignal

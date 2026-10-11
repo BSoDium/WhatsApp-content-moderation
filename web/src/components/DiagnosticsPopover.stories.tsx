@@ -39,6 +39,12 @@ export const LoggedOut: Story = {
   ],
 };
 
+export const AwaitingLink: Story = {
+  decorators: [
+    withMockApi([{ match: '/api/status', body: { ...FIXTURE_STATUS, whatsapp: { status: 'awaiting-link', since: Date.now() - 90_000, statusCode: 408 } } }]),
+  ],
+};
+
 export const DirectConnection: Story = {
   args: { user: null },
   decorators: [withMockApi([{ match: '/api/status', body: FIXTURE_STATUS }])],

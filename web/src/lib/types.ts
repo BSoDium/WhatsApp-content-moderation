@@ -106,7 +106,7 @@ export interface AuditLogPage {
   nextBefore: number | null;
 }
 
-export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'offline' | 'logged-out';
+export type WhatsAppStatus = 'connecting' | 'open' | 'reconnecting' | 'offline' | 'logged-out' | 'awaiting-link';
 
 // Matches GET /api/status.
 export interface ServerStatus {
