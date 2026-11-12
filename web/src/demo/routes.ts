@@ -93,6 +93,11 @@ export function handleDemoRequest(backend: DemoBackend, method: string, url: URL
     };
   }
 
+  if (method === 'POST' && segments.length === 3 && segments[0] === 'audit-log' && segments[2] === 'correction') {
+    if (body.kind !== 'false_positive' && body.kind !== 'false_negative') return badRequest("kind must be 'false_positive' or 'false_negative'");
+    return fromResult(backend.markCorrection(Number(segments[1]), body.kind, typeof body.note === 'string' ? body.note : undefined), 201);
+  }
+
   if (method === 'POST' && segments.length === 1 && segments[0] === 'policy') {
     return typeof body.text === 'string' ? fromResult(backend.setPolicy(body.text)) : badRequest('text must be a string');
   }

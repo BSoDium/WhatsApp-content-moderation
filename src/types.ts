@@ -64,3 +64,15 @@ export interface SettingRecord {
   value: string;
   updated_at: number;
 }
+
+export type CorrectionKind = 'false_positive' | 'false_negative';
+
+export interface CorrectionRecord {
+  id: number;
+  audit_log_id: number;
+  contact_id: string;
+  kind: CorrectionKind;
+  note: string | null;
+  strike_reverted: number;
+  created_at: number;
+}
