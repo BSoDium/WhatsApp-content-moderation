@@ -331,3 +331,18 @@ test('a removal reason with line breaks cannot open a new prompt section', async
   const prompt = client.requests[1].messages[1].content;
   assert.equal(prompt.split('\n').filter((line) => line.startsWith('# Task')).length, 1);
 });
+
+test('an emoji-only message is warned about in the language of the contact\'s earlier messages', async () => {
+  const detectionInputs = [];
+  const client = {
+    chat: async (request) => {
+      if (request.format) detectionInputs.push(request.messages[1].content);
+      return { message: { content: request.format ? JSON.stringify({ language: 'French' }) : 'unused' } };
+    },
+  };
+
+  const result = await generateWarningMessage({ ...INPUT, message: '🖕🖕🖕', deletedCount: 1, recentMessages: ['ferme-la'] }, { client });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(detectionInputs, ['ferme-la']);
+});
