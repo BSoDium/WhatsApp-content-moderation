@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './api';
 import { mergeLatestEntries } from './mergeLatestEntries';
-import type { AuditLogEntry, AuditLogPage, Stats } from './types';
+import type { AuditLogEntry, AuditLogPage, CorrectionKind, Stats } from './types';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -113,6 +113,19 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     }
   }, [fetchPage, nextBefore]);
 
+  // Throws on failure so the popover can keep the note and show the reason; on success the live refresh picks up the new badge.
+  const markCorrection = useCallback(
+    async (entryId: number, kind: CorrectionKind, note: string) => {
+      await apiFetch(`/api/audit-log/${entryId}/correction`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, note: note.trim() || undefined }),
+      });
+      await refresh();
+    },
+    [refresh],
+  );
+
   useEffect(() => {
     if (!open) return;
     if (opened.current) loadPage();
@@ -144,5 +157,6 @@ export function useActivityData({ open, initialContactId }: UseActivityDataOptio
     setSearchInput,
     refresh,
     loadMore,
+    markCorrection,
   };
 }

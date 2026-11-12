@@ -28,6 +28,25 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
 
+export const WithCorrections: Story = {
+  decorators: [
+    withMockApi([
+      { match: '/api/stats', body: FIXTURE_STATS },
+      {
+        match: /^\/api\/audit-log/,
+        body: {
+          entries: FIXTURE_AUDIT_LOG.map((entry) =>
+            entry.id === 5
+              ? { ...entry, correction: { id: 1, kind: 'false_positive', note: 'Friendly banter', strikeReverted: true, createdAt: Date.now() } }
+              : entry,
+          ),
+          nextBefore: null,
+        },
+      },
+    ]),
+  ],
+};
+
 export const Empty: Story = {
   decorators: [withMockApi([{ match: '/api/stats', body: FIXTURE_STATS }, { match: /^\/api\/audit-log/, body: { entries: [], nextBefore: null } }])],
 };

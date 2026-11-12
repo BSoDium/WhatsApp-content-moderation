@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActivityRow, WIDE_COLUMNS_HIDDEN, WIDE_COLUMNS_SHOWN } from './ActivityRow';
 import { ACTION_FILTER_OPTIONS, actionMeta } from '@/lib/activity';
-import type { AuditLogEntry, Contact } from '@/lib/types';
+import type { AuditLogEntry, Contact, CorrectionKind } from '@/lib/types';
 
 const ALL_CONTACTS = 'all';
 const ALL_ACTIONS = 'all';
@@ -39,6 +39,7 @@ interface MessageExplorerProps {
   searchInput: string;
   onSearchInputChange: (value: string) => void;
   onLoadMore: () => void;
+  onMarkCorrection?: (entryId: number, kind: CorrectionKind, note: string) => Promise<void>;
 }
 
 export function MessageExplorer({
@@ -54,6 +55,7 @@ export function MessageExplorer({
   searchInput,
   onSearchInputChange,
   onLoadMore,
+  onMarkCorrection,
 }: MessageExplorerProps) {
   return (
     <div className="flex flex-col gap-3">
@@ -128,7 +130,7 @@ export function MessageExplorer({
               </TableRow>
             )}
 
-            {!loading && entries.map((entry) => <ActivityRow key={entry.id} entry={entry} />)}
+            {!loading && entries.map((entry) => <ActivityRow key={entry.id} entry={entry} onMarkCorrection={onMarkCorrection} />)}
           </TableBody>
         </Table>
       </div>

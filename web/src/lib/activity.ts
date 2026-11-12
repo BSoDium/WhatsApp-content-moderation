@@ -1,4 +1,4 @@
-import type { AuditAction } from './types';
+import type { AuditAction, AuditLogEntry, CorrectionKind } from './types';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
@@ -81,3 +81,19 @@ export function formatCategory(category: string): string {
   const spaced = category.replace(/_/g, ' ');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+// Mirrors markCorrection's eligibility in src/store/corrections.ts, so the UI only offers what the server will accept.
+const FLAGGED_ACTIONS: ReadonlySet<AuditAction> = new Set(['delete+warn', 'delete', 'shadow']);
+const UNFLAGGED_ACTIONS: ReadonlySet<AuditAction> = new Set(['none', 'shadow']);
+
+export function correctableKind(entry: AuditLogEntry): CorrectionKind | null {
+  if (entry.correction || entry.direction !== 'them' || !entry.classificationOk) return null;
+  if (entry.flagged === true && FLAGGED_ACTIONS.has(entry.action)) return 'false_positive';
+  if (entry.flagged === false && UNFLAGGED_ACTIONS.has(entry.action)) return 'false_negative';
+  return null;
+}
+
+export const CORRECTION_LABEL: Record<CorrectionKind, string> = {
+  false_positive: 'False positive',
+  false_negative: 'False negative',
+};
