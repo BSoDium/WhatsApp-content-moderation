@@ -35,6 +35,7 @@ const logger = createLogger('pipeline');
 
 const WARNING_SENT_ACTION = 'warning_sent';
 const LANGUAGE_SAMPLE_MESSAGES = 3;
+const LANGUAGE_FALLBACK_MESSAGES = 5;
 const MAX_DETAIL_ERROR_LENGTH = 120;
 
 interface Incident {
@@ -206,7 +207,7 @@ async function runBurst(
   }
 
   if (incident) {
-    const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
+    const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, recentContactTexts(history), { sendWarning, generateWarning });
     if (warning === null) {
       setLoggedAction(incident.openerRowId, 'warn_failed');
     } else {
@@ -226,16 +227,26 @@ async function runBurst(
   return { strikeCount };
 }
 
+function recentContactTexts(history: ConversationMessage[]): string[] {
+  return history
+    .filter((m) => m.from === 'them' && !m.automated)
+    .map((m) => m.text)
+    .reverse()
+    .slice(0, LANGUAGE_FALLBACK_MESSAGES);
+}
+
 // Returns the text that went out, or null when the contact was never told; the fallback is used only when generation fails open, because the contact still has to learn their messages were removed.
 async function warnAboutIncident(
   contactId: string,
   { texts, reasons }: Incident,
   strikeCount: number,
   strikeThreshold: number,
+  recentMessages: string[],
   { sendWarning, generateWarning }: Pick<Required<BurstActions>, 'sendWarning' | 'generateWarning'>,
 ): Promise<{ text: string; detail: string } | null> {
   const warningResult = await generateWarning({
     message: texts.slice(0, LANGUAGE_SAMPLE_MESSAGES).join('\n'),
+    recentMessages,
     deletedCount: texts.length,
     reasons,
     strikeCount,

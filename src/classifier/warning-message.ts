@@ -17,6 +17,8 @@ export interface WarningReason {
 
 interface WarningMessageInput {
   message: string;
+  // The contact's earlier messages, most recent first: the language source when `message` has no letters.
+  recentMessages?: string[];
   deletedCount: number;
   reasons: WarningReason[];
   strikeCount: number;
@@ -108,7 +110,7 @@ export async function generateWarningMessage(
   const ollama = client ?? createOllamaClient(getNumberSetting('WARNING_TIMEOUT_MS'));
 
   try {
-    const detected = await detectLanguage(input.message, ollama, model);
+    const detected = await detectLanguage(input.message, ollama, model, input.recentMessages);
     if (!detected.ok) throw new Error(`language detection failed: ${detected.error}`);
 
     let templateDetail = 'template';
