@@ -31,6 +31,7 @@ import {
   setBlockBackoffMax,
 } from './src/store/monitored-contacts.ts';
 import { getAuditLogPage, getAuditLogStats } from './src/store/audit-log.ts';
+import { getCorrectionsByAuditLogId, markCorrection } from './src/store/corrections.ts';
 import { countActiveBlocks } from './src/store/blocks.ts';
 import { deleteForMe, sendWarning, block, unblock, rejectCall } from './src/whatsapp/actions.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
@@ -161,6 +162,7 @@ async function start() {
     profilePhotos,
     monitoredContacts,
     auditLog: { getPage: getAuditLogPage, getStats: getAuditLogStats },
+    corrections: { forAuditLogIds: getCorrectionsByAuditLogId, mark: markCorrection },
     blocks: { countActive: countActiveBlocks },
     allowedLogin: ALLOWED_TAILSCALE_LOGIN,
     getSelfId: selfContactId,

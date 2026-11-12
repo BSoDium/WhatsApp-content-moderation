@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // Keys mirror the snake_case column names so selected rows already have src/types.ts's *Record shapes, which callers and the control app consume as-is.
 
@@ -50,6 +50,20 @@ export const auditLog = sqliteTable(
     index('audit_log_contact_idx').on(table.contact_id, table.created_at),
     index('audit_log_contact_cursor_idx').on(table.contact_id, table.id),
   ],
+);
+
+export const corrections = sqliteTable(
+  'corrections',
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    audit_log_id: integer().notNull(),
+    contact_id: text().notNull(),
+    kind: text().$type<'false_positive' | 'false_negative'>().notNull(),
+    note: text(),
+    strike_reverted: integer().notNull().default(0),
+    created_at: integer().notNull(),
+  },
+  (table) => [uniqueIndex('corrections_audit_log_idx').on(table.audit_log_id), index('corrections_contact_idx').on(table.contact_id, table.created_at)],
 );
 
 export const monitoredContacts = sqliteTable('monitored_contacts', {
