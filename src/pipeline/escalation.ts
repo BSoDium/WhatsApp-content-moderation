@@ -53,6 +53,11 @@ export function blockOutlook(contactId: string, strikeCount: number, strikeThres
  * "Trigger, duration, and jitter (issue #8 design)" for why that ordering
  * is load-bearing, not incidental.
  *
+ * An existing block record is trusted only after `syncBlock` (when given)
+ * has had the chance to close it: a contact unblocked from the phone while
+ * the app missed the event would otherwise keep a stale record and never be
+ * blocked again.
+ *
  * @returns {Promise<boolean>} whether contactId ends this call blocked, so
  *   a caller iterating several events in one pass can skip the
  *   getActiveBlock read once a block's already succeeded.
@@ -62,8 +67,9 @@ export async function maybeBlockContact(
   strikeCount: number,
   strikeThreshold: number,
   block: (contactId: string) => Promise<unknown>,
+  syncBlock?: (contactId: string) => Promise<void>,
 ): Promise<boolean> {
-  return withContactLock(contactId, () => runMaybeBlockContact(contactId, strikeCount, strikeThreshold, block));
+  return withContactLock(contactId, () => runMaybeBlockContact(contactId, strikeCount, strikeThreshold, block, syncBlock));
 }
 
 async function runMaybeBlockContact(
@@ -71,8 +77,10 @@ async function runMaybeBlockContact(
   strikeCount: number,
   strikeThreshold: number,
   block: (contactId: string) => Promise<unknown>,
+  syncBlock?: (contactId: string) => Promise<void>,
 ): Promise<boolean> {
   if (strikeCount < strikeThreshold) return false;
+  if (getActiveBlock(contactId) && syncBlock) await syncBlock(contactId);
   if (getActiveBlock(contactId)) return true;
 
   if (!isEscalationEnabled(contactId)) {

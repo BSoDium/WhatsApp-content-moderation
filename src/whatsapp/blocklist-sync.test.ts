@@ -176,3 +176,24 @@ test('reconcile checks a lid-keyed contact directly against the blocklist', asyn
 
   assert.equal(getActiveBlock(contact), undefined);
 });
+
+test('reconcileContact closes only the named contact, leaving other stale blocks alone', async () => {
+  const target = '33600000009@s.whatsapp.net';
+  const other = '33600000010@s.whatsapp.net';
+  learnLid(target, '1009@lid');
+  learnLid(other, '1010@lid');
+  blockAged(target, 5 * MINUTE_MS);
+  blockAged(other, 5 * MINUTE_MS);
+  const { sock } = makeSocket({ blocklist: [] });
+
+  await attachBlocklistSync(sock).reconcileContact(target);
+
+  assert.equal(getActiveBlock(target), undefined);
+  assert.ok(getActiveBlock(other));
+});
+
+test('reconcileContact does nothing for a contact with no active block', async () => {
+  const { sock } = makeSocket({ fetchFails: true });
+
+  await attachBlocklistSync(sock).reconcileContact('33600000011@s.whatsapp.net');
+});

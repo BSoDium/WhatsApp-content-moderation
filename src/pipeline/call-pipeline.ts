@@ -16,6 +16,7 @@ interface CallActions {
   rejectCall: (callId: string, callFrom: string) => Promise<unknown>;
   sendWarning: (contactId: string, text: string) => Promise<unknown>;
   block: (contactId: string) => Promise<unknown>;
+  syncBlock?: (contactId: string) => Promise<void>;
   generateWarning?: typeof generateCallWarningMessage;
 }
 
@@ -152,7 +153,7 @@ async function handleOffer(contactId: string, call: WACallEvent, actions: CallAc
 
   const newStrikeCount = recordCallStrike(contactId);
   logCallEvent(contactId, call, 'call_nuisance_warned');
-  await maybeBlockContact(contactId, newStrikeCount, strikeThreshold, actions.block);
+  await maybeBlockContact(contactId, newStrikeCount, strikeThreshold, actions.block, actions.syncBlock);
 }
 
 async function runCallEvent({ contactId, call }: CallEvent, actions: CallActions): Promise<void> {

@@ -1,8 +1,9 @@
 import { createLogger } from '../cli/logger.ts';
-import { getActiveBlocks, markUnblocked } from '../store/blocks.ts';
+import { getActiveBlock, getActiveBlocks, markUnblocked } from '../store/blocks.ts';
 import { emitControlEvent } from '../store/events.ts';
 import { canonicalContactId, lookupLid } from './contact-directory.ts';
 import type { WASocket } from '@whiskeysockets/baileys';
+import type { BlockRecord } from '../types.ts';
 
 const logger = createLogger('blocklist-sync');
 
@@ -55,25 +56,23 @@ async function handleRemoved(sock: WASocket, jids: string[]): Promise<void> {
   }
 }
 
-/**
- * Closes the local block record of every contact that's no longer on
- * WhatsApp's blocklist. Fails open: a contact whose identity can't be
- * matched against the list is left alone, and so is a failed fetch — an
- * unconfirmed unblock must never be recorded (see resolveUnblock).
- */
-async function reconcile(sock: WASocket): Promise<void> {
-  const active = getActiveBlocks().filter((block) => Date.now() - block.blocked_at > RECONCILE_GRACE_MS);
-  if (active.length === 0) return;
-
-  let blocklist: Set<string>;
+async function fetchBlocklist(sock: WASocket): Promise<Set<string> | null> {
   try {
-    blocklist = new Set((await sock.fetchBlocklist()).filter((jid): jid is string => typeof jid === 'string'));
+    return new Set((await sock.fetchBlocklist()).filter((jid): jid is string => typeof jid === 'string'));
   } catch (err) {
     logger.error({ error: err instanceof Error ? err.message : String(err) }, 'could not fetch the WhatsApp blocklist; local blocks left as they are');
-    return;
+    return null;
   }
+}
 
-  for (const block of active) {
+async function reconcileBlocks(sock: WASocket, active: BlockRecord[]): Promise<void> {
+  const eligible = active.filter((block) => Date.now() - block.blocked_at > RECONCILE_GRACE_MS);
+  if (eligible.length === 0) return;
+
+  const blocklist = await fetchBlocklist(sock);
+  if (!blocklist) return;
+
+  for (const block of eligible) {
     const jids = await jidsFor(sock, block.contact_id);
     if (!block.contact_id.endsWith('@lid') && jids.length < 2) {
       logger.warn({ contactId: block.contact_id }, 'no @lid known for a blocked contact; cannot check it against the WhatsApp blocklist');
@@ -88,8 +87,11 @@ async function reconcile(sock: WASocket): Promise<void> {
  * phone: `blocklist.update` covers it live, and `reconcile` (run once the
  * connection opens) covers one that happened while the app was offline.
  * Baileys never emits `blocklist.set`, so the full list has to be fetched.
+ * `reconcileContact` is the same check for one contact, run right before a
+ * strike would escalate to a block: a missed `blocklist.update` otherwise
+ * leaves a stale "active" record that silently swallows every later block.
  */
-export function attachBlocklistSync(sock: WASocket): { reconcile: () => Promise<void> } {
+export function attachBlocklistSync(sock: WASocket): { reconcile: () => Promise<void>; reconcileContact: (contactId: string) => Promise<void> } {
   sock.ev.on('blocklist.update', ({ blocklist, type }) => {
     if (type !== 'remove') return;
     handleRemoved(sock, blocklist).catch((err: unknown) =>
@@ -97,5 +99,11 @@ export function attachBlocklistSync(sock: WASocket): { reconcile: () => Promise<
     );
   });
 
-  return { reconcile: () => reconcile(sock) };
+  return {
+    reconcile: () => reconcileBlocks(sock, getActiveBlocks()),
+    reconcileContact: async (contactId) => {
+      const block = getActiveBlock(contactId);
+      if (block) await reconcileBlocks(sock, [block]);
+    },
+  };
 }

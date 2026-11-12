@@ -60,3 +60,39 @@ test('with growing blocks off, the full BLOCK_JITTER_MS applies to the fixed dur
   assert.ok(lengths.every((ms) => ms <= 2 * HOUR_MS + 1000));
   assert.ok(lengths.some((ms) => Math.abs(ms - HOUR_MS) > HOUR_MS * 0.25));
 });
+
+test('a stale block record closed by syncBlock lets the contact be blocked again', async () => {
+  const contact = monitored('stale@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const stale = getActiveBlock(contact)!;
+  const blocked: string[] = [];
+
+  const blockedAfter = await maybeBlockContact(
+    contact,
+    STRIKE_THRESHOLD + 1,
+    STRIKE_THRESHOLD,
+    async (id) => void blocked.push(id),
+    async () => void markUnblocked(stale.id),
+  );
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, [contact]);
+  assert.notEqual(getActiveBlock(contact)?.id, stale.id);
+});
+
+test('a block record syncBlock leaves open is not blocked a second time', async () => {
+  const contact = monitored('confirmed@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const blocked: string[] = [];
+
+  const blockedAfter = await maybeBlockContact(
+    contact,
+    STRIKE_THRESHOLD + 1,
+    STRIKE_THRESHOLD,
+    async (id) => void blocked.push(id),
+    async () => {},
+  );
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, []);
+});
