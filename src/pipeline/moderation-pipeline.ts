@@ -21,6 +21,7 @@ interface BurstActions {
   deleteForMe: (contactId: string, key: WAMessageKey, timestamp: number) => Promise<unknown>;
   sendWarning: (contactId: string, text: string) => Promise<unknown>;
   block: (contactId: string) => Promise<unknown>;
+  syncBlock?: (contactId: string) => Promise<void>;
   classify?: typeof classifyMessage;
   generateWarning?: typeof generateWarningMessage;
   // Re-checked before acting on every message, not just once when the
@@ -136,7 +137,7 @@ export function pendingBursts(): Promise<unknown>[] {
 
 async function runBurst(
   { contactId, messages }: Burst,
-  { deleteForMe, sendWarning, block, classify = classifyMessage, generateWarning = generateWarningMessage, isPaused = () => false }: BurstActions,
+  { deleteForMe, sendWarning, block, syncBlock, classify = classifyMessage, generateWarning = generateWarningMessage, isPaused = () => false }: BurstActions,
 ): Promise<{ strikeCount: number }> {
   const history = loadHistory(contactId, Math.min(...messages.map((m) => m.timestamp)));
   let strikeCount = getStrikeCount(contactId);
@@ -219,7 +220,7 @@ async function runBurst(
         classification: { ok: true, flagged: false, category: 'warning', reason: `automated warning sent (${warning.detail})` },
         action: WARNING_SENT_ACTION,
       });
-      await maybeBlockContact(contactId, strikeCount, strikeThreshold, block);
+      await maybeBlockContact(contactId, strikeCount, strikeThreshold, block, syncBlock);
     }
   }
 
