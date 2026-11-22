@@ -119,3 +119,29 @@ test('refreshStaleBlock does nothing below the threshold or without a record', a
 
   assert.equal(calls, 0);
 });
+
+test('a syncBlock that throws is skipped: the record stands and the contact is not blocked twice', async () => {
+  const contact = monitored('sync-throws@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const blocked: string[] = [];
+  const throwing = async () => {
+    throw new Error('socket closed');
+  };
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, throwing);
+  const blockedAfter = await maybeBlockContact(contact, STRIKE_THRESHOLD + 1, STRIKE_THRESHOLD, async (id) => void blocked.push(id), throwing);
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, []);
+});
+
+test('a syncBlock that never answers is abandoned after the timeout', async (t) => {
+  const contact = monitored('sync-hangs@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const settled = refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, () => new Promise(() => {}));
+  t.mock.timers.tick(10_000);
+
+  await settled;
+});

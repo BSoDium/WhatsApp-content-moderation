@@ -565,3 +565,16 @@ test('a removal older than the context window no longer marks the history as rem
     { text: 'just now', removedAs: 'harassment' },
   ]);
 });
+
+test('a stale block on file is resynced before the threshold-crossing warning and again before blocking', async () => {
+  const contact = 'stale-block@s.whatsapp.net';
+  addMonitored(contact);
+  setEscalationEnabled(contact, true);
+  createBlock(contact, Date.now() + 3_600_000);
+  const synced = [];
+  const actions = { ...noopActions, classify: okFlag, syncBlock: async (jid) => void synced.push(jid) };
+
+  await handleTwoViolations(contact, actions);
+
+  assert.ok(synced.length >= 2 && synced.every((jid) => jid === contact));
+});
