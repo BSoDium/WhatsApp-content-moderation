@@ -86,14 +86,53 @@ export function formatCategory(category: string): string {
 const FLAGGED_ACTIONS: ReadonlySet<AuditAction> = new Set(['delete+warn', 'delete', 'shadow']);
 const UNFLAGGED_ACTIONS: ReadonlySet<AuditAction> = new Set(['none', 'shadow']);
 
-export function correctableKind(entry: AuditLogEntry): CorrectionKind | null {
-  if (entry.correction || entry.direction !== 'them' || !entry.classificationOk) return null;
-  if (entry.flagged === true && FLAGGED_ACTIONS.has(entry.action)) return 'false_positive';
-  if (entry.flagged === false && UNFLAGGED_ACTIONS.has(entry.action)) return 'false_negative';
-  return null;
+export interface CorrectionOption {
+  kind: CorrectionKind;
+  verdict: 'acceptable' | 'unacceptable';
+  label: string;
+  explanation: string;
 }
 
-export const CORRECTION_LABEL: Record<CorrectionKind, string> = {
-  false_positive: 'False positive',
-  false_negative: 'False negative',
+const FALSE_POSITIVE: CorrectionOption = {
+  kind: 'false_positive',
+  verdict: 'acceptable',
+  label: 'Acceptable',
+  explanation: 'The classifier was wrong to flag it. The strike this message opened is given back; a deleted message cannot be restored on WhatsApp, and any block stays until you unblock the contact.',
 };
+const CONFIRMED_FLAG: CorrectionOption = {
+  kind: 'confirmed_flag',
+  verdict: 'unacceptable',
+  label: 'Not acceptable',
+  explanation: 'The classifier was right. Recorded as an example for suggesting rules; nothing else changes.',
+};
+const FALSE_NEGATIVE: CorrectionOption = {
+  kind: 'false_negative',
+  verdict: 'unacceptable',
+  label: 'Not acceptable',
+  explanation: 'The classifier should have flagged it. Recorded as an example for suggesting rules; nothing is sent to the contact and no strike is added.',
+};
+const CONFIRMED_PASS: CorrectionOption = {
+  kind: 'confirmed_pass',
+  verdict: 'acceptable',
+  label: 'Acceptable',
+  explanation: 'The classifier was right. Recorded as an example for suggesting rules; nothing else changes.',
+};
+
+// The verdicts the operator can give a row, each tied to whether it overrules the classifier or confirms it; empty once marked or for rows that were never classified.
+export function correctionOptions(entry: AuditLogEntry): CorrectionOption[] {
+  if (entry.correction || entry.direction !== 'them' || !entry.classificationOk) return [];
+  if (entry.flagged === true && FLAGGED_ACTIONS.has(entry.action)) return [CONFIRMED_FLAG, FALSE_POSITIVE];
+  if (entry.flagged === false && UNFLAGGED_ACTIONS.has(entry.action)) return [CONFIRMED_PASS, FALSE_NEGATIVE];
+  return [];
+}
+
+const CORRECTION_LABEL: Record<CorrectionKind, string> = {
+  false_positive: 'Acceptable (false positive)',
+  false_negative: 'Not acceptable (false negative)',
+  confirmed_flag: 'Not acceptable',
+  confirmed_pass: 'Acceptable',
+};
+
+export function correctionLabel(kind: CorrectionKind): string {
+  return CORRECTION_LABEL[kind];
+}

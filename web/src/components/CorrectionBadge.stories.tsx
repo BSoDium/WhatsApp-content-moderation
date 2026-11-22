@@ -16,3 +16,7 @@ export const FalsePositive: Story = {
 export const FalseNegative: Story = {
   args: { correction: { id: 2, kind: 'false_negative', note: null, strikeReverted: false, createdAt: 0 } },
 };
+
+export const ConfirmedFlag: Story = {
+  args: { correction: { id: 3, kind: 'confirmed_flag', note: null, strikeReverted: false, createdAt: 0 } },
+};

@@ -1,35 +1,32 @@
 import { useState } from 'react';
 import { Flag, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CORRECTION_LABEL } from '@/lib/activity';
+import type { CorrectionOption } from '@/lib/activity';
 import type { CorrectionKind } from '@/lib/types';
 
 const NOTE_MAX_LENGTH = 500;
 
-const EXPLANATION: Record<CorrectionKind, string> = {
-  false_positive: 'The strike this message opened is given back. A deleted message cannot be restored on WhatsApp, and any block stays until you unblock the contact.',
-  false_negative: 'Recorded for reviewing moderation accuracy. Nothing is sent to the contact and no strike is added.',
-};
-
 interface MarkCorrectionProps {
-  kind: CorrectionKind;
-  onSubmit: (note: string) => Promise<void>;
+  options: CorrectionOption[];
+  onSubmit: (kind: CorrectionKind, note: string) => Promise<void>;
 }
 
-export function MarkCorrection({ kind, onSubmit }: MarkCorrectionProps) {
+export function MarkCorrection({ options, onSubmit }: MarkCorrectionProps) {
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<CorrectionOption | null>(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const label = CORRECTION_LABEL[kind];
 
   async function submit() {
+    if (!selected) return;
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit(note);
+      await onSubmit(selected.kind, note);
       setOpen(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -41,22 +38,40 @@ export function MarkCorrection({ kind, onSubmit }: MarkCorrectionProps) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="-my-0.5 shrink-0 text-muted-foreground" aria-label={`Mark as ${label.toLowerCase()}`} title={`Mark as ${label.toLowerCase()}`}>
+        <Button variant="ghost" size="icon-sm" className="-my-0.5 shrink-0 text-muted-foreground" aria-label="Label this message" title="Label this message">
           <Flag aria-hidden="true" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
-        <p className="font-medium">Mark as {label.toLowerCase()}</p>
-        <p className="text-xs text-muted-foreground">{EXPLANATION[kind]}</p>
-        <Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={NOTE_MAX_LENGTH} placeholder="Optional note" aria-label="Note" disabled={submitting} />
+        <p className="font-medium">Is this message acceptable?</p>
+        <div role="radiogroup" aria-label="Verdict" className="grid grid-cols-2 gap-2">
+          {options.map((option) => (
+            <Button
+              key={option.kind}
+              type="button"
+              role="radio"
+              aria-checked={selected?.kind === option.kind}
+              variant={selected?.kind === option.kind ? 'default' : 'outline'}
+              size="sm"
+              className={cn('h-auto flex-col gap-0.5 py-1.5')}
+              disabled={submitting}
+              onClick={() => setSelected(option)}
+            >
+              <span>{option.label}</span>
+              <span className="text-xs font-normal opacity-80">{option.kind.startsWith('confirmed') ? 'classifier was right' : 'classifier was wrong'}</span>
+            </Button>
+          ))}
+        </div>
+        <p className="min-h-10 text-xs text-muted-foreground">{selected ? selected.explanation : 'Your labels are used to suggest rules, and a false positive gives the strike back.'}</p>
+        <Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={NOTE_MAX_LENGTH} placeholder="Optional note, e.g. why" aria-label="Note" disabled={submitting} />
         {error && <p className="text-xs text-destructive">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button size="sm" onClick={submit} disabled={submitting}>
+          <Button size="sm" onClick={submit} disabled={!selected || submitting}>
             {submitting && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
-            Mark
+            Save label
           </Button>
         </div>
       </PopoverContent>

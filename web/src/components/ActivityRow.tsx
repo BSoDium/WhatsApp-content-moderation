@@ -6,7 +6,7 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import { ActionBadge } from './ActionBadge';
 import { CorrectionBadge } from './CorrectionBadge';
 import { MarkCorrection } from './MarkCorrection';
-import { correctableKind, formatCategory, formatTimestamp } from '@/lib/activity';
+import { correctionOptions, formatCategory, formatTimestamp } from '@/lib/activity';
 import { useIsTruncated } from '@/lib/useIsTruncated';
 import type { AuditLogEntry, CorrectionKind } from '@/lib/types';
 
@@ -24,7 +24,7 @@ export function ActivityRow({ entry, onMarkCorrection }: ActivityRowProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const truncated = useIsTruncated(contentRef, !expanded);
   const clip = !expanded;
-  const correctable = onMarkCorrection ? correctableKind(entry) : null;
+  const options = onMarkCorrection ? correctionOptions(entry) : [];
 
   return (
     <TableRow>
@@ -61,7 +61,7 @@ export function ActivityRow({ entry, onMarkCorrection }: ActivityRowProps) {
               </p>
             )}
           </div>
-          {correctable && onMarkCorrection && <MarkCorrection kind={correctable} onSubmit={(note) => onMarkCorrection(entry.id, correctable, note)} />}
+          {options.length > 0 && onMarkCorrection && <MarkCorrection options={options} onSubmit={(kind, note) => onMarkCorrection(entry.id, kind, note)} />}
           {(truncated || expanded) && (
             <Button
               variant="ghost"

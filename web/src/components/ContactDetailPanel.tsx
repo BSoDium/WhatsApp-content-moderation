@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { SuggestRule } from './SuggestRule';
 import { ContactAvatar } from './ContactAvatar';
 import { SelfModerationNotice } from './SelfModerationNotice';
 import { SettingRow } from './SettingRow';
@@ -456,6 +457,16 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
                   if (contextSaveState === 'saved' || contextSaveState === 'error') setContextSaveState('idle');
                 }}
               />
+              <div className="mt-3">
+                <SuggestRule
+                  scope={contact.id}
+                  disabled={contextSaveState === 'saving'}
+                  onUse={(rule) => {
+                    setContextDraft(rule);
+                    setContextSaveState('idle');
+                  }}
+                />
+              </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p id="moderation-context-status" aria-live="polite" className="flex min-h-[1.25em] items-center gap-1.5 text-sm text-muted-foreground">
                   {contextSaveState === 'saving' && (

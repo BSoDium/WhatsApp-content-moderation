@@ -165,4 +165,21 @@ describe('marking corrections', () => {
 
     expect(backend.markCorrection(flagged.id, 'false_negative', undefined, NOW)).toMatchObject({ ok: false, status: 422 });
   });
+
+  it('records a confirmation without touching strikes', () => {
+    const { backend, person, flagged } = backendWithOneStrike();
+
+    expect(backend.markCorrection(flagged.id, 'confirmed_flag', undefined, NOW)).toMatchObject({ ok: true, body: { kind: 'confirmed_flag', strikeReverted: false } });
+    expect(backend.contact(person.id)?.strikeCount).toBe(1);
+  });
+
+  it('suggests a rule only once something is labelled, and backtests it on those labels', () => {
+    const { backend, person, flagged } = backendWithOneStrike();
+    expect(backend.suggestRule(person.id)).toMatchObject({ ok: false, status: 422 });
+
+    backend.markCorrection(flagged.id, 'false_positive', undefined, NOW);
+    const result = backend.suggestRule(person.id);
+
+    expect(result).toMatchObject({ ok: true, body: { backtest: { summary: { labelled: 1, correctBefore: 0, correctNow: 1 } } } });
+  });
 });

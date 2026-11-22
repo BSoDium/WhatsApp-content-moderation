@@ -89,7 +89,7 @@ export type AuditAction =
   | 'call_warn_failed'
   | 'call_shadow';
 
-export type CorrectionKind = 'false_positive' | 'false_negative';
+export type CorrectionKind = 'false_positive' | 'false_negative' | 'confirmed_flag' | 'confirmed_pass';
 
 // Matches the `correction` field of GET /api/audit-log entries (src/web/control-server.ts).
 export interface Correction {
@@ -129,4 +129,16 @@ export interface ServerStatus {
   startedAt: number;
   serverTime: number;
   whatsapp: { status: WhatsAppStatus; since: number; statusCode: number | null };
+}
+
+// Matches POST /api/rules/suggest (src/classifier/rule-suggestion.ts).
+export interface RuleSuggestion {
+  currentRule: string;
+  candidate: string;
+  rationale: string;
+  backtest: {
+    labelled: { auditLogId: number; message: string; verdict: 'acceptable' | 'unacceptable'; nowFlagged: boolean | null; wasCorrect: boolean; nowCorrect: boolean | null }[];
+    flips: { auditLogId: number; message: string; wasFlagged: boolean; nowFlagged: boolean }[];
+    summary: { labelled: number; correctBefore: number; correctNow: number; failed: number; checkedUnlabelled: number };
+  };
 }

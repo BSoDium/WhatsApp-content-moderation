@@ -143,6 +143,7 @@ A small model like `llama3.2:3b` matches concrete criteria and misses abstract o
 - Describe what the message *does* ("asks me to call her", "asks for moral support") rather than what it is *related to* or *feels like*.
 - Keep each criterion separate, and say what to leave alone if a neighbouring topic keeps false-flagging.
 - Test in shadow mode: send or replay real messages and read the Activity panel's verdict and reason before turning real actions on.
+- Let the app draft the rule: use the flag button on rows in the Activity panel to label messages acceptable or not, then use **Suggest rule from labels** in the Policy editor (or a contact's Moderation context). A model proposes a rule, the real classifier re-judges your labelled messages and a sample of recent ones with it, and you see how many it would get right before choosing **Use as draft** and saving. It only runs when you click, on the **Rule suggestion model** (the classifier model unless you set one), and it saves nothing by itself.
 
 Example, on `llama3.2:3b`, for a contact whose messages about the operator's mother should be flagged:
 
