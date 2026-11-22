@@ -162,3 +162,26 @@ test('getLabelledExamples pairs each label with the classifier verdict, newest f
   assert.ok(getLabelledExamples({ limit: 100 }).some((example) => example.contactId === other));
   assert.equal(getLabelledExamples({ contactId: contact, limit: 1 }).length, 1);
 });
+
+test('a false positive on a strike that has already decayed leaves the newer strikes alone', () => {
+  const contact = 'decayed@s.whatsapp.net';
+  recordStrike(contact);
+  const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+  const id = logMessage({ contactId: contact, direction: 'them', message: 'old', classification: FLAGGED, action: 'delete+warn', createdAt: Date.now() - threeDaysMs });
+
+  const result = markCorrection(id, 'false_positive');
+
+  assert.ok(result.ok);
+  assert.equal(result.correction.strike_reverted, 0);
+  assert.equal(getStrikeCount(contact), 1);
+});
+
+test('a false positive when the contact has no strikes left records no revert', () => {
+  const contact = 'no-strikes@s.whatsapp.net';
+  const id = log(contact, FLAGGED, 'delete+warn');
+
+  const result = markCorrection(id, 'false_positive');
+
+  assert.ok(result.ok);
+  assert.equal(result.correction.strike_reverted, 0);
+});

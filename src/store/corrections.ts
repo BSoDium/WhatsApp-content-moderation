@@ -2,7 +2,8 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { auditLog, corrections } from './schema.ts';
-import { removeStrike } from './strikes.ts';
+import { getNumberSetting } from './settings.ts';
+import { getStrikeCount, removeStrike } from './strikes.ts';
 import type { CorrectionKind, CorrectionRecord } from '../types.ts';
 
 export type CorrectionResult =
@@ -26,11 +27,18 @@ export function verdictOf(kind: CorrectionKind): Verdict {
 }
 const STRIKE_RECORDED_ACTION = 'delete+warn';
 
+// A strike older than STRIKE_DECAY_MS has already been forgiven by decay, so taking "it" back would remove a newer strike that really was earned.
+function strikeStillCounts(contactId: string, openedAt: number): boolean {
+  const decayMs = getNumberSetting('STRIKE_DECAY_MS');
+  const withinDecay = decayMs <= 0 || Date.now() - openedAt < decayMs;
+  return withinDecay && getStrikeCount(contactId) > 0;
+}
+
 /**
  * Records the operator's verdict on a logged message: either that the
  * classifier got it wrong (a false positive or negative, which undoes what can
  * be undone) or that it got it right (a confirmation, which only records). A false positive on the message that opened a strike gives that
- * strike back; the deleted message itself can't be restored, since "delete
+ * strike back, unless it has already decayed away; the deleted message itself can't be restored, since "delete
  * for me" removes it from this device only and WhatsApp offers no way to
  * bring it back. A false negative or a confirmation is recorded without
  * acting: warning a contact retroactively would be a new moderation action,
@@ -55,7 +63,7 @@ export function markCorrection(auditLogId: number, kind: CorrectionKind, note?: 
     return { ok: false, reason: 'ineligible', error: `${kind} does not apply to this message: ${flagged ? 'the classifier flagged it' : passed ? 'the classifier let it through' : 'it was not classified'}` };
   }
 
-  const strikeReverted = kind === 'false_positive' && row.action === STRIKE_RECORDED_ACTION;
+  const strikeReverted = kind === 'false_positive' && row.action === STRIKE_RECORDED_ACTION && strikeStillCounts(row.contact_id, row.created_at);
   if (strikeReverted) removeStrike(row.contact_id);
 
   const correction = orm

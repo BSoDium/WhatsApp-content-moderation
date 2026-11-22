@@ -16,13 +16,15 @@ interface SuggestRuleProps {
   // Puts the candidate in the editor as an unsaved draft; saving stays the operator's own step.
   onUse: (rule: string) => void;
   disabled?: boolean;
+  // The editor holds edits that are not saved yet, which using the candidate would overwrite.
+  replacesUnsaved?: boolean;
 }
 
 function preview(message: string): string {
   return message.length > MESSAGE_PREVIEW_CHARS ? `${message.slice(0, MESSAGE_PREVIEW_CHARS)}…` : message;
 }
 
-export function SuggestRule({ scope, onUse, disabled }: SuggestRuleProps) {
+export function SuggestRule({ scope, onUse, disabled, replacesUnsaved }: SuggestRuleProps) {
   const [state, setState] = useState<State>({ status: 'idle' });
 
   async function suggest() {
@@ -58,12 +60,12 @@ export function SuggestRule({ scope, onUse, disabled }: SuggestRuleProps) {
         </p>
       )}
 
-      {state.status === 'ready' && <Suggestion suggestion={state.suggestion} onUse={(rule) => { onUse(rule); setState({ status: 'idle' }); }} onDiscard={() => setState({ status: 'idle' })} />}
+      {state.status === 'ready' && <Suggestion suggestion={state.suggestion} replacesUnsaved={replacesUnsaved} onUse={(rule) => { onUse(rule); setState({ status: 'idle' }); }} onDiscard={() => setState({ status: 'idle' })} />}
     </div>
   );
 }
 
-function Suggestion({ suggestion, onUse, onDiscard }: { suggestion: RuleSuggestion; onUse: (rule: string) => void; onDiscard: () => void }) {
+function Suggestion({ suggestion, replacesUnsaved, onUse, onDiscard }: { suggestion: RuleSuggestion; replacesUnsaved?: boolean; onUse: (rule: string) => void; onDiscard: () => void }) {
   const { summary, flips } = suggestion.backtest;
   const worse = summary.correctNow < summary.correctBefore;
 
@@ -80,6 +82,7 @@ function Suggestion({ suggestion, onUse, onDiscard }: { suggestion: RuleSuggesti
           Judged correctly: {summary.correctBefore} of {summary.labelled} before, <span className={worse ? 'text-destructive' : undefined}>{summary.correctNow} of {summary.labelled}</span> with this rule.
         </p>
         {summary.failed > 0 && <p className="text-muted-foreground">{summary.failed} could not be classified and are not counted.</p>}
+        {replacesUnsaved && <p className="text-muted-foreground">Written against the saved rule, not your unsaved edits; using it replaces them.</p>}
         <p className="text-muted-foreground">
           {flips.length === 0 ? `No other recent messages (${summary.checkedUnlabelled} checked) would be judged differently.` : `${flips.length} of ${summary.checkedUnlabelled} other recent messages would be judged differently:`}
         </p>
@@ -96,7 +99,7 @@ function Suggestion({ suggestion, onUse, onDiscard }: { suggestion: RuleSuggesti
           Discard
         </Button>
         <Button size="sm" onClick={() => onUse(suggestion.candidate)}>
-          Use as draft
+          {replacesUnsaved ? 'Replace my unsaved edits' : 'Use as draft'}
         </Button>
       </div>
     </div>

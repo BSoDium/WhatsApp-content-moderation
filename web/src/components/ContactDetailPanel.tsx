@@ -461,6 +461,7 @@ export const ContactDetailPanel = forwardRef<ContactDetailPanelHandle, ContactDe
                 <SuggestRule
                   scope={contact.id}
                   disabled={contextSaveState === 'saving'}
+                  replacesUnsaved={contextDirty}
                   onUse={(rule) => {
                     setContextDraft(rule);
                     setContextSaveState('idle');
