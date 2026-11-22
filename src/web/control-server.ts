@@ -18,10 +18,13 @@ import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
 import type { createProfilePhotos } from '../whatsapp/profile-photos.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
-import type { AuditLogRecord } from '../types.ts';
+import { MAX_CONTEXT_LENGTH, MAX_POLICY_LENGTH } from '../store/rule-limits.ts';
+import type { CorrectionResult } from '../store/corrections.ts';
+import type { AuditLogRecord, CorrectionKind, CorrectionRecord } from '../types.ts';
 import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
 import { getNumberSetting, listSettings, setSetting } from '../store/settings.ts';
 import { listInstalledModels } from '../classifier/installed-models.ts';
+import { suggestRule } from '../classifier/rule-suggestion.ts';
 
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
@@ -42,6 +45,10 @@ interface ControlServerDependencies {
     getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
     getStats: () => AuditLogStats;
   };
+  corrections: {
+    forAuditLogIds: (ids: number[]) => Map<number, CorrectionRecord>;
+    mark: (auditLogId: number, kind: CorrectionKind, note?: string) => CorrectionResult;
+  };
   blocks: {
     countActive: () => number;
   };
@@ -60,12 +67,18 @@ interface ControlServerDependencies {
   getConnectionState: () => ConnectionState;
   allowSelf: boolean;
   listModels?: typeof listInstalledModels;
+  suggestRule?: typeof suggestRule;
 }
 
 const logger = createLogger('control-server');
 
 const STARTED_AT = Date.now();
 const BAD_GATEWAY = 502;
+const CONFLICT = 409;
+const SUGGESTION_ERROR_STATUS = { 'no-labels': 422, 'not-monitored': 404, 'proposal-failed': BAD_GATEWAY } as const;
+
+// A suggestion occupies the model for minutes on CPU-only hardware, so a second one is refused rather than queued behind live moderation.
+let suggestionInFlight = false;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
@@ -124,11 +137,6 @@ export function getControlAppUrl(port: number, allowedLogin: string | undefined)
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
-// A generous ceiling on a contact's moderation-context textarea — real
-// guidance, not a payload budget (see MAX_JSON_BODY_BYTES below for that).
-const MAX_CONTEXT_LENGTH = 10_000;
-// Same idea for the global policy editor.
-const MAX_POLICY_LENGTH = 50_000;
 // Keeps an SSE connection from being silently killed by an idle-connection
 // timeout on the Tailscale Serve proxy in front of this server, well under
 // any reasonable such timeout.
@@ -292,8 +300,21 @@ function rosterEntry(
   };
 }
 
+const MAX_CORRECTION_NOTE_LENGTH = 500;
+const CORRECTION_KINDS: readonly CorrectionKind[] = ['false_positive', 'false_negative', 'confirmed_flag', 'confirmed_pass'];
+
+function isCorrectionKind(value: unknown): value is CorrectionKind {
+  return CORRECTION_KINDS.includes(value as CorrectionKind);
+}
+const CORRECTION_ERROR_STATUS = { 'not-found': 404, 'already-marked': 409, ineligible: 422 } as const;
+
 // snake_case DB row -> camelCase API shape, matching every other endpoint's convention.
-function auditLogEntry(row: AuditLogRecord, contactName: string) {
+function correctionEntry(correction: CorrectionRecord | undefined) {
+  if (!correction) return null;
+  return { id: correction.id, kind: correction.kind, note: correction.note, strikeReverted: Boolean(correction.strike_reverted), createdAt: correction.created_at };
+}
+
+function auditLogEntry(row: AuditLogRecord, contactName: string, correction?: CorrectionRecord) {
   return {
     id: row.id,
     contactId: row.contact_id,
@@ -307,6 +328,7 @@ function auditLogEntry(row: AuditLogRecord, contactName: string) {
     error: row.error,
     action: row.action,
     createdAt: row.created_at,
+    correction: correctionEntry(correction),
   };
 }
 
@@ -331,7 +353,7 @@ async function handleApi(
   searchParams: URLSearchParams,
   deps: ControlServerDependencies,
 ): Promise<boolean> {
-  const { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks } = deps;
+  const { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, corrections, blocks } = deps;
 
   // Server-Sent Events: pushes a `data: <topic>` line whenever contacts,
   // the roster, or the audit log changes (see src/store/events.ts), so the
@@ -420,9 +442,37 @@ async function handleApi(
       }
       return name;
     };
-    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id)));
+    const pageCorrections = corrections.forAuditLogIds(pageRows.map((row) => row.id));
+    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id), pageCorrections.get(row.id)));
     const nextBefore = hasMore ? pageRows[pageRows.length - 1].id : null;
     sendJson(res, 200, { entries, nextBefore });
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 3 && segments[0] === 'audit-log' && segments[2] === 'correction') {
+    const auditLogId = Number(segments[1]);
+    if (!Number.isInteger(auditLogId) || auditLogId <= 0) {
+      sendJson(res, 400, { error: 'audit log id must be a positive integer' });
+      return true;
+    }
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    const { kind, note } = (typeof body === 'object' && body !== null ? body : {}) as { kind?: unknown; note?: unknown };
+    if (!isCorrectionKind(kind)) {
+      sendJson(res, 400, { error: `kind must be one of: ${CORRECTION_KINDS.join(', ')}` });
+      return true;
+    }
+    if (note !== undefined && (typeof note !== 'string' || note.length > MAX_CORRECTION_NOTE_LENGTH)) {
+      sendJson(res, 400, { error: `note must be a string of at most ${MAX_CORRECTION_NOTE_LENGTH} characters` });
+      return true;
+    }
+    const result = corrections.mark(auditLogId, kind, note);
+    if (!result.ok) {
+      sendJson(res, CORRECTION_ERROR_STATUS[result.reason], { error: result.error });
+      return true;
+    }
+    sendJson(res, 201, correctionEntry(result.correction));
     return true;
   }
 
@@ -459,6 +509,33 @@ async function handleApi(
       return true;
     }
     sendJson(res, 200, { text: getPolicyText() });
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 2 && segments[0] === 'rules' && segments[1] === 'suggest') {
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    const scope = typeof body === 'object' && body !== null && 'scope' in body ? body.scope : undefined;
+    if (typeof scope !== 'string' || scope === '') {
+      sendJson(res, 400, { error: "scope must be 'global' or a contact id" });
+      return true;
+    }
+    if (suggestionInFlight) {
+      sendJson(res, CONFLICT, { error: 'a rule suggestion is already running' });
+      return true;
+    }
+    suggestionInFlight = true;
+    try {
+      const result = await (deps.suggestRule ?? suggestRule)(scope === 'global' ? 'global' : { contactId: scope });
+      if (!result.ok) {
+        sendJson(res, SUGGESTION_ERROR_STATUS[result.reason], { error: result.error });
+        return true;
+      }
+      sendJson(res, 200, { currentRule: result.currentRule, candidate: result.candidate, rationale: result.rationale, backtest: result.backtest });
+    } finally {
+      suggestionInFlight = false;
+    }
     return true;
   }
 
@@ -754,6 +831,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     setBlockBackoffMax: (contactId: string, maxMs: number | null) => boolean,
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
+ *   corrections: {
+ *     forAuditLogIds: (ids: number[]) => Map<number, object>,
+ *     mark: (auditLogId: number, kind: 'false_positive' | 'false_negative', note?: string) => { ok: true, correction: object } | { ok: false, reason: string, error: string },
+ *   },
  *   blocks: { countActive: () => number },
  *   allowedLogin: string | undefined,
  * }} deps

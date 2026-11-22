@@ -139,6 +139,20 @@ function makeBlocks(activeCount = 0) {
   return { countActive: () => activeCount };
 }
 
+function makeCorrections(result = { ok: true, correction: { id: 1, audit_log_id: 1, contact_id: 'alice@s.whatsapp.net', kind: 'false_positive', note: null, strike_reverted: 1, created_at: 5 } }) {
+  return {
+    marks: [],
+    stored: new Map(),
+    forAuditLogIds(ids) {
+      return new Map(ids.filter((id) => this.stored.has(id)).map((id) => [id, this.stored.get(id)]));
+    },
+    mark(auditLogId, kind, note) {
+      this.marks.push({ auditLogId, kind, note });
+      return result;
+    },
+  };
+}
+
 async function withServer(
   {
     manualOverride = makeOverride(),
@@ -146,11 +160,13 @@ async function withServer(
     profilePhotos = makeProfilePhotos(),
     monitoredContacts = makeMonitoredContacts(),
     auditLog = makeAuditLog(),
+    corrections = makeCorrections(),
     blocks = makeBlocks(),
     getSelfId = () => null,
     getConnectionState = () => ({ status: 'open', since: 1, statusCode: null }),
     allowSelf = false,
     listModels = undefined,
+    suggestRule = undefined,
     // A distinct flag rather than an `allowedLogin` option defaulting to
     // ALLOWED: passing `allowedLogin: undefined` explicitly wouldn't override
     // a default-parameter fallback, since default destructuring treats an
@@ -159,10 +175,10 @@ async function withServer(
   } = {},
   run,
 ) {
-  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, getConnectionState, allowSelf, listModels });
+  const server = createControlServer({ manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, corrections, blocks, allowedLogin: openAccess ? undefined : ALLOWED, getSelfId, getConnectionState, allowSelf, listModels, suggestRule });
   const port = await server.listen(0);
   try {
-    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks });
+    await run(`http://127.0.0.1:${port}`, { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, corrections, blocks });
   } finally {
     await server.close();
   }
@@ -473,6 +489,7 @@ test('GET /api/audit-log returns entries with the contact name resolved and a ne
         error: null,
         action: 'delete+warn',
         createdAt: 200,
+        correction: null,
       },
     ]);
     assert.equal(body.nextBefore, 2);
@@ -954,5 +971,108 @@ test('GET /api/ollama/models answers 502 when Ollama is unreachable', async () =
     const res = await fetch(`${base}/api/ollama/models`, { headers: authHeaders() });
     assert.equal(res.status, 502);
     assert.deepEqual(await res.json(), { error: 'fetch failed' });
+  });
+});
+
+test('GET /api/audit-log attaches the correction recorded for an entry', async () => {
+  const auditLog = makeAuditLog([{ id: 2, contact_id: 'alice@s.whatsapp.net', direction: 'them', message: 'x', classification_ok: 1, flagged: 1, category: 'c', reason: 'r', error: null, action: 'delete+warn', created_at: 200 }]);
+  const corrections = makeCorrections();
+  corrections.stored.set(2, { id: 7, audit_log_id: 2, contact_id: 'alice@s.whatsapp.net', kind: 'false_positive', note: 'banter', strike_reverted: 1, created_at: 300 });
+
+  await withServer({ auditLog, corrections }, async (base) => {
+    const body = await (await fetch(`${base}/api/audit-log`, { headers: authHeaders() })).json();
+    assert.deepEqual(body.entries[0].correction, { id: 7, kind: 'false_positive', note: 'banter', strikeReverted: true, createdAt: 300 });
+  });
+});
+
+test('POST /api/audit-log/:id/correction records the correction and returns it', async () => {
+  const corrections = makeCorrections();
+
+  await withServer({ corrections }, async (base) => {
+    const res = await fetch(`${base}/api/audit-log/4/correction`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ kind: 'false_positive', note: 'was joking' }),
+    });
+    assert.equal(res.status, 201);
+    assert.deepEqual(await res.json(), { id: 1, kind: 'false_positive', note: null, strikeReverted: true, createdAt: 5 });
+    assert.deepEqual(corrections.marks, [{ auditLogId: 4, kind: 'false_positive', note: 'was joking' }]);
+  });
+});
+
+test('POST /api/audit-log/:id/correction rejects an unknown kind and an over-long note', async () => {
+  const corrections = makeCorrections();
+
+  await withServer({ corrections }, async (base) => {
+    const post = (body) =>
+      fetch(`${base}/api/audit-log/4/correction`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+    assert.equal((await post({ kind: 'wrong' })).status, 400);
+    assert.equal((await post({ kind: 'confirmed_flag' })).status, 201);
+    assert.equal((await post({ kind: 'false_negative', note: 'x'.repeat(501) })).status, 400);
+    assert.deepEqual(corrections.marks.map((mark) => mark.kind), ['confirmed_flag']);
+  });
+});
+
+test('POST /api/audit-log/:id/correction maps store refusals to 404, 409 and 422', async () => {
+  const statuses = { 'not-found': 404, 'already-marked': 409, ineligible: 422 };
+
+  for (const [reason, status] of Object.entries(statuses)) {
+    await withServer({ corrections: makeCorrections({ ok: false, reason, error: reason }) }, async (base) => {
+      const res = await fetch(`${base}/api/audit-log/4/correction`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ kind: 'false_positive' }),
+      });
+      assert.equal(res.status, status);
+    });
+  }
+});
+
+const SUGGESTION = { currentRule: 'old', candidate: 'new', rationale: 'why', backtest: { labelled: [], flips: [], summary: { labelled: 0, correctBefore: 0, correctNow: 0, failed: 0, checkedUnlabelled: 0 } } };
+
+function postSuggest(base, body) {
+  return fetch(`${base}/api/rules/suggest`, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+}
+
+test('POST /api/rules/suggest returns the candidate and backtest for the global scope or a contact', async () => {
+  const scopes = [];
+  const suggestRule = async (scope) => (scopes.push(scope), { ok: true, ...SUGGESTION });
+
+  await withServer({ suggestRule }, async (base) => {
+    const res = await postSuggest(base, { scope: 'global' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), SUGGESTION);
+    await postSuggest(base, { scope: 'alice@s.whatsapp.net' });
+  });
+
+  assert.deepEqual(scopes, ['global', { contactId: 'alice@s.whatsapp.net' }]);
+});
+
+test('POST /api/rules/suggest rejects a missing scope and maps failures to 422, 404 and 502', async () => {
+  await withServer({ suggestRule: async () => ({ ok: true, ...SUGGESTION }) }, async (base) => {
+    assert.equal((await postSuggest(base, {})).status, 400);
+  });
+
+  const statuses = { 'no-labels': 422, 'not-monitored': 404, 'proposal-failed': 502 };
+  for (const [reason, status] of Object.entries(statuses)) {
+    await withServer({ suggestRule: async () => ({ ok: false, reason, error: reason }) }, async (base) => {
+      const res = await postSuggest(base, { scope: 'global' });
+      assert.equal(res.status, status);
+      assert.deepEqual(await res.json(), { error: reason });
+    });
+  }
+});
+
+test('POST /api/rules/suggest refuses a second suggestion while one is running', async () => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  const suggestRule = async () => (await gate, { ok: true, ...SUGGESTION });
+
+  await withServer({ suggestRule }, async (base) => {
+    const first = postSuggest(base, { scope: 'global' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal((await postSuggest(base, { scope: 'global' })).status, 409);
+    release();
+    assert.equal((await first).status, 200);
   });
 });

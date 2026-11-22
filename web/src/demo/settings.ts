@@ -17,14 +17,65 @@ export const DEMO_SETTINGS: Setting[] = [
     default: '1',
     value: '0',
   }),
-  setting({ key: 'OLLAMA_HOST', section: 'classifier', label: 'Ollama host', description: 'Docker Compose and a local Ollama both use this loopback address.', type: 'string', default: 'http://127.0.0.1:11434' }),
+  setting({
+    key: 'LLM_PROVIDER',
+    section: 'classifier',
+    label: 'LLM provider',
+    description:
+      'Ollama runs the models on your own machine. An OpenAI-compatible API (OpenAI, OpenRouter, vLLM, FreeLLMAPI, ...) sends every classified message and recent conversation to that service, so only choose one you trust with these chats.',
+    type: 'string',
+    default: 'ollama',
+    options: ['ollama', 'openai'],
+  }),
+  setting({
+    key: 'OLLAMA_HOST',
+    section: 'classifier',
+    label: 'Ollama host',
+    description: 'Used when the provider is Ollama. Docker Compose and a local Ollama both use this loopback address.',
+    type: 'string',
+    default: 'http://127.0.0.1:11434',
+  }),
+  setting({
+    key: 'LLM_BASE_URL',
+    section: 'classifier',
+    label: 'API base URL',
+    description: 'Used when the provider is an OpenAI-compatible API: the URL that serves /chat/completions, e.g. https://openrouter.ai/api/v1.',
+    type: 'string',
+    default: '',
+  }),
+  setting({
+    key: 'LLM_API_KEY',
+    section: 'classifier',
+    label: 'API key',
+    description: 'Sent as a bearer token to the API above. Stored in the local database and never shown again once saved. Leave blank for a server that needs none.',
+    type: 'string',
+    default: '',
+    secret: true,
+  }),
   setting({
     key: 'OLLAMA_MODEL',
     section: 'classifier',
     label: 'Classifier model',
-    description: 'The Ollama model used to classify incoming messages against the policy.',
+    description: 'The model used to classify incoming messages against the policy, as named by the provider.',
     type: 'string',
     default: 'llama3.2:3b',
+  }),
+  setting({
+    key: 'RULE_PROPOSER_MODEL',
+    section: 'classifier',
+    label: 'Rule suggestion model',
+    description: 'Model that proposes a rule from your labelled messages. It runs only when you ask, so a larger, slower one is fine. Leave blank to inherit the classifier model.',
+    type: 'string',
+    default: '',
+  }),
+  setting({
+    key: 'RULE_PROPOSER_TIMEOUT_MS',
+    section: 'classifier',
+    label: 'Rule suggestion timeout (ms)',
+    description: 'How long to wait for the model to propose a rule before giving up.',
+    type: 'int',
+    default: '300000',
+    min: 1,
   }),
   setting({
     key: 'CLASSIFIER_TIMEOUT_MS',
@@ -110,7 +161,7 @@ export const DEMO_SETTINGS: Setting[] = [
     key: 'WARNING_MESSAGE',
     section: 'warning',
     label: 'Fallback warning message',
-    description: 'Sent to a contact only if the generated warning fails open (Ollama unreachable, timeout, empty response).',
+    description: 'Sent to a contact only if the generated warning fails open (model unreachable, timeout, empty response).',
     type: 'string',
     default: "That message was removed for violating this chat's policy.",
     required: true,
@@ -275,7 +326,11 @@ Leave alone: friends and family, colleagues, shops I have ordered from, and ordi
 
 export function validateSettingValue(definition: Setting, raw: string): string | undefined {
   if (definition.type === 'bool') return raw === '0' || raw === '1' ? undefined : `${definition.key} must be 0 or 1`;
-  if (definition.type === 'string') return definition.required && raw.trim() === '' ? `${definition.key} must not be blank` : undefined;
+  if (definition.type === 'string') {
+    if (definition.required && raw.trim() === '') return `${definition.key} must not be blank`;
+    if (definition.options && !definition.options.includes(raw)) return `${definition.key} must be one of: ${definition.options.join(', ')}`;
+    return undefined;
+  }
   const parsed = Number(raw);
   if (raw.trim() === '' || !Number.isFinite(parsed)) return `${definition.key} must be a number`;
   if (definition.type === 'int' && !Number.isInteger(parsed)) return `${definition.key} must be a whole number`;

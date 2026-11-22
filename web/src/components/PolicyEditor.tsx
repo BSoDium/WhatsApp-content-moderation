@@ -3,6 +3,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { ErrorBanner } from './ErrorBanner';
+import { SuggestRule } from './SuggestRule';
 import { usePolicy } from '@/lib/useSettings';
 
 interface PolicyEditorProps {
@@ -58,6 +59,7 @@ export function PolicyEditor({ open, onOpenChange, skipInitialAnimation }: Polic
             className="min-h-[50vh] flex-1 font-mono text-sm"
             placeholder="Flag anything that..."
           />
+          <SuggestRule scope="global" onUse={setDraft} disabled={loading} replacesUnsaved={dirty} />
           <div className="flex items-center justify-end gap-3">
             {dirty && <p className="text-sm text-muted-foreground">Unsaved changes</p>}
             <Button onClick={handleSave} disabled={!dirty || saving || draft.trim().length === 0}>

@@ -1,6 +1,14 @@
 # Spec: learning moderation rules from labelled messages
 
-Status: proposal, nothing built.
+Status: built (issue #73), with these departures from the proposal below:
+
+- **Labels are corrections.** There is no `feedback_labels` table. The `corrections` table behind "false positive / false negative" (issue #115) also holds confirmations (`confirmed_flag`, `confirmed_pass`), and each kind maps to an `acceptable` or `unacceptable` verdict. `POST /api/audit-log/:id/correction` replaces `POST /api/feedback`.
+- **Accepting fills the editor.** "Use as draft" puts the candidate in the policy editor or the contact's context field as an unsaved edit; the existing Save button is the only thing that changes a rule.
+- **Context is no longer one-sided.** The operator's own replies are already logged as `outgoing` audit rows, so the conversation shown to the proposer and the classifier includes them.
+- **Backtest bounds.** At most 24 labelled messages, plus 8 recent unlabelled messages for each of up to 4 contacts, run one at a time (`src/classifier/rule-backtest.ts`).
+- **One suggestion at a time.** `POST /api/rules/suggest` answers 409 while another is running, so a suggestion can't pile up behind live moderation on CPU-only hardware.
+
+The rest of this page is the original proposal.
 
 ## Problem
 

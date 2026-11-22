@@ -99,6 +99,17 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         return { text: policyText };
       },
     },
+    {
+      method: 'POST',
+      match: '/api/rules/suggest',
+      body: {
+        currentRule: policyText,
+        candidate: `${policyText}\n- Flag messages that pressure me to answer right away.`,
+        rationale: 'Adds the pressure to answer that your labelled messages share.',
+        backtest: { labelled: [], flips: [], summary: { labelled: 4, correctBefore: 2, correctNow: 4, failed: 0, checkedUnlabelled: 12 } },
+      },
+    },
+    { method: 'POST', match: /^\/api\/audit-log\/\d+\/correction$/, status: 201, body: { id: 1, kind: 'false_positive', note: null, strikeReverted: true, createdAt: Date.now() } },
     { match: /^\/api\/audit-log/, body: { entries: FIXTURE_AUDIT_LOG, nextBefore: null } },
   ];
 }

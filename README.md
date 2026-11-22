@@ -129,7 +129,7 @@ Open `https://whatsapp-moderation.<your-tailnet>.ts.net/` (the console's Service
 
 ### Classifier
 
-Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service — no per-message API cost, runs entirely on the self-hosted machine. `llama3.2:3b` is the default (`docker compose exec ollama ollama pull llama3.2:3b`); change it, and the Ollama host, in the Settings panel. It was chosen over the cheaper `llama3.2:1b` after the smaller model proved unreliable under JSON-schema-constrained output — see [`docs/decisions.md`](docs/decisions.md) for the comparison.
+Uses a local [Ollama](https://ollama.com) model, bundled as a Compose service — no per-message API cost, runs entirely on the self-hosted machine. `llama3.2:3b` is the default (`docker compose exec ollama ollama pull llama3.2:3b`); change it, and the Ollama host, in the Settings panel. For a machine too weak for local inference, set the LLM provider to an OpenAI-compatible API (OpenAI, OpenRouter, vLLM, FreeLLMAPI, ...) and fill in its base URL and key: every classified message and its recent conversation then leave your machine for that service, so it is opt-in and the default stays Ollama. It was chosen over the cheaper `llama3.2:1b` after the smaller model proved unreliable under JSON-schema-constrained output — see [`docs/decisions.md`](docs/decisions.md) for the comparison.
 
 Each verdict is structured JSON: who the message targets, whether it's mutual banter, and the flag itself. Mutual banter (the user teased first and the contact answered in kind) is let through, except for real threats, sexually explicit messages, pressure after a clear refusal, and any continuation of a message moderation already removed. The last few messages (**History limit**, 10 by default) are sent as context, including the user's own and earlier warnings.
 
@@ -143,6 +143,7 @@ A small model like `llama3.2:3b` matches concrete criteria and misses abstract o
 - Describe what the message *does* ("asks me to call her", "asks for moral support") rather than what it is *related to* or *feels like*.
 - Keep each criterion separate, and say what to leave alone if a neighbouring topic keeps false-flagging.
 - Test in shadow mode: send or replay real messages and read the Activity panel's verdict and reason before turning real actions on.
+- Let the app draft the rule: use the flag button on rows in the Activity panel to label messages acceptable or not, then use **Suggest rule from labels** in the Policy editor (or a contact's Moderation context). A model proposes a rule, the real classifier re-judges your labelled messages and a sample of recent ones with it, and you see how many it would get right before choosing **Use as draft** and saving. It only runs when you click, on the **Rule suggestion model** (the classifier model unless you set one), and it saves nothing by itself.
 
 Example, on `llama3.2:3b`, for a contact whose messages about the operator's mother should be flagged:
 

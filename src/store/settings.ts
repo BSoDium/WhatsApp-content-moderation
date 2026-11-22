@@ -29,7 +29,13 @@ export interface SettingDef {
   // 'string' types only: rejects blank, for the rare setting (a fail-open
   // fallback message) where an empty value would defeat its own purpose.
   required?: boolean;
+  // 'string' types only: the complete set of accepted values, rendered as a picker.
+  options?: readonly string[];
+  // 'string' types only: never sent back to the browser, only a mask saying a value is set.
+  secret?: boolean;
 }
+
+export const SECRET_MASK = '••••••••';
 
 // Hardcoded here, not read from process.env — moderation tuning lives
 // entirely in the web control app, see docs/decisions.md.
@@ -43,20 +49,64 @@ export const SETTINGS: readonly SettingDef[] = [
     default: '1',
   },
   {
+    key: 'LLM_PROVIDER',
+    section: 'classifier',
+    label: 'LLM provider',
+    description:
+      'Ollama runs the models on your own machine. An OpenAI-compatible API (OpenAI, OpenRouter, vLLM, FreeLLMAPI, ...) sends every classified message and recent conversation to that service, so only choose one you trust with these chats.',
+    type: 'string',
+    default: 'ollama',
+    options: ['ollama', 'openai'],
+  },
+  {
     key: 'OLLAMA_HOST',
     section: 'classifier',
     label: 'Ollama host',
-    description: 'Docker Compose and a local Ollama both use this loopback address.',
+    description: 'Used when the provider is Ollama. Docker Compose and a local Ollama both use this loopback address.',
     type: 'string',
     default: 'http://127.0.0.1:11434',
+  },
+  {
+    key: 'LLM_BASE_URL',
+    section: 'classifier',
+    label: 'API base URL',
+    description: 'Used when the provider is an OpenAI-compatible API: the URL that serves /chat/completions, e.g. https://openrouter.ai/api/v1.',
+    type: 'string',
+    default: '',
+  },
+  {
+    key: 'LLM_API_KEY',
+    section: 'classifier',
+    label: 'API key',
+    description: 'Sent as a bearer token to the API above. Stored in the local database and never shown again once saved. Leave blank for a server that needs none.',
+    type: 'string',
+    default: '',
+    secret: true,
   },
   {
     key: 'OLLAMA_MODEL',
     section: 'classifier',
     label: 'Classifier model',
-    description: 'The Ollama model used to classify incoming messages against the policy.',
+    description: 'The model used to classify incoming messages against the policy, as named by the provider.',
     type: 'string',
     default: 'llama3.2:3b',
+  },
+  {
+    key: 'RULE_PROPOSER_MODEL',
+    section: 'classifier',
+    label: 'Rule suggestion model',
+    description: 'Model that proposes a rule from your labelled messages. It runs only when you ask, so a larger, slower one is fine. Leave blank to inherit the classifier model.',
+    type: 'string',
+    default: '',
+  },
+  {
+    key: 'RULE_PROPOSER_TIMEOUT_MS',
+    section: 'classifier',
+    label: 'Rule suggestion timeout (ms)',
+    description: 'How long to wait for the model to propose a rule before giving up.',
+    type: 'int',
+    default: '300000',
+    min: 1,
   },
   {
     key: 'CLASSIFIER_TIMEOUT_MS',
@@ -150,7 +200,7 @@ export const SETTINGS: readonly SettingDef[] = [
     key: 'WARNING_MESSAGE',
     section: 'warning',
     label: 'Fallback warning message',
-    description: 'Sent to a contact only if the generated warning fails open (Ollama unreachable, timeout, empty response).',
+    description: 'Sent to a contact only if the generated warning fails open (model unreachable, timeout, empty response).',
     type: 'string',
     default: "That message was removed for violating this chat's policy.",
     required: true,
@@ -317,6 +367,7 @@ const SETTINGS_BY_KEY = new Map(SETTINGS.map((def) => [def.key, def]));
 function validateValue(def: SettingDef, raw: string): string | undefined {
   if (def.type === 'string') {
     if (def.required && raw.trim() === '') return `${def.label} must not be empty`;
+    if (def.options && !def.options.includes(raw)) return `${def.label} must be one of: ${def.options.join(', ')}`;
     return undefined;
   }
   if (def.type === 'bool') {
@@ -394,6 +445,12 @@ export interface SettingView {
   // after submitting it.
   min?: number;
   required?: boolean;
+  options?: readonly string[];
+  secret?: boolean;
+}
+
+function viewValue(def: SettingDef, value: string): string {
+  return def.secret && value !== '' ? SECRET_MASK : value;
 }
 
 export function listSettings(): SettingView[] {
@@ -405,10 +462,12 @@ export function listSettings(): SettingView[] {
     label: def.label,
     description: def.description,
     type: def.type,
-    value: values.get(def.key) ?? def.default,
+    value: viewValue(def, values.get(def.key) ?? def.default),
     default: def.default,
     min: def.min,
     required: def.required,
+    options: def.options,
+    secret: def.secret,
   }));
 }
 
@@ -420,6 +479,9 @@ export function listSettings(): SettingView[] {
 export function setSetting(key: string, value: string): { ok: true } | { ok: false; error: string } {
   const def = SETTINGS_BY_KEY.get(key);
   if (!def) return { ok: false, error: `unknown setting: ${key}` };
+
+  // The browser only ever holds the mask, so sending it back means "unchanged".
+  if (def.secret && value === SECRET_MASK) return { ok: true };
 
   const error = validateValue(def, value);
   if (error) return { ok: false, error };

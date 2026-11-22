@@ -1,4 +1,4 @@
-import type { OverrideCommand } from '@/lib/types';
+import type { CorrectionKind, OverrideCommand } from '@/lib/types';
 import type { CommandResult, DemoBackend } from './backend';
 import { DEMO_USER } from './tailnet';
 
@@ -7,6 +7,7 @@ export interface DemoResponse {
   body: unknown;
 }
 
+const CORRECTION_KINDS: ReadonlySet<string> = new Set<CorrectionKind>(['false_positive', 'false_negative', 'confirmed_flag', 'confirmed_pass']);
 const OVERRIDE_COMMANDS: ReadonlySet<string> = new Set<OverrideCommand>(['pause', 'resume', 'unblock', 'reset-strikes']);
 
 function fromResult(result: CommandResult, status = 200): DemoResponse {
@@ -91,6 +92,15 @@ export function handleDemoRequest(backend: DemoBackend, method: string, url: URL
         ],
       },
     };
+  }
+
+  if (method === 'POST' && segments.length === 2 && segments[0] === 'rules' && segments[1] === 'suggest') {
+    return typeof body.scope === 'string' && body.scope !== '' ? fromResult(backend.suggestRule(body.scope)) : badRequest("scope must be 'global' or a contact id");
+  }
+
+  if (method === 'POST' && segments.length === 3 && segments[0] === 'audit-log' && segments[2] === 'correction') {
+    if (!CORRECTION_KINDS.has(body.kind as string)) return badRequest('kind must be one of: false_positive, false_negative, confirmed_flag, confirmed_pass');
+    return fromResult(backend.markCorrection(Number(segments[1]), body.kind as CorrectionKind, typeof body.note === 'string' ? body.note : undefined), 201);
   }
 
   if (method === 'POST' && segments.length === 1 && segments[0] === 'policy') {

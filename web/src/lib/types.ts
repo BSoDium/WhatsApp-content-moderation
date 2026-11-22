@@ -35,6 +35,9 @@ export interface Setting {
   // Mirrors SettingDef in src/store/settings.ts, for client-side validation.
   min?: number;
   required?: boolean;
+  options?: readonly string[];
+  // The value is a mask saying one is set, never the secret itself.
+  secret?: boolean;
 }
 
 // Matches GET /api/meta.
@@ -86,6 +89,17 @@ export type AuditAction =
   | 'call_warn_failed'
   | 'call_shadow';
 
+export type CorrectionKind = 'false_positive' | 'false_negative' | 'confirmed_flag' | 'confirmed_pass';
+
+// Matches the `correction` field of GET /api/audit-log entries (src/web/control-server.ts).
+export interface Correction {
+  id: number;
+  kind: CorrectionKind;
+  note: string | null;
+  strikeReverted: boolean;
+  createdAt: number;
+}
+
 export interface AuditLogEntry {
   id: number;
   contactId: string;
@@ -99,6 +113,7 @@ export interface AuditLogEntry {
   error: string | null;
   action: AuditAction;
   createdAt: number;
+  correction?: Correction | null;
 }
 
 export interface AuditLogPage {
@@ -114,4 +129,16 @@ export interface ServerStatus {
   startedAt: number;
   serverTime: number;
   whatsapp: { status: WhatsAppStatus; since: number; statusCode: number | null };
+}
+
+// Matches POST /api/rules/suggest (src/classifier/rule-suggestion.ts).
+export interface RuleSuggestion {
+  currentRule: string;
+  candidate: string;
+  rationale: string;
+  backtest: {
+    labelled: { auditLogId: number; message: string; verdict: 'acceptable' | 'unacceptable'; nowFlagged: boolean | null; wasCorrect: boolean; nowCorrect: boolean | null }[];
+    flips: { auditLogId: number; message: string; wasFlagged: boolean; nowFlagged: boolean }[];
+    summary: { labelled: number; correctBefore: number; correctNow: number; failed: number; checkedUnlabelled: number };
+  };
 }

@@ -1,4 +1,5 @@
-import type { AuditLogEntry, AuditLogPage, Contact, OverrideCommand, RosterEntry, ServerStatus, Setting, Stats } from '@/lib/types';
+import { correctionOptions } from '@/lib/activity';
+import type { AuditLogEntry, AuditLogPage, Contact, CorrectionKind, OverrideCommand, RosterEntry, RuleSuggestion, ServerStatus, Setting, Stats } from '@/lib/types';
 import { DEMO_PEOPLE, SELF_ID, SELF_NAME, type DemoPerson } from './people';
 import { DEMO_POLICY_TEXT, DEMO_SETTINGS, validateSettingValue } from './settings';
 
@@ -219,6 +220,54 @@ export class DemoBackend {
     const hasMore = matching.length > limit;
     const entries = hasMore ? matching.slice(0, limit) : matching;
     return { entries, nextBefore: hasMore ? entries[entries.length - 1].id : null };
+  }
+
+  markCorrection(entryId: number, kind: CorrectionKind, note: string | undefined, now = Date.now()): CommandResult {
+    const entry = this.audit.find((candidate) => candidate.id === entryId);
+    if (!entry) return { ok: false, status: 404, error: 'audit log entry not found' };
+    if (entry.correction) return { ok: false, status: 409, error: 'this message is already marked' };
+    if (!correctionOptions(entry).some((option) => option.kind === kind)) return { ok: false, status: 422, error: 'the marked kind does not match what the classifier decided' };
+
+    const state = this.contacts.get(entry.contactId);
+    const strikeReverted = kind === 'false_positive' && entry.action === 'delete+warn' && state !== undefined && state.strikeCount > 0;
+    if (strikeReverted) state.strikeCount -= 1;
+    entry.correction = { id: entryId, kind, note: note || null, strikeReverted, createdAt: now };
+    this.emit('audit-log');
+    if (strikeReverted) this.emit('roster');
+    return { ok: true, body: entry.correction };
+  }
+
+  // The demo has no model to ask: the candidate is a fixed, fictional rule and the backtest is computed from the labels given.
+  suggestRule(scope: string): CommandResult {
+    const labelled = this.audit.filter((entry) => entry.correction && (scope === 'global' || entry.contactId === scope));
+    if (labelled.length === 0) return { ok: false, status: 422, error: 'label some messages in the activity panel first' };
+
+    const unacceptable = (entry: AuditLogEntry) => entry.correction?.kind === 'false_negative' || entry.correction?.kind === 'confirmed_flag';
+    const currentRule = scope === 'global' ? this.policy : (this.contacts.get(scope)?.context ?? '');
+    const suggestion: RuleSuggestion = {
+      currentRule,
+      candidate: `${currentRule.trim()}\n- Flag messages that pressure me to answer, call back or send money right away, in any language.`.trim(),
+      rationale: 'Adds the pressure to answer or pay immediately that your labelled messages have in common.',
+      backtest: {
+        labelled: labelled.map((entry) => ({
+          auditLogId: entry.id,
+          message: entry.message,
+          verdict: unacceptable(entry) ? 'unacceptable' : 'acceptable',
+          nowFlagged: unacceptable(entry),
+          wasCorrect: entry.correction?.kind === 'confirmed_flag' || entry.correction?.kind === 'confirmed_pass',
+          nowCorrect: true,
+        })),
+        flips: [],
+        summary: {
+          labelled: labelled.length,
+          correctBefore: labelled.filter((entry) => entry.correction?.kind.startsWith('confirmed')).length,
+          correctNow: labelled.length,
+          failed: 0,
+          checkedUnlabelled: 8,
+        },
+      },
+    };
+    return { ok: true, body: suggestion };
   }
 
   status(now: number): ServerStatus {
