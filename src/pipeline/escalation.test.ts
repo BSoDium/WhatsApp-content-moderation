@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-escalation.test.sqlite';
 
-const { maybeBlockContact } = await import('./escalation.ts');
+const { maybeBlockContact, refreshStaleBlock, blockOutlook } = await import('./escalation.ts');
 const { getActiveBlock, markUnblocked } = await import('../store/blocks.ts');
 const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.ts');
 const { setSetting } = await import('../store/settings.ts');
@@ -59,4 +59,89 @@ test('with growing blocks off, the full BLOCK_JITTER_MS applies to the fixed dur
 
   assert.ok(lengths.every((ms) => ms <= 2 * HOUR_MS + 1000));
   assert.ok(lengths.some((ms) => Math.abs(ms - HOUR_MS) > HOUR_MS * 0.25));
+});
+
+test('a stale block record closed by syncBlock lets the contact be blocked again', async () => {
+  const contact = monitored('stale@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const stale = getActiveBlock(contact)!;
+  const blocked: string[] = [];
+
+  const blockedAfter = await maybeBlockContact(
+    contact,
+    STRIKE_THRESHOLD + 1,
+    STRIKE_THRESHOLD,
+    async (id) => void blocked.push(id),
+    async () => void markUnblocked(stale.id),
+  );
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, [contact]);
+  assert.notEqual(getActiveBlock(contact)?.id, stale.id);
+});
+
+test('a block record syncBlock leaves open is not blocked a second time', async () => {
+  const contact = monitored('confirmed@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const blocked: string[] = [];
+
+  const blockedAfter = await maybeBlockContact(
+    contact,
+    STRIKE_THRESHOLD + 1,
+    STRIKE_THRESHOLD,
+    async (id) => void blocked.push(id),
+    async () => {},
+  );
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, []);
+});
+
+test('refreshStaleBlock lets a closed stale record turn the outlook back to "blocking" before the warning is written', async () => {
+  const contact = monitored('outlook@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const stale = getActiveBlock(contact)!;
+  assert.equal(blockOutlook(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD), 'countdown');
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => void markUnblocked(stale.id));
+
+  assert.equal(blockOutlook(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD), 'blocking');
+});
+
+test('refreshStaleBlock does nothing below the threshold or without a record', async () => {
+  const contact = monitored('no-refresh@s.whatsapp.net');
+  let calls = 0;
+  const sync = async () => void calls++;
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, sync);
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD - 1, STRIKE_THRESHOLD, sync);
+
+  assert.equal(calls, 0);
+});
+
+test('a syncBlock that throws is skipped: the record stands and the contact is not blocked twice', async () => {
+  const contact = monitored('sync-throws@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const blocked: string[] = [];
+  const throwing = async () => {
+    throw new Error('socket closed');
+  };
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, throwing);
+  const blockedAfter = await maybeBlockContact(contact, STRIKE_THRESHOLD + 1, STRIKE_THRESHOLD, async (id) => void blocked.push(id), throwing);
+
+  assert.equal(blockedAfter, true);
+  assert.deepEqual(blocked, []);
+});
+
+test('a syncBlock that never answers is abandoned after the timeout', async (t) => {
+  const contact = monitored('sync-hangs@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const settled = refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, () => new Promise(() => {}));
+  t.mock.timers.tick(10_000);
+
+  await settled;
 });

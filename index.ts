@@ -91,6 +91,10 @@ function selfContactId(): string | null {
   return sock?.user ? canonicalContactId(sock.user) : null;
 }
 
+const syncBlockState = async (jid: string): Promise<void> => {
+  await blocklistSync?.reconcileContact(jid);
+};
+
 const buffer = createMessageBuffer<IncomingMessage>(async (contactId, messages) => {
   try {
     const { strikeCount } = await handleBurst(
@@ -99,6 +103,7 @@ const buffer = createMessageBuffer<IncomingMessage>(async (contactId, messages) 
         deleteForMe: (jid, key, timestamp) => deleteForMe(currentSocket(), jid, key, timestamp),
         sendWarning: (jid, text) => sendWarning(currentSocket(), jid, text),
         block: (jid) => block(currentSocket(), jid),
+        syncBlock: syncBlockState,
         isPaused: (jid) => manualOverride.isPaused(jid),
       },
     );
@@ -128,6 +133,7 @@ const callActions = {
   rejectCall: (callId: string, callFrom: string) => rejectCall(currentSocket(), callId, callFrom),
   sendWarning: (jid: string, text: string) => sendWarning(currentSocket(), jid, text),
   block: (jid: string) => block(currentSocket(), jid),
+  syncBlock: syncBlockState,
 };
 
 const DEFAULT_DNS_FAILURE_RESTART_MS = 120_000;

@@ -4,7 +4,7 @@ import { getAuditLog, logMessage } from '../store/audit-log.ts';
 import { getCallState, recordUnansweredCall, recordCallStrike, recordAnsweredCall, restartUnansweredDecay } from '../store/call-strikes.ts';
 import { getEffectiveNuisanceThreshold } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
-import { maybeBlockContact, blockOutlook } from './escalation.ts';
+import { maybeBlockContact, blockOutlook, refreshStaleBlock } from './escalation.ts';
 import type { WACallEvent } from '@whiskeysockets/baileys';
 
 interface CallEvent {
@@ -16,6 +16,7 @@ interface CallActions {
   rejectCall: (callId: string, callFrom: string) => Promise<unknown>;
   sendWarning: (contactId: string, text: string) => Promise<unknown>;
   block: (contactId: string) => Promise<unknown>;
+  syncBlock?: (contactId: string) => Promise<void>;
   generateWarning?: typeof generateCallWarningMessage;
 }
 
@@ -127,6 +128,8 @@ async function handleOffer(contactId: string, call: WACallEvent, actions: CallAc
   const strikeThreshold = getNumberSetting('NUISANCE_CALL_STRIKE_THRESHOLD');
   const autoReject = getBoolSetting('NUISANCE_CALL_AUTO_REJECT');
 
+  await refreshStaleBlock(contactId, strikeCount + 1, strikeThreshold, actions.syncBlock);
+
   // rejectCall and sendWarning are independent of each other's outcome, run concurrently — mirrors moderation-pipeline.ts's delete+warn Promise.allSettled pair.
   const [rejectOutcome, warnOutcome] = await Promise.allSettled([
     autoReject ? actions.rejectCall(call.id, call.from) : Promise.resolve(undefined),
@@ -152,7 +155,7 @@ async function handleOffer(contactId: string, call: WACallEvent, actions: CallAc
 
   const newStrikeCount = recordCallStrike(contactId);
   logCallEvent(contactId, call, 'call_nuisance_warned');
-  await maybeBlockContact(contactId, newStrikeCount, strikeThreshold, actions.block);
+  await maybeBlockContact(contactId, newStrikeCount, strikeThreshold, actions.block, actions.syncBlock);
 }
 
 async function runCallEvent({ contactId, call }: CallEvent, actions: CallActions): Promise<void> {

@@ -32,6 +32,36 @@ function withContactLock<T>(contactId: string, run: () => Promise<T>): Promise<T
   return next;
 }
 
+// Longest a block resync may hold up a warning or a call reject before the pipeline carries on with the record as it stands.
+const SYNC_TIMEOUT_MS = 10 * 1000;
+
+async function runSyncBlock(contactId: string, syncBlock: (contactId: string) => Promise<void>): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${SYNC_TIMEOUT_MS} ms`)), SYNC_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([syncBlock(contactId), timeout]);
+  } catch (err) {
+    logger.warn({ contactId, error: err instanceof Error ? err.message : String(err) }, 'block resync failed; carrying on with the block record as it stands');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Gives `syncBlock` the chance to close a stale block record before a warning
+ * is written, so the warning's wording (see blockOutlook) agrees with the
+ * block maybeBlockContact is about to apply. Only matters once the next
+ * strike would reach the threshold with a block still on record. Fails open:
+ * a resync that throws or takes longer than SYNC_TIMEOUT_MS is logged and
+ * skipped, never allowed to hold back the warning.
+ */
+export async function refreshStaleBlock(contactId: string, nextStrikeCount: number, strikeThreshold: number, syncBlock?: (contactId: string) => Promise<void>): Promise<void> {
+  if (nextStrikeCount < strikeThreshold || !syncBlock || !getActiveBlock(contactId)) return;
+  await runSyncBlock(contactId, syncBlock);
+}
+
 /**
  * What a warning sent at this strike count may truthfully say about
  * blocking, mirroring maybeBlockContact's decision before it is applied.
@@ -53,6 +83,11 @@ export function blockOutlook(contactId: string, strikeCount: number, strikeThres
  * "Trigger, duration, and jitter (issue #8 design)" for why that ordering
  * is load-bearing, not incidental.
  *
+ * An existing block record is trusted only after `syncBlock` (when given)
+ * has had the chance to close it: a contact unblocked from the phone while
+ * the app missed the event would otherwise keep a stale record and never be
+ * blocked again.
+ *
  * @returns {Promise<boolean>} whether contactId ends this call blocked, so
  *   a caller iterating several events in one pass can skip the
  *   getActiveBlock read once a block's already succeeded.
@@ -62,8 +97,9 @@ export async function maybeBlockContact(
   strikeCount: number,
   strikeThreshold: number,
   block: (contactId: string) => Promise<unknown>,
+  syncBlock?: (contactId: string) => Promise<void>,
 ): Promise<boolean> {
-  return withContactLock(contactId, () => runMaybeBlockContact(contactId, strikeCount, strikeThreshold, block));
+  return withContactLock(contactId, () => runMaybeBlockContact(contactId, strikeCount, strikeThreshold, block, syncBlock));
 }
 
 async function runMaybeBlockContact(
@@ -71,8 +107,10 @@ async function runMaybeBlockContact(
   strikeCount: number,
   strikeThreshold: number,
   block: (contactId: string) => Promise<unknown>,
+  syncBlock?: (contactId: string) => Promise<void>,
 ): Promise<boolean> {
   if (strikeCount < strikeThreshold) return false;
+  if (getActiveBlock(contactId) && syncBlock) await runSyncBlock(contactId, syncBlock);
   if (getActiveBlock(contactId)) return true;
 
   if (!isEscalationEnabled(contactId)) {
