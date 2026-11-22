@@ -99,6 +99,7 @@ function controlDataRoutes(initialRoster: RosterEntry[]): MockRoute[] {
         return { text: policyText };
       },
     },
+    { method: 'POST', match: /^\/api\/audit-log\/\d+\/correction$/, status: 201, body: { id: 1, kind: 'false_positive', note: null, strikeReverted: true, createdAt: Date.now() } },
     { match: /^\/api\/audit-log/, body: { entries: FIXTURE_AUDIT_LOG, nextBefore: null } },
   ];
 }

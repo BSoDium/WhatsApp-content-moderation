@@ -136,3 +136,33 @@ describe('strike engine', () => {
     expect(backend.auditPage(new URLSearchParams()).entries[0].action).toBe('shadow');
   });
 });
+
+describe('marking corrections', () => {
+  function backendWithOneStrike() {
+    const backend = new DemoBackend(NOW);
+    backend.setSetting('SHADOW_MODE', '0');
+    const person = firstMonitored('spammer');
+    ingestFlagged(backend, person.id, FLAGGED_INCOMING.spammer[0], NOW, createRandom(1));
+    const flagged = backend.auditPage(new URLSearchParams()).entries.find((entry) => entry.action === 'delete+warn');
+    if (!flagged) throw new Error('no strike-opening entry was logged');
+    return { backend, person, flagged };
+  }
+
+  it('gives the strike back for a false positive and refuses a second mark', () => {
+    const { backend, person, flagged } = backendWithOneStrike();
+    expect(backend.contact(person.id)?.strikeCount).toBe(1);
+
+    const result = backend.markCorrection(flagged.id, 'false_positive', 'banter', NOW);
+    expect(result).toMatchObject({ ok: true, body: { kind: 'false_positive', note: 'banter', strikeReverted: true } });
+    expect(backend.contact(person.id)?.strikeCount).toBe(0);
+
+    expect(backend.markCorrection(flagged.id, 'false_positive', undefined, NOW)).toMatchObject({ ok: false, status: 409 });
+    expect(backend.contact(person.id)?.strikeCount).toBe(0);
+  });
+
+  it('refuses a kind that does not match the classifier verdict', () => {
+    const { backend, flagged } = backendWithOneStrike();
+
+    expect(backend.markCorrection(flagged.id, 'false_negative', undefined, NOW)).toMatchObject({ ok: false, status: 422 });
+  });
+});

@@ -1,4 +1,5 @@
-import type { AuditLogEntry, AuditLogPage, Contact, OverrideCommand, RosterEntry, ServerStatus, Setting, Stats } from '@/lib/types';
+import { correctableKind } from '@/lib/activity';
+import type { AuditLogEntry, AuditLogPage, Contact, CorrectionKind, OverrideCommand, RosterEntry, ServerStatus, Setting, Stats } from '@/lib/types';
 import { DEMO_PEOPLE, SELF_ID, SELF_NAME, type DemoPerson } from './people';
 import { DEMO_POLICY_TEXT, DEMO_SETTINGS, validateSettingValue } from './settings';
 
@@ -219,6 +220,21 @@ export class DemoBackend {
     const hasMore = matching.length > limit;
     const entries = hasMore ? matching.slice(0, limit) : matching;
     return { entries, nextBefore: hasMore ? entries[entries.length - 1].id : null };
+  }
+
+  markCorrection(entryId: number, kind: CorrectionKind, note: string | undefined, now = Date.now()): CommandResult {
+    const entry = this.audit.find((candidate) => candidate.id === entryId);
+    if (!entry) return { ok: false, status: 404, error: 'audit log entry not found' };
+    if (entry.correction) return { ok: false, status: 409, error: 'this message is already marked' };
+    if (correctableKind(entry) !== kind) return { ok: false, status: 422, error: 'the marked kind does not match what the classifier decided' };
+
+    const state = this.contacts.get(entry.contactId);
+    const strikeReverted = kind === 'false_positive' && entry.action === 'delete+warn' && state !== undefined && state.strikeCount > 0;
+    if (strikeReverted) state.strikeCount -= 1;
+    entry.correction = { id: entryId, kind, note: note || null, strikeReverted, createdAt: now };
+    this.emit('audit-log');
+    if (strikeReverted) this.emit('roster');
+    return { ok: true, body: entry.correction };
   }
 
   status(now: number): ServerStatus {

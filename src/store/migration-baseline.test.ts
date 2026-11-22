@@ -72,6 +72,10 @@ const FULLY_MIGRATED_SHAPE = {
     columns: ['contact_id text', 'strike_count integer', 'unanswered_count integer', 'unanswered_updated_at integer', 'updated_at integer'],
     indexes: [],
   },
+  corrections: {
+    columns: ['audit_log_id integer', 'contact_id text', 'created_at integer', 'id integer', 'kind text', 'note text', 'strike_reverted integer'],
+    indexes: ['corrections_audit_log_idx(audit_log_id)', 'corrections_contact_idx(contact_id,created_at)'],
+  },
   monitored_contacts: {
     columns: ['added_at integer', 'block_backoff_max_ms integer', 'call_nuisance_threshold integer', 'contact_id text', 'context text', 'escalation_enabled integer'],
     indexes: [],

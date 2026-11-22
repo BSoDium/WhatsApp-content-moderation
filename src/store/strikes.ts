@@ -45,3 +45,20 @@ export function recordStrike(contactId: string): number {
 export function resetStrikes(contactId: string): void {
   getOrm().update(strikes).set({ count: 0, updated_at: Date.now() }).where(eq(strikes.contact_id, contactId)).run();
 }
+
+/**
+ * Takes one strike back without restarting the decay timer, so undoing a
+ * mistaken strike never extends how long the others linger. Returns the new
+ * count; a contact already at zero stays there.
+ */
+export function removeStrike(contactId: string): number {
+  const { count, updatedAt } = readSettled(contactId);
+  const next = Math.max(count - 1, 0);
+  getOrm()
+    .insert(strikes)
+    .values({ contact_id: contactId, count: next, updated_at: updatedAt })
+    .onConflictDoUpdate({ target: strikes.contact_id, set: { count: next, updated_at: excluded(strikes.updated_at) } })
+    .run();
+  emitControlEvent('roster');
+  return next;
+}

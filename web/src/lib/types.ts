@@ -86,6 +86,17 @@ export type AuditAction =
   | 'call_warn_failed'
   | 'call_shadow';
 
+export type CorrectionKind = 'false_positive' | 'false_negative';
+
+// Matches the `correction` field of GET /api/audit-log entries (src/web/control-server.ts).
+export interface Correction {
+  id: number;
+  kind: CorrectionKind;
+  note: string | null;
+  strikeReverted: boolean;
+  createdAt: number;
+}
+
 export interface AuditLogEntry {
   id: number;
   contactId: string;
@@ -99,6 +110,7 @@ export interface AuditLogEntry {
   error: string | null;
   action: AuditAction;
   createdAt: number;
+  correction?: Correction | null;
 }
 
 export interface AuditLogPage {

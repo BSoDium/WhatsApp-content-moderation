@@ -18,7 +18,8 @@ import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
 import type { createProfilePhotos } from '../whatsapp/profile-photos.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
-import type { AuditLogRecord } from '../types.ts';
+import type { CorrectionResult } from '../store/corrections.ts';
+import type { AuditLogRecord, CorrectionKind, CorrectionRecord } from '../types.ts';
 import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
 import { getNumberSetting, listSettings, setSetting } from '../store/settings.ts';
 import { listInstalledModels } from '../classifier/installed-models.ts';
@@ -41,6 +42,10 @@ interface ControlServerDependencies {
   auditLog: {
     getPage: (filter: AuditLogPageFilter) => AuditLogRecord[];
     getStats: () => AuditLogStats;
+  };
+  corrections: {
+    forAuditLogIds: (ids: number[]) => Map<number, CorrectionRecord>;
+    mark: (auditLogId: number, kind: CorrectionKind, note?: string) => CorrectionResult;
   };
   blocks: {
     countActive: () => number;
@@ -292,8 +297,16 @@ function rosterEntry(
   };
 }
 
+const MAX_CORRECTION_NOTE_LENGTH = 500;
+const CORRECTION_ERROR_STATUS = { 'not-found': 404, 'already-marked': 409, ineligible: 422 } as const;
+
 // snake_case DB row -> camelCase API shape, matching every other endpoint's convention.
-function auditLogEntry(row: AuditLogRecord, contactName: string) {
+function correctionEntry(correction: CorrectionRecord | undefined) {
+  if (!correction) return null;
+  return { id: correction.id, kind: correction.kind, note: correction.note, strikeReverted: Boolean(correction.strike_reverted), createdAt: correction.created_at };
+}
+
+function auditLogEntry(row: AuditLogRecord, contactName: string, correction?: CorrectionRecord) {
   return {
     id: row.id,
     contactId: row.contact_id,
@@ -307,6 +320,7 @@ function auditLogEntry(row: AuditLogRecord, contactName: string) {
     error: row.error,
     action: row.action,
     createdAt: row.created_at,
+    correction: correctionEntry(correction),
   };
 }
 
@@ -331,7 +345,7 @@ async function handleApi(
   searchParams: URLSearchParams,
   deps: ControlServerDependencies,
 ): Promise<boolean> {
-  const { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, blocks } = deps;
+  const { manualOverride, contactDirectory, profilePhotos, monitoredContacts, auditLog, corrections, blocks } = deps;
 
   // Server-Sent Events: pushes a `data: <topic>` line whenever contacts,
   // the roster, or the audit log changes (see src/store/events.ts), so the
@@ -420,9 +434,37 @@ async function handleApi(
       }
       return name;
     };
-    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id)));
+    const pageCorrections = corrections.forAuditLogIds(pageRows.map((row) => row.id));
+    const entries = pageRows.map((row) => auditLogEntry(row, contactName(row.contact_id), pageCorrections.get(row.id)));
     const nextBefore = hasMore ? pageRows[pageRows.length - 1].id : null;
     sendJson(res, 200, { entries, nextBefore });
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 3 && segments[0] === 'audit-log' && segments[2] === 'correction') {
+    const auditLogId = Number(segments[1]);
+    if (!Number.isInteger(auditLogId) || auditLogId <= 0) {
+      sendJson(res, 400, { error: 'audit log id must be a positive integer' });
+      return true;
+    }
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    const { kind, note } = (typeof body === 'object' && body !== null ? body : {}) as { kind?: unknown; note?: unknown };
+    if (kind !== 'false_positive' && kind !== 'false_negative') {
+      sendJson(res, 400, { error: "kind must be 'false_positive' or 'false_negative'" });
+      return true;
+    }
+    if (note !== undefined && (typeof note !== 'string' || note.length > MAX_CORRECTION_NOTE_LENGTH)) {
+      sendJson(res, 400, { error: `note must be a string of at most ${MAX_CORRECTION_NOTE_LENGTH} characters` });
+      return true;
+    }
+    const result = corrections.mark(auditLogId, kind, note);
+    if (!result.ok) {
+      sendJson(res, CORRECTION_ERROR_STATUS[result.reason], { error: result.error });
+      return true;
+    }
+    sendJson(res, 201, correctionEntry(result.correction));
     return true;
   }
 
@@ -754,6 +796,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, deps: Co
  *     setBlockBackoffMax: (contactId: string, maxMs: number | null) => boolean,
  *   },
  *   auditLog: { getPage: (filter: object) => object[], getStats: () => object },
+ *   corrections: {
+ *     forAuditLogIds: (ids: number[]) => Map<number, object>,
+ *     mark: (auditLogId: number, kind: 'false_positive' | 'false_negative', note?: string) => { ok: true, correction: object } | { ok: false, reason: string, error: string },
+ *   },
  *   blocks: { countActive: () => number },
  *   allowedLogin: string | undefined,
  * }} deps
