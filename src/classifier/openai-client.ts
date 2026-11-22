@@ -61,7 +61,8 @@ export function createOpenAiClient({ baseUrl, apiKey, timeoutMs }: OpenAiClientC
 
   return {
     async chat(request) {
-      let res = await complete(request, request.format ? { type: 'json_schema', json_schema: { name: 'response', strict: true, schema: request.format } } : undefined);
+      // strict is off because OpenAI's strict mode rejects any schema lacking additionalProperties:false, which would make every call a 400 plus the JSON-mode retry.
+      let res = await complete(request, request.format ? { type: 'json_schema', json_schema: { name: 'response', strict: false, schema: request.format } } : undefined);
       if (!res.ok && res.status === HTTP_BAD_REQUEST && request.format) {
         res = await complete(jsonModeRequest(request), { type: 'json_object' });
       }

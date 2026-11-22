@@ -65,7 +65,7 @@ test('posts the chat to /chat/completions with the key, mapped options and a JSO
     stream: false,
     temperature: 0.2,
     max_tokens: 50,
-    response_format: { type: 'json_schema', json_schema: { name: 'response', strict: true, schema: SCHEMA } },
+    response_format: { type: 'json_schema', json_schema: { name: 'response', strict: false, schema: SCHEMA } },
   });
 });
 
