@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { getOrm } from './db.ts';
 import { emitControlEvent } from './events.ts';
 import { auditLog, corrections } from './schema.ts';
@@ -11,15 +11,30 @@ export type CorrectionResult =
 
 const FLAGGED_ACTIONS = ['delete+warn', 'delete', 'shadow'];
 const UNFLAGGED_ACTIONS = ['none', 'shadow'];
+const KINDS_FOR_FLAGGED: readonly CorrectionKind[] = ['false_positive', 'confirmed_flag'];
+const KINDS_FOR_UNFLAGGED: readonly CorrectionKind[] = ['false_negative', 'confirmed_pass'];
+
+export type Verdict = 'acceptable' | 'unacceptable';
+
+/**
+ * What the operator decided about the message: a false positive or a
+ * confirmed pass says it was fine, a false negative or a confirmed flag says
+ * it was not. This is the label rule suggestions learn from.
+ */
+export function verdictOf(kind: CorrectionKind): Verdict {
+  return kind === 'false_positive' || kind === 'confirmed_pass' ? 'acceptable' : 'unacceptable';
+}
 const STRIKE_RECORDED_ACTION = 'delete+warn';
 
 /**
- * Records that the classifier got a logged message wrong and undoes what can
- * be undone. A false positive on the message that opened a strike gives that
+ * Records the operator's verdict on a logged message: either that the
+ * classifier got it wrong (a false positive or negative, which undoes what can
+ * be undone) or that it got it right (a confirmation, which only records). A false positive on the message that opened a strike gives that
  * strike back; the deleted message itself can't be restored, since "delete
  * for me" removes it from this device only and WhatsApp offers no way to
- * bring it back. A false negative is recorded without acting: warning a
- * contact retroactively would be a new moderation action, not an undo.
+ * bring it back. A false negative or a confirmation is recorded without
+ * acting: warning a contact retroactively would be a new moderation action,
+ * not an undo.
  *
  * One correction per audit row; a second attempt is refused so a strike can
  * never be handed back twice. The audit row itself is left as it was, so the
@@ -33,13 +48,11 @@ export function markCorrection(auditLogId: number, kind: CorrectionKind, note?: 
     return { ok: false, reason: 'already-marked', error: 'this message is already marked' };
   }
 
-  const eligible =
-    row.direction === 'them' &&
-    row.classification_ok === 1 &&
-    (kind === 'false_positive' ? row.flagged === 1 && FLAGGED_ACTIONS.includes(row.action) : row.flagged === 0 && UNFLAGGED_ACTIONS.includes(row.action));
+  const flagged = row.flagged === 1 && FLAGGED_ACTIONS.includes(row.action);
+  const passed = row.flagged === 0 && UNFLAGGED_ACTIONS.includes(row.action);
+  const eligible = row.direction === 'them' && row.classification_ok === 1 && ((flagged && KINDS_FOR_FLAGGED.includes(kind)) || (passed && KINDS_FOR_UNFLAGGED.includes(kind)));
   if (!eligible) {
-    const expected = kind === 'false_positive' ? 'a message the classifier flagged' : 'a message the classifier let through';
-    return { ok: false, reason: 'ineligible', error: `${kind === 'false_positive' ? 'a false positive' : 'a false negative'} must be ${expected}` };
+    return { ok: false, reason: 'ineligible', error: `${kind} does not apply to this message: ${flagged ? 'the classifier flagged it' : passed ? 'the classifier let it through' : 'it was not classified'}` };
   }
 
   const strikeReverted = kind === 'false_positive' && row.action === STRIKE_RECORDED_ACTION;
@@ -61,4 +74,39 @@ export function getCorrectionsByAuditLogId(auditLogIds: number[]): Map<number, C
   if (auditLogIds.length === 0) return new Map();
   const rows = getOrm().select().from(corrections).where(inArray(corrections.audit_log_id, auditLogIds)).all();
   return new Map(rows.map((row) => [row.audit_log_id, row]));
+}
+
+export interface LabelledExample {
+  auditLogId: number;
+  contactId: string;
+  message: string;
+  createdAt: number;
+  verdict: Verdict;
+  note: string | null;
+  // What the classifier decided at the time.
+  flagged: boolean;
+}
+
+/**
+ * Returns every message the operator has labelled, newest first, for one
+ * contact or all of them, each paired with what the classifier decided.
+ */
+export function getLabelledExamples({ contactId, limit }: { contactId?: string; limit: number }): LabelledExample[] {
+  const rows = getOrm()
+    .select({ correction: corrections, message: auditLog.message, flagged: auditLog.flagged, createdAt: auditLog.created_at })
+    .from(corrections)
+    .innerJoin(auditLog, eq(auditLog.id, corrections.audit_log_id))
+    .where(contactId === undefined ? undefined : eq(corrections.contact_id, contactId))
+    .orderBy(desc(corrections.id))
+    .limit(limit)
+    .all();
+  return rows.map(({ correction, message, flagged, createdAt }) => ({
+    auditLogId: correction.audit_log_id,
+    contactId: correction.contact_id,
+    message,
+    createdAt,
+    verdict: verdictOf(correction.kind),
+    note: correction.note,
+    flagged: flagged === 1,
+  }));
 }

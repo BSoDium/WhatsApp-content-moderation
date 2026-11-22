@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-corrections.test.sqlite';
 
-const { markCorrection, getCorrectionsByAuditLogId } = await import('./corrections.ts');
+const { markCorrection, getCorrectionsByAuditLogId, getLabelledExamples, verdictOf } = await import('./corrections.ts');
 const { logMessage } = await import('./audit-log.ts');
 const { getStrikeCount, recordStrike } = await import('./strikes.ts');
 
@@ -110,4 +110,55 @@ test('getCorrectionsByAuditLogId returns only the requested rows, keyed by id', 
 
   assert.deepEqual([...found.keys()], [marked]);
   assert.equal(getCorrectionsByAuditLogId([]).size, 0);
+});
+
+test('a confirmation records the classifier was right and touches no strike', () => {
+  const contact = 'confirm@s.whatsapp.net';
+  recordStrike(contact);
+  const flagged = log(contact, FLAGGED, 'delete+warn');
+  const passed = log(contact, PASSED, 'none');
+
+  const confirmedFlag = markCorrection(flagged, 'confirmed_flag');
+  const confirmedPass = markCorrection(passed, 'confirmed_pass');
+
+  assert.ok(confirmedFlag.ok && confirmedPass.ok);
+  assert.equal(confirmedFlag.correction.strike_reverted, 0);
+  assert.equal(getStrikeCount(contact), 1);
+});
+
+test('a confirmation must match the classifier verdict too', () => {
+  const flagged = log('confirm-mismatch@s.whatsapp.net', FLAGGED, 'delete');
+  const passed = log('confirm-mismatch@s.whatsapp.net', PASSED, 'none');
+
+  assert.equal(markCorrection(flagged, 'confirmed_pass').ok, false);
+  assert.equal(markCorrection(passed, 'confirmed_flag').ok, false);
+});
+
+test('verdictOf maps each kind to the operator verdict', () => {
+  assert.equal(verdictOf('false_positive'), 'acceptable');
+  assert.equal(verdictOf('confirmed_pass'), 'acceptable');
+  assert.equal(verdictOf('false_negative'), 'unacceptable');
+  assert.equal(verdictOf('confirmed_flag'), 'unacceptable');
+});
+
+test('getLabelledExamples pairs each label with the classifier verdict, newest first, and filters by contact', () => {
+  const contact = 'examples@s.whatsapp.net';
+  const other = 'examples-other@s.whatsapp.net';
+  const first = log(contact, FLAGGED, 'shadow');
+  const second = log(contact, PASSED, 'none');
+  markCorrection(first, 'false_positive', 'banter');
+  markCorrection(second, 'false_negative');
+  markCorrection(log(other, PASSED, 'none'), 'confirmed_pass');
+
+  const examples = getLabelledExamples({ contactId: contact, limit: 10 });
+
+  assert.deepEqual(
+    examples.map(({ auditLogId, verdict, note, flagged }) => ({ auditLogId, verdict, note, flagged })),
+    [
+      { auditLogId: second, verdict: 'unacceptable', note: null, flagged: false },
+      { auditLogId: first, verdict: 'acceptable', note: 'banter', flagged: true },
+    ],
+  );
+  assert.ok(getLabelledExamples({ limit: 100 }).some((example) => example.contactId === other));
+  assert.equal(getLabelledExamples({ contactId: contact, limit: 1 }).length, 1);
 });

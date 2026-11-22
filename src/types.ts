@@ -65,7 +65,7 @@ export interface SettingRecord {
   updated_at: number;
 }
 
-export type CorrectionKind = 'false_positive' | 'false_negative';
+export type CorrectionKind = 'false_positive' | 'false_negative' | 'confirmed_flag' | 'confirmed_pass';
 
 export interface CorrectionRecord {
   id: number;

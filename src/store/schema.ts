@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import type { CorrectionKind } from '../types.ts';
 
 // Keys mirror the snake_case column names so selected rows already have src/types.ts's *Record shapes, which callers and the control app consume as-is.
 
@@ -58,7 +59,7 @@ export const corrections = sqliteTable(
     id: integer().primaryKey({ autoIncrement: true }),
     audit_log_id: integer().notNull(),
     contact_id: text().notNull(),
-    kind: text().$type<'false_positive' | 'false_negative'>().notNull(),
+    kind: text().$type<CorrectionKind>().notNull(),
     note: text(),
     strike_reverted: integer().notNull().default(0),
     created_at: integer().notNull(),

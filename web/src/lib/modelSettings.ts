@@ -5,6 +5,7 @@ import type { Setting } from './types';
 export const MODEL_SETTINGS: Record<string, { inheritsClassifier: boolean }> = {
   OLLAMA_MODEL: { inheritsClassifier: false },
   WARNING_MODEL: { inheritsClassifier: true },
+  RULE_PROPOSER_MODEL: { inheritsClassifier: true },
 };
 
 export function pullCommand(model: string): string {

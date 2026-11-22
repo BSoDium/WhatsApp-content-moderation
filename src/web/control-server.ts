@@ -18,11 +18,13 @@ import type { createContactDirectory } from '../whatsapp/contact-directory.ts';
 import type { createProfilePhotos } from '../whatsapp/profile-photos.ts';
 import type { listMonitored, getMonitored } from '../store/monitored-contacts.ts';
 import type { AuditLogPageFilter, AuditLogStats } from '../store/audit-log.ts';
+import { MAX_CONTEXT_LENGTH, MAX_POLICY_LENGTH } from '../store/rule-limits.ts';
 import type { CorrectionResult } from '../store/corrections.ts';
 import type { AuditLogRecord, CorrectionKind, CorrectionRecord } from '../types.ts';
 import { getPolicyText, setPolicyText } from '../classifier/policy.ts';
 import { getNumberSetting, listSettings, setSetting } from '../store/settings.ts';
 import { listInstalledModels } from '../classifier/installed-models.ts';
+import { suggestRule } from '../classifier/rule-suggestion.ts';
 
 interface ControlServerDependencies {
   manualOverride: ReturnType<typeof createManualOverride>;
@@ -65,12 +67,18 @@ interface ControlServerDependencies {
   getConnectionState: () => ConnectionState;
   allowSelf: boolean;
   listModels?: typeof listInstalledModels;
+  suggestRule?: typeof suggestRule;
 }
 
 const logger = createLogger('control-server');
 
 const STARTED_AT = Date.now();
 const BAD_GATEWAY = 502;
+const CONFLICT = 409;
+const SUGGESTION_ERROR_STATUS = { 'no-labels': 422, 'not-monitored': 404, 'proposal-failed': BAD_GATEWAY } as const;
+
+// A suggestion occupies the model for minutes on CPU-only hardware, so a second one is refused rather than queued behind live moderation.
+let suggestionInFlight = false;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST_DIR = resolve(__dirname, '../../web/dist');
@@ -129,11 +137,6 @@ export function getControlAppUrl(port: number, allowedLogin: string | undefined)
 
 const DEFAULT_AUDIT_LOG_LIMIT = 50;
 const MAX_AUDIT_LOG_LIMIT = 200;
-// A generous ceiling on a contact's moderation-context textarea — real
-// guidance, not a payload budget (see MAX_JSON_BODY_BYTES below for that).
-const MAX_CONTEXT_LENGTH = 10_000;
-// Same idea for the global policy editor.
-const MAX_POLICY_LENGTH = 50_000;
 // Keeps an SSE connection from being silently killed by an idle-connection
 // timeout on the Tailscale Serve proxy in front of this server, well under
 // any reasonable such timeout.
@@ -298,6 +301,11 @@ function rosterEntry(
 }
 
 const MAX_CORRECTION_NOTE_LENGTH = 500;
+const CORRECTION_KINDS: readonly CorrectionKind[] = ['false_positive', 'false_negative', 'confirmed_flag', 'confirmed_pass'];
+
+function isCorrectionKind(value: unknown): value is CorrectionKind {
+  return CORRECTION_KINDS.includes(value as CorrectionKind);
+}
 const CORRECTION_ERROR_STATUS = { 'not-found': 404, 'already-marked': 409, ineligible: 422 } as const;
 
 // snake_case DB row -> camelCase API shape, matching every other endpoint's convention.
@@ -451,8 +459,8 @@ async function handleApi(
     const body = await readValidatedJsonBody(req, res);
     if (body === undefined) return true;
     const { kind, note } = (typeof body === 'object' && body !== null ? body : {}) as { kind?: unknown; note?: unknown };
-    if (kind !== 'false_positive' && kind !== 'false_negative') {
-      sendJson(res, 400, { error: "kind must be 'false_positive' or 'false_negative'" });
+    if (!isCorrectionKind(kind)) {
+      sendJson(res, 400, { error: `kind must be one of: ${CORRECTION_KINDS.join(', ')}` });
       return true;
     }
     if (note !== undefined && (typeof note !== 'string' || note.length > MAX_CORRECTION_NOTE_LENGTH)) {
@@ -501,6 +509,33 @@ async function handleApi(
       return true;
     }
     sendJson(res, 200, { text: getPolicyText() });
+    return true;
+  }
+
+  if (req.method === 'POST' && segments.length === 2 && segments[0] === 'rules' && segments[1] === 'suggest') {
+    if (!requireJsonContentType(req, res)) return true;
+    const body = await readValidatedJsonBody(req, res);
+    if (body === undefined) return true;
+    const scope = typeof body === 'object' && body !== null && 'scope' in body ? body.scope : undefined;
+    if (typeof scope !== 'string' || scope === '') {
+      sendJson(res, 400, { error: "scope must be 'global' or a contact id" });
+      return true;
+    }
+    if (suggestionInFlight) {
+      sendJson(res, CONFLICT, { error: 'a rule suggestion is already running' });
+      return true;
+    }
+    suggestionInFlight = true;
+    try {
+      const result = await (deps.suggestRule ?? suggestRule)(scope === 'global' ? 'global' : { contactId: scope });
+      if (!result.ok) {
+        sendJson(res, SUGGESTION_ERROR_STATUS[result.reason], { error: result.error });
+        return true;
+      }
+      sendJson(res, 200, { currentRule: result.currentRule, candidate: result.candidate, rationale: result.rationale, backtest: result.backtest });
+    } finally {
+      suggestionInFlight = false;
+    }
     return true;
   }
 

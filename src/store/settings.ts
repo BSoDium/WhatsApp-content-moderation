@@ -92,6 +92,23 @@ export const SETTINGS: readonly SettingDef[] = [
     default: 'llama3.2:3b',
   },
   {
+    key: 'RULE_PROPOSER_MODEL',
+    section: 'classifier',
+    label: 'Rule suggestion model',
+    description: 'Model that proposes a rule from your labelled messages. It runs only when you ask, so a larger, slower one is fine. Leave blank to inherit the classifier model.',
+    type: 'string',
+    default: '',
+  },
+  {
+    key: 'RULE_PROPOSER_TIMEOUT_MS',
+    section: 'classifier',
+    label: 'Rule suggestion timeout (ms)',
+    description: 'How long to wait for the model to propose a rule before giving up.',
+    type: 'int',
+    default: '300000',
+    min: 1,
+  },
+  {
     key: 'CLASSIFIER_TIMEOUT_MS',
     section: 'classifier',
     label: 'Classifier timeout (ms)',
