@@ -1,4 +1,4 @@
-import type { Ollama } from 'ollama';
+import type { LlmClient } from './llm-client.ts';
 
 const LANGUAGES = [
   'English', 'French', 'Spanish', 'Portuguese', 'Italian', 'German', 'Dutch', 'Polish', 'Romanian', 'Russian',
@@ -32,7 +32,7 @@ type LanguageResult = { ok: true; language: string } | { ok: false; error: strin
  * supported language list, returns { ok: false } and the caller falls back to
  * the static warning.
  */
-export async function detectLanguage(text: string, ollama: Ollama, model: string): Promise<LanguageResult> {
+export async function detectLanguage(text: string, ollama: LlmClient, model: string): Promise<LanguageResult> {
   try {
     const response = await ollama.chat({
       model,

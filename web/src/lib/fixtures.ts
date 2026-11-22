@@ -41,6 +41,9 @@ export const FIXTURE_ROSTER: RosterEntry[] = [
 
 export const FIXTURE_SETTINGS: Setting[] = [
   { key: 'SHADOW_MODE', section: 'general', label: 'Shadow mode', description: 'Log what would happen without deleting or blocking anything.', type: 'bool', value: '1', default: '1' },
+  { key: 'LLM_PROVIDER', section: 'classifier', label: 'LLM provider', description: 'Ollama runs the models on your own machine. An OpenAI-compatible API sends every classified message to that service.', type: 'string', value: 'ollama', default: 'ollama', options: ['ollama', 'openai'] },
+  { key: 'LLM_BASE_URL', section: 'classifier', label: 'API base URL', description: 'The URL that serves /chat/completions.', type: 'string', value: '', default: '' },
+  { key: 'LLM_API_KEY', section: 'classifier', label: 'API key', description: 'Sent as a bearer token. Never shown again once saved.', type: 'string', value: '', default: '', secret: true },
   { key: 'OLLAMA_MODEL', section: 'classifier', label: 'Classifier model', description: 'The Ollama model used to classify incoming messages against the policy.', type: 'string', value: 'llama3.2:3b', default: 'llama3.2:3b' },
   { key: 'WARNING_MODEL', section: 'warning', label: 'Warning model', description: 'Model used to generate the warning reply. Leave blank to inherit the classifier model.', type: 'string', value: '', default: '' },
   {

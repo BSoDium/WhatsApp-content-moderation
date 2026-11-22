@@ -1,5 +1,5 @@
-import type { Ollama } from 'ollama';
-import { createOllamaClient } from './ollama-client.ts';
+import type { LlmClient } from './llm-client.ts';
+import { createLlmClient } from './llm-client.ts';
 import { detectLanguage } from './language.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
@@ -16,7 +16,7 @@ interface CallWarningInput {
 }
 
 interface CallWarningDependencies {
-  client?: Ollama;
+  client?: LlmClient;
 }
 
 type CallWarningResult = { ok: true; text: string } | { ok: false; error: string };
@@ -72,7 +72,7 @@ export async function generateCallWarningMessage(
   { client }: CallWarningDependencies = {},
 ): Promise<CallWarningResult> {
   const { model = warningModel() } = input;
-  const ollama = client ?? createOllamaClient(getNumberSetting('WARNING_TIMEOUT_MS'));
+  const ollama = client ?? createLlmClient(getNumberSetting('WARNING_TIMEOUT_MS'));
 
   try {
     const detected = await detectLanguage(input.recentMessages.join('\n'), ollama, model);

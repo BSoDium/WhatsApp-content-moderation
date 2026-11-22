@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { Ollama } from 'ollama';
+import { ollamaLlmClient } from './llm-client.ts';
 import { classifyMessage } from './classifier.ts';
 import { toConversationHistory } from '../pipeline/history.ts';
 import type { AuditLogRecord } from '../types.ts';
@@ -30,7 +31,7 @@ if (!LOG_FILE || !CONTACT_ID) {
 const rows = (JSON.parse(readFileSync(LOG_FILE, 'utf8')) as AuditLogRecord[]).filter((row) => row.contact_id === CONTACT_ID);
 const policy = POLICY_FILE ? readFileSync(POLICY_FILE, 'utf8').trim() : undefined;
 const contactContext = CONTEXT_FILE ? readFileSync(CONTEXT_FILE, 'utf8').trim() : undefined;
-const client = new Ollama({ host: OLLAMA_HOST, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }) });
+const client = ollamaLlmClient(new Ollama({ host: OLLAMA_HOST, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) }) }));
 
 const incoming = rows.filter((row) => row.direction === 'them' && row.id >= FROM_ID && !row.message.startsWith(CALL_MARKER) && row.action !== 'classifier_error');
 const label = (flagged: boolean | null) => (flagged === null ? 'err ' : flagged ? 'FLAG' : 'pass');

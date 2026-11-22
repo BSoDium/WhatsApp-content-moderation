@@ -3,10 +3,11 @@ import { apiFetch } from './api';
 
 export interface InstalledModel {
   name: string;
-  sizeBytes: number;
+  // null for a provider that doesn't report model sizes.
+  sizeBytes: number | null;
 }
 
-// null means Ollama could not be asked, so the model fields fall back to free text instead of an empty picker.
+// null means the provider could not be asked, so the model fields fall back to free text instead of an empty picker.
 export function useInstalledModels({ open }: { open: boolean }): InstalledModel[] | null {
   const [models, setModels] = useState<InstalledModel[] | null>(null);
 

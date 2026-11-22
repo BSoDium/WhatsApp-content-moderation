@@ -166,6 +166,28 @@ test('getRawValue/setRawValue work for a key outside the manifest', () => {
   setRawValue('GLOBAL_POLICY', 'be nice');
   assert.equal(getRawValue('GLOBAL_POLICY'), 'be nice');
 });
+test('a setting with a fixed set of options rejects anything outside it', () => {
+  assert.deepEqual(setSetting('LLM_PROVIDER', 'openai'), { ok: true });
+  assert.equal(setSetting('LLM_PROVIDER', 'carrier-pigeon').ok, false);
+  assert.equal(getRawSetting('LLM_PROVIDER'), 'openai');
+  setSetting('LLM_PROVIDER', 'ollama');
+});
+
+test('a secret setting is stored but only ever listed as a mask, and the mask never overwrites it', () => {
+  const view = () => listSettings().find((s) => s.key === 'LLM_API_KEY');
+  assert.equal(view()?.value, '');
+
+  setSetting('LLM_API_KEY', 'sk-test-123');
+  assert.equal(getRawSetting('LLM_API_KEY'), 'sk-test-123');
+  assert.equal(view()?.value, '••••••••');
+  assert.equal(view()?.secret, true);
+
+  assert.deepEqual(setSetting('LLM_API_KEY', '••••••••'), { ok: true });
+  assert.equal(getRawSetting('LLM_API_KEY'), 'sk-test-123');
+
+  setSetting('LLM_API_KEY', '');
+  assert.equal(view()?.value, '');
+});
 
 // Deliberately the last test in this file: it breaks the shared connection
 // on purpose and node:sqlite/db.ts have no clean way to recover it (closeDb()
