@@ -1,4 +1,4 @@
-import type { Ollama } from 'ollama';
+import type { LlmClient } from './llm-client.ts';
 import { getNumberSetting } from '../store/settings.ts';
 import { describeConsequence, NO_STRIKE_WORDING_RULE } from './warning-consequence.ts';
 import type { BlockOutlook } from './warning-consequence.ts';
@@ -90,7 +90,7 @@ function echoesReason(text: string, reasons: IncidentWarningInput['reasons']): b
  * reason-echoing output, or any Ollama error, returns { ok: false } and the
  * caller falls back to the template path.
  */
-export async function generateIncidentWarning(input: IncidentWarningInput, ollama: Ollama): Promise<IncidentWarningResult> {
+export async function generateIncidentWarning(input: IncidentWarningInput, ollama: LlmClient): Promise<IncidentWarningResult> {
   try {
     const hasConsequence = describeConsequence(input.strikeThreshold - input.strikeCount, input.blockOutlook) !== null;
     const generated = await generateChecked(async (retryHint) => {

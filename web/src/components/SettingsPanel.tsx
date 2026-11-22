@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { ErrorBanner } from './ErrorBanner';
 import { SettingRow } from './SettingRow';
 import { ModelSelect } from './ModelSelect';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MissingModelHint } from './MissingModelHint';
 import { MODEL_SETTINGS, isModelMissing } from '@/lib/modelSettings';
 import { useInstalledModels, type InstalledModel } from '@/lib/useInstalledModels';
@@ -109,6 +110,30 @@ function SettingField({ setting, pending, installedModels, onSave, onValidationC
     );
   }
 
+  if (setting.options) {
+    return (
+      <Select
+        value={draft}
+        disabled={pending}
+        onValueChange={(next) => {
+          setDraft(next);
+          commit(next);
+        }}
+      >
+        <SelectTrigger className="w-40" aria-label={setting.label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {setting.options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   const modelSetting = MODEL_SETTINGS[setting.key];
   if (modelSetting && installedModels) {
     return (
@@ -128,7 +153,8 @@ function SettingField({ setting, pending, installedModels, onSave, onValidationC
   return (
     <Input
       value={draft}
-      type={setting.type === 'string' ? 'text' : 'number'}
+      type={setting.secret ? 'password' : setting.type === 'string' ? 'text' : 'number'}
+      autoComplete={setting.secret ? 'off' : undefined}
       step={setting.type === 'float' ? 'any' : undefined}
       min={setting.min}
       disabled={pending}

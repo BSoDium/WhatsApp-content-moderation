@@ -1,5 +1,5 @@
-import type { Ollama } from 'ollama';
-import { createOllamaClient } from './ollama-client.ts';
+import type { LlmClient } from './llm-client.ts';
+import { createLlmClient } from './llm-client.ts';
 import { detectLanguage } from './language.ts';
 import { getBoolSetting, getNumberSetting } from '../store/settings.ts';
 import { createLogger } from '../cli/logger.ts';
@@ -31,7 +31,7 @@ const MAX_DETAIL_ERROR_LENGTH = 120;
 const MS_PER_SECOND = 1000;
 
 interface WarningMessageDependencies {
-  client?: Ollama;
+  client?: LlmClient;
 }
 
 type WarningMessageResult = { ok: true; text: string; detail?: string } | { ok: false; error: string };
@@ -97,7 +97,7 @@ function buildUserPrompt({ strikeCount, strikeThreshold, blockOutlook }: Warning
  * their message was removed.
  *
  * @param {{ message: string, strikeCount: number, strikeThreshold: number, model?: string }} input
- * @param {{ client?: Ollama }} [deps] - injectable Ollama client for tests.
+ * @param {{ client?: LlmClient }} [deps] - injectable Ollama client for tests.
  * @returns {Promise<{ ok: true, text: string } | { ok: false, error: string }>}
  */
 export async function generateWarningMessage(
@@ -105,7 +105,7 @@ export async function generateWarningMessage(
   { client }: WarningMessageDependencies = {},
 ): Promise<WarningMessageResult> {
   const { model = warningModel() } = input;
-  const ollama = client ?? createOllamaClient(getNumberSetting('WARNING_TIMEOUT_MS'));
+  const ollama = client ?? createLlmClient(getNumberSetting('WARNING_TIMEOUT_MS'));
 
   try {
     const detected = await detectLanguage(input.message, ollama, model);

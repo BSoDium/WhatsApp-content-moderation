@@ -35,6 +35,9 @@ export interface Setting {
   // Mirrors SettingDef in src/store/settings.ts, for client-side validation.
   min?: number;
   required?: boolean;
+  options?: readonly string[];
+  // The value is a mask saying one is set, never the secret itself.
+  secret?: boolean;
 }
 
 // Matches GET /api/meta.
