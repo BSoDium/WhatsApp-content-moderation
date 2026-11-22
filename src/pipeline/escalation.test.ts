@@ -4,7 +4,7 @@ import { rmSync } from 'node:fs';
 
 process.env.DB_PATH = 'data/test-escalation.test.sqlite';
 
-const { maybeBlockContact } = await import('./escalation.ts');
+const { maybeBlockContact, refreshStaleBlock, blockOutlook } = await import('./escalation.ts');
 const { getActiveBlock, markUnblocked } = await import('../store/blocks.ts');
 const { addMonitored, setEscalationEnabled } = await import('../store/monitored-contacts.ts');
 const { setSetting } = await import('../store/settings.ts');
@@ -95,4 +95,27 @@ test('a block record syncBlock leaves open is not blocked a second time', async 
 
   assert.equal(blockedAfter, true);
   assert.deepEqual(blocked, []);
+});
+
+test('refreshStaleBlock lets a closed stale record turn the outlook back to "blocking" before the warning is written', async () => {
+  const contact = monitored('outlook@s.whatsapp.net');
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  const stale = getActiveBlock(contact)!;
+  assert.equal(blockOutlook(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD), 'countdown');
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => void markUnblocked(stale.id));
+
+  assert.equal(blockOutlook(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD), 'blocking');
+});
+
+test('refreshStaleBlock does nothing below the threshold or without a record', async () => {
+  const contact = monitored('no-refresh@s.whatsapp.net');
+  let calls = 0;
+  const sync = async () => void calls++;
+
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, sync);
+  await maybeBlockContact(contact, STRIKE_THRESHOLD, STRIKE_THRESHOLD, async () => {});
+  await refreshStaleBlock(contact, STRIKE_THRESHOLD - 1, STRIKE_THRESHOLD, sync);
+
+  assert.equal(calls, 0);
 });

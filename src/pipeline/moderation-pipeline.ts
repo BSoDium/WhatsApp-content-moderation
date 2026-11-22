@@ -8,7 +8,7 @@ import { logMessage, getAuditLog, getLastActionAt, setLoggedAction } from '../st
 import { getMonitored } from '../store/monitored-contacts.ts';
 import { getRawSetting, getNumberSetting, getBoolSetting } from '../store/settings.ts';
 import { toConversationHistory } from './history.ts';
-import { maybeBlockContact, blockOutlook } from './escalation.ts';
+import { maybeBlockContact, blockOutlook, refreshStaleBlock } from './escalation.ts';
 import type { WAMessageKey } from '@whiskeysockets/baileys';
 import type { Classification, IncomingMessage } from '../types.ts';
 
@@ -207,6 +207,7 @@ async function runBurst(
   }
 
   if (incident) {
+    await refreshStaleBlock(contactId, strikeCount + 1, strikeThreshold, syncBlock);
     const warning = await warnAboutIncident(contactId, incident, strikeCount + 1, strikeThreshold, { sendWarning, generateWarning });
     if (warning === null) {
       setLoggedAction(incident.openerRowId, 'warn_failed');

@@ -33,6 +33,17 @@ function withContactLock<T>(contactId: string, run: () => Promise<T>): Promise<T
 }
 
 /**
+ * Gives `syncBlock` the chance to close a stale block record before a warning
+ * is written, so the warning's wording (see blockOutlook) agrees with the
+ * block maybeBlockContact is about to apply. Only matters once the next
+ * strike would reach the threshold with a block still on record.
+ */
+export async function refreshStaleBlock(contactId: string, nextStrikeCount: number, strikeThreshold: number, syncBlock?: (contactId: string) => Promise<void>): Promise<void> {
+  if (nextStrikeCount < strikeThreshold || !syncBlock || !getActiveBlock(contactId)) return;
+  await syncBlock(contactId);
+}
+
+/**
  * What a warning sent at this strike count may truthfully say about
  * blocking, mirroring maybeBlockContact's decision before it is applied.
  */
