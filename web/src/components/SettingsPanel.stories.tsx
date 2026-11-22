@@ -57,3 +57,19 @@ export const WarningModelNotInstalled: Story = {
 export const OllamaUnreachable: Story = {
   decorators: [withMockApi(settingsRoutes(FIXTURE_SETTINGS, { status: 502, body: { error: 'fetch failed' } }))],
 };
+
+export const RemoteProvider: Story = {
+  decorators: [
+    withMockApi(
+      settingsRoutes(
+        FIXTURE_SETTINGS.map((setting) => {
+          if (setting.key === 'LLM_PROVIDER') return { ...setting, value: 'openai' };
+          if (setting.key === 'LLM_BASE_URL') return { ...setting, value: 'https://openrouter.ai/api/v1' };
+          if (setting.key === 'LLM_API_KEY') return { ...setting, value: '••••••••' };
+          return setting;
+        }),
+        { body: { models: [{ name: 'openai/gpt-4o-mini', sizeBytes: null }, { name: 'meta-llama/llama-3.1-8b-instruct', sizeBytes: null }] } },
+      ),
+    ),
+  ],
+};

@@ -1,6 +1,6 @@
-import type { Ollama } from 'ollama';
+import type { LlmClient } from './llm-client.ts';
 import { loadPolicy } from './policy.ts';
-import { createOllamaClient } from './ollama-client.ts';
+import { createLlmClient } from './llm-client.ts';
 import { getRawSetting, getNumberSetting } from '../store/settings.ts';
 import type { Classification } from '../types.ts';
 
@@ -22,7 +22,7 @@ interface ClassifierInput {
 }
 
 interface ClassifierDependencies {
-  client?: Ollama;
+  client?: LlmClient;
   policy?: string;
 }
 
@@ -156,7 +156,7 @@ function formatHistory(history: ConversationMessage[]): string {
  * must never delete/block on ok: false — see AGENTS.md's "Error handling".
  *
  * @param {{ message: string, history?: { from: 'me'|'them', text: string }[], model?: string, contactContext?: string }} input
- * @param {{ client?: Ollama, policy?: string }} [deps] - injectable for
+ * @param {{ client?: LlmClient, policy?: string }} [deps] - injectable for
  *   tests: `client` in place of a real Ollama connection, `policy` in place
  *   of reading the configured policy (which may not exist yet on a fresh
  *   install with no policy entered).
@@ -166,7 +166,7 @@ export async function classifyMessage(
   { message, history = [], model = getRawSetting('OLLAMA_MODEL'), contactContext }: ClassifierInput,
   { client, policy }: ClassifierDependencies = {},
 ): Promise<Classification> {
-  const ollama = client ?? createOllamaClient(getNumberSetting('CLASSIFIER_TIMEOUT_MS'));
+  const ollama = client ?? createLlmClient(getNumberSetting('CLASSIFIER_TIMEOUT_MS'));
 
   const userSpoke = userHasSpoken(history);
 

@@ -30,7 +30,7 @@ export function ModelSelect({ value, models, inheritsClassifier, disabled, onCha
         {isMissing && <SelectItem value={value}>{value} (not installed)</SelectItem>}
         {models.map((model) => (
           <SelectItem key={model.name} value={model.name}>
-            {model.name} · {formatSize(model.sizeBytes)}
+            {model.sizeBytes === null ? model.name : `${model.name} · ${formatSize(model.sizeBytes)}`}
           </SelectItem>
         ))}
       </SelectContent>
